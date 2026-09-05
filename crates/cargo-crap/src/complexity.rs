@@ -54,10 +54,35 @@ fn has_attr(attrs: &[syn::Attribute], name: &str) -> bool {
     attrs.iter().any(|attr| attr.path().is_ident(name))
 }
 
+fn is_test_item(attrs: &[syn::Attribute]) -> bool {
+    has_attr(attrs, "test") || is_cfg_test(attrs)
+}
+
 fn is_cfg_test(attrs: &[syn::Attribute]) -> bool {
     attrs.iter().any(|attr| {
-        attr.path().is_ident("cfg") && attr.parse_args::<syn::Ident>().is_ok_and(|id| id == "test")
+        attr.path().is_ident("cfg")
+            && attr.parse_args::<syn::Meta>().is_ok_and(|meta| cfg_is_test_only(&meta))
     })
+}
+
+fn cfg_is_test_only(meta: &syn::Meta) -> bool {
+    match meta {
+        syn::Meta::Path(path) => path.is_ident("test"),
+        syn::Meta::List(list) if list.path.is_ident("all") => {
+            cfg_list(list).iter().any(cfg_is_test_only)
+        }
+        syn::Meta::List(list) if list.path.is_ident("any") => {
+            let items = cfg_list(list);
+            !items.is_empty() && items.iter().all(cfg_is_test_only)
+        }
+        _ => false,
+    }
+}
+
+fn cfg_list(list: &syn::MetaList) -> Vec<syn::Meta> {
+    list.parse_args_with(syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated)
+        .map(|items| items.into_iter().collect())
+        .unwrap_or_default()
 }
 
 fn impl_type_name(ty: &syn::Type) -> Option<String> {
@@ -88,7 +113,7 @@ impl FunctionVisitor<'_> {
 
 impl<'ast> Visit<'ast> for FunctionVisitor<'_> {
     fn visit_item_fn(&mut self, node: &'ast ItemFn) {
-        if has_attr(&node.attrs, "test") {
+        if is_test_item(&node.attrs) {
             return;
         }
         let start_line = node.sig.fn_token.span.start().line;
@@ -103,6 +128,9 @@ impl<'ast> Visit<'ast> for FunctionVisitor<'_> {
     }
 
     fn visit_item_impl(&mut self, node: &'ast ItemImpl) {
+        if is_cfg_test(&node.attrs) {
+            return;
+        }
         let prev = self.impl_type.take();
         self.impl_type = impl_type_name(&node.self_ty);
         visit::visit_item_impl(self, node);
@@ -110,7 +138,7 @@ impl<'ast> Visit<'ast> for FunctionVisitor<'_> {
     }
 
     fn visit_impl_item_fn(&mut self, node: &'ast ImplItemFn) {
-        if has_attr(&node.attrs, "test") {
+        if is_test_item(&node.attrs) {
             return;
         }
         let method = node.sig.ident.to_string();
@@ -125,6 +153,9 @@ impl<'ast> Visit<'ast> for FunctionVisitor<'_> {
     }
 
     fn visit_item_trait(&mut self, node: &'ast ItemTrait) {
+        if is_cfg_test(&node.attrs) {
+            return;
+        }
         let prev = self.trait_name.take();
         self.trait_name = Some(node.ident.to_string());
         visit::visit_item_trait(self, node);
@@ -132,7 +163,7 @@ impl<'ast> Visit<'ast> for FunctionVisitor<'_> {
     }
 
     fn visit_trait_item_fn(&mut self, node: &'ast TraitItemFn) {
-        if has_attr(&node.attrs, "test") {
+        if is_test_item(&node.attrs) {
             return;
         }
         if let Some(body) = &node.default {
@@ -276,6 +307,42 @@ mod tests {
     #[test]
     fn test_functions_are_skipped() {
         let fns = snippet("#[test] fn t() { if true {} } fn keep() {}");
+        assert_eq!(fns.len(), 1);
+        assert_eq!(fns[0].name, "keep");
+    }
+
+    #[test]
+    fn cfg_test_helper_is_skipped() {
+        let fns = snippet("#[cfg(test)] fn helper() { if true {} } fn keep() {}");
+        assert_eq!(fns.len(), 1);
+        assert_eq!(fns[0].name, "keep");
+    }
+
+    #[test]
+    fn cfg_test_impl_is_skipped() {
+        let src = "struct Foo; #[cfg(test)] impl Foo { fn bar(&self) { if true {} } }";
+        assert!(snippet(src).is_empty());
+    }
+
+    #[test]
+    fn cfg_all_test_is_skipped() {
+        let src = "#[cfg(all(test, feature = \"x\"))] fn helper() { if true {} } fn keep() {}";
+        let fns = snippet(src);
+        assert_eq!(fns.len(), 1);
+        assert_eq!(fns[0].name, "keep");
+    }
+
+    #[test]
+    fn cfg_any_test_or_unix_is_kept() {
+        let fns = snippet("#[cfg(any(test, unix))] fn f() { if true {} }");
+        assert_eq!(fns.len(), 1);
+        assert_eq!(fns[0].name, "f");
+    }
+
+    #[test]
+    fn cfg_test_mod_is_skipped() {
+        let src = "#[cfg(test)] mod tests { fn helper() { if true {} } } fn keep() {}";
+        let fns = snippet(src);
         assert_eq!(fns.len(), 1);
         assert_eq!(fns[0].name, "keep");
     }
