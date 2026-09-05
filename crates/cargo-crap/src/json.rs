@@ -4,6 +4,8 @@ use std::collections::BTreeMap;
 
 type Result<T> = std::result::Result<T, String>;
 
+const MAX_DEPTH: u32 = 128;
+
 /// A JSON value needed to read workspace package fields.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Json {
@@ -31,6 +33,7 @@ impl Json {
         let mut parser = Parser {
             bytes: text.as_bytes(),
             pos: 0,
+            depth: 0,
         };
         parser.skip_ws();
         let value = parser.value()?;
@@ -78,6 +81,7 @@ impl Json {
 struct Parser<'a> {
     bytes: &'a [u8],
     pos: usize,
+    depth: u32,
 }
 
 impl Parser<'_> {
@@ -102,7 +106,11 @@ impl Parser<'_> {
 
     fn value(&mut self) -> Result<Json> {
         self.skip_ws();
-        match self.peek()? {
+        let next = self.peek()?;
+        if matches!(next, b'[' | b'{') && self.depth >= MAX_DEPTH {
+            return Err("JSON nesting too deep".into());
+        }
+        match next {
             b'n' => self.ident(b"null", Json::Null),
             b't' => self.ident(b"true", Json::Bool(true)),
             b'f' => self.ident(b"false", Json::Bool(false)),
@@ -124,42 +132,53 @@ impl Parser<'_> {
     }
 
     fn array(&mut self) -> Result<Json> {
-        self.bump()?;
-        let mut items = Vec::new();
-        loop {
-            self.skip_ws();
-            if self.peek()? == b']' {
-                self.pos += 1;
-                break;
+        self.with_nest(|parser| {
+            parser.bump()?;
+            let mut items = Vec::new();
+            loop {
+                parser.skip_ws();
+                if parser.peek()? == b']' {
+                    parser.pos += 1;
+                    break;
+                }
+                if !items.is_empty() {
+                    parser.expect(b',')?;
+                    parser.skip_ws();
+                }
+                items.push(parser.value()?);
             }
-            if !items.is_empty() {
-                self.expect(b',')?;
-                self.skip_ws();
-            }
-            items.push(self.value()?);
-        }
-        Ok(Json::Array(items))
+            Ok(Json::Array(items))
+        })
     }
 
     fn object(&mut self) -> Result<Json> {
-        self.bump()?;
-        let mut map = BTreeMap::new();
-        loop {
-            self.skip_ws();
-            if self.peek()? == b'}' {
-                self.pos += 1;
-                break;
+        self.with_nest(|parser| {
+            parser.bump()?;
+            let mut map = BTreeMap::new();
+            loop {
+                parser.skip_ws();
+                if parser.peek()? == b'}' {
+                    parser.pos += 1;
+                    break;
+                }
+                if !map.is_empty() {
+                    parser.expect(b',')?;
+                    parser.skip_ws();
+                }
+                let key = parser.string()?;
+                parser.skip_ws();
+                parser.expect(b':')?;
+                map.insert(key, parser.value()?);
             }
-            if !map.is_empty() {
-                self.expect(b',')?;
-                self.skip_ws();
-            }
-            let key = self.string()?;
-            self.skip_ws();
-            self.expect(b':')?;
-            map.insert(key, self.value()?);
-        }
-        Ok(Json::Object(map))
+            Ok(Json::Object(map))
+        })
+    }
+
+    fn with_nest<T>(&mut self, body: impl FnOnce(&mut Self) -> Result<T>) -> Result<T> {
+        self.depth += 1;
+        let out = body(self);
+        self.depth -= 1;
+        out
     }
 
     fn expect(&mut self, wanted: u8) -> Result<()> {
@@ -208,13 +227,36 @@ impl Parser<'_> {
     }
 
     fn unicode_escape(&mut self) -> Result<char> {
+        let code = self.hex4()?;
+        if (0xD800..=0xDBFF).contains(&code) {
+            return self.surrogate_pair(code);
+        }
+        if (0xDC00..=0xDFFF).contains(&code) {
+            return Err("lone low surrogate".into());
+        }
+        char::from_u32(code).ok_or_else(|| "invalid unicode escape".into())
+    }
+
+    fn surrogate_pair(&mut self, high: u32) -> Result<char> {
+        if self.bump()? != b'\\' || self.bump()? != b'u' {
+            return Err("expected low surrogate".into());
+        }
+        let low = self.hex4()?;
+        if !(0xDC00..=0xDFFF).contains(&low) {
+            return Err("invalid low surrogate".into());
+        }
+        let scalar = 0x1_0000 + ((high - 0xD800) << 10) + (low - 0xDC00);
+        char::from_u32(scalar).ok_or_else(|| "invalid unicode escape".into())
+    }
+
+    fn hex4(&mut self) -> Result<u32> {
         let mut code = 0_u32;
         for _ in 0..4 {
             let b = self.bump()?;
             let digit = hex_digit(b).ok_or_else(|| "invalid \\u escape".to_owned())?;
             code = (code << 4) | digit;
         }
-        char::from_u32(code).ok_or_else(|| "invalid unicode escape".into())
+        Ok(code)
     }
 
     fn number(&mut self) -> Result<Json> {
@@ -290,5 +332,30 @@ mod tests {
             value.get("manifest_path").and_then(Json::as_str),
             Some("/tmp/用户/Cargo.toml")
         );
+    }
+
+    #[test]
+    fn rejects_nesting_past_limit() {
+        let deep = format!("{}{}", "[".repeat(129), "]".repeat(129));
+        assert!(Json::parse(&deep).is_err());
+    }
+
+    #[test]
+    fn parses_shallow_nesting() {
+        let json = Json::parse("[[[]]]");
+        assert!(json.is_ok());
+    }
+
+    #[test]
+    fn decodes_surrogate_pair() {
+        let json = Json::parse(r#""\uD83D\uDE00""#);
+        assert!(json.is_ok());
+        assert_eq!(json.unwrap_or(Json::Null).as_str(), Some("\u{1F600}"));
+    }
+
+    #[test]
+    fn rejects_lone_surrogates() {
+        assert!(Json::parse(r#""\uD800""#).is_err());
+        assert!(Json::parse(r#""\uDE00""#).is_err());
     }
 }
