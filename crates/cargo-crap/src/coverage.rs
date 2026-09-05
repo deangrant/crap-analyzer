@@ -22,17 +22,17 @@ impl FileCoverage {
 
     /// Percent of instrumented lines in `start..=end` that were hit.
     ///
-    /// A span with no instrumented lines is treated as fully covered.
+    /// Returns [`None`] when the span has no instrumented lines.
     #[must_use]
-    pub fn coverage_in_span(&self, start: usize, end: usize) -> f64 {
+    pub fn coverage_in_span(&self, start: usize, end: usize) -> Option<f64> {
         let start = u32::try_from(start).unwrap_or(u32::MAX);
         let end = u32::try_from(end).unwrap_or(u32::MAX);
         let executable: Vec<u64> = self.lines.range(start..=end).map(|(_, h)| *h).collect();
         if executable.is_empty() {
-            return 100.0;
+            return None;
         }
         let covered = executable.iter().filter(|hits| **hits > 0).count();
-        (covered as f64 / executable.len() as f64) * 100.0
+        Some((covered as f64 / executable.len() as f64) * 100.0)
     }
 }
 
@@ -95,10 +95,6 @@ fn parse_da(rest: &str) -> Option<(u32, u64)> {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::float_cmp,
-    reason = "coverage percent is a ratio of integer line counts"
-)]
 mod tests {
     use super::*;
     use std::path::Path;
@@ -149,11 +145,11 @@ mod tests {
     }
 
     #[test]
-    fn empty_span_is_full_coverage() {
+    fn empty_span_is_missing() {
         let cov = FileCoverage {
             lines: [(5, 1), (25, 1)].into_iter().collect(),
         };
-        assert_eq!(cov.coverage_in_span(10, 20), 100.0);
+        assert_eq!(cov.coverage_in_span(10, 20), None);
     }
 
     #[test]
@@ -161,7 +157,7 @@ mod tests {
         let cov = FileCoverage {
             lines: [(10, 5), (11, 0), (12, 1), (13, 0)].into_iter().collect(),
         };
-        assert_eq!(cov.coverage_in_span(10, 13), 50.0);
+        assert_eq!(cov.coverage_in_span(10, 13), Some(50.0));
     }
 
     #[test]

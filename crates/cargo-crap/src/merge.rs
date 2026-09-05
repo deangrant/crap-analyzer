@@ -85,14 +85,14 @@ fn coverage_for(
     function: &FunctionComplexity,
     missing: MissingPolicy,
 ) -> Option<f64> {
-    index.lookup(&function.file).map_or_else(
-        || match missing {
-            MissingPolicy::Pessimistic => Some(0.0),
-            MissingPolicy::Optimistic => Some(100.0),
-            MissingPolicy::Skip => None,
-        },
-        |file| Some(file.coverage_in_span(function.start_line, function.end_line)),
-    )
+    let found = index
+        .lookup(&function.file)
+        .and_then(|file| file.coverage_in_span(function.start_line, function.end_line));
+    found.or(match missing {
+        MissingPolicy::Pessimistic => Some(0.0),
+        MissingPolicy::Optimistic => Some(100.0),
+        MissingPolicy::Skip => None,
+    })
 }
 
 struct PathIndex {
@@ -233,5 +233,30 @@ mod tests {
         let coverage = cov("src/lib.rs", &[(1, 1)]);
         let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
         assert_eq!(entries[0].coverage, 0.0);
+    }
+
+    #[test]
+    fn empty_span_is_pessimistic_zero() {
+        let functions = [func("src/foo.rs", "f", 10, 12)];
+        let coverage = cov("src/foo.rs", &[(1, 1), (20, 1)]);
+        let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
+        assert_eq!(entries[0].coverage, 0.0);
+        assert_eq!(entries[0].crap, 2.0);
+    }
+
+    #[test]
+    fn empty_span_skip_drops_the_row() {
+        let functions = [func("src/foo.rs", "f", 10, 12)];
+        let coverage = cov("src/foo.rs", &[(1, 1), (20, 1)]);
+        let entries = join(&functions, &coverage, MissingPolicy::Skip);
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn empty_span_optimistic_is_full() {
+        let functions = [func("src/foo.rs", "f", 10, 12)];
+        let coverage = cov("src/foo.rs", &[(1, 1), (20, 1)]);
+        let entries = join(&functions, &coverage, MissingPolicy::Optimistic);
+        assert_eq!(entries[0].coverage, 100.0);
     }
 }

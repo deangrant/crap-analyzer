@@ -73,7 +73,8 @@ extract or simplify when complexity stays high even when covered.
 - `-p, --package <name>` — one member; repeatable; conflicts with `--workspace`
 - `--summary` — counts and worst offender; no table
 - `--fail-above` — exit 1 when any function exceeds the threshold
-- `--missing` — `pessimistic` (default, 0%), `optimistic` (100%), or `skip`
+- `--missing` — no LCOV data, or an AST span with no instrumented lines:
+  `pessimistic` (default, 0%), `optimistic` (100%), or `skip`
 
 Exit codes: `0` finished and clean, `1` finished and the gate tripped,
 `2` usage or analysis error.

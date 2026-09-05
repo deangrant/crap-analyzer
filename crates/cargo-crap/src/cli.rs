@@ -162,7 +162,8 @@ OPTIONS:
     -p, --package <name>    Analyze only this member (repeatable)
     --summary               Counts and worst offender; no table
     --fail-above            Exit 1 if any function exceeds --threshold
-    --missing <policy>      No coverage data: pessimistic (0%, default),
+    --missing <policy>      No LCOV data, or a span with no instrumented
+                            lines: pessimistic (0%, default),
                             optimistic (100%), or skip
     -h, --help              Print help
     -V, --version           Print version
