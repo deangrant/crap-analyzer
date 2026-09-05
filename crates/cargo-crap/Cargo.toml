@@ -1,0 +1,21 @@
+[package]
+name = "cargo-crap"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Score Rust functions by combining complexity and test coverage"
+readme = "../../README.md"
+repository = "https://github.com/deangrant/rust-crap"
+keywords = ["cargo", "coverage", "complexity", "metrics"]
+categories = ["development-tools::cargo-plugins", "development-tools::testing"]
+
+[[bin]]
+name = "cargo-crap"
+path = "src/main.rs"
+
+[dependencies]
+proc-macro2 = { version = "1", features = ["span-locations"] }
+syn = { version = "2", features = ["full", "visit"] }
+
+[lints]
+workspace = true

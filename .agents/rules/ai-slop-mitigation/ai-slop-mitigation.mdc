@@ -1,0 +1,15 @@
+---
+description: Mitigate AI slop — concrete code, no filler, match repo style, verify claims
+globs: "**/*"
+alwaysApply: false
+---
+
+# AI Slop Mitigation
+
+- Prefer **concrete, minimal diffs** over speculative refactors or essay-length commentary.
+- Match existing repo patterns, naming, and abstractions — do not invent parallel frameworks.
+- No filler: skip “certainly”, restating the task, or fake confidence on unverified behavior.
+- Do not add unsolicited docs/tests/comments unless asked or required for correctness.
+- Verify against the codebase before claiming APIs, configs, or behaviors exist.
+- Prefer deleting dead code over leaving TODOs and unused helpers.
+- When unsure, ask or check — do not hallucinate file paths or dependency APIs.

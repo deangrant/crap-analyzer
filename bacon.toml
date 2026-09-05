@@ -1,0 +1,10 @@
+default_job = "clippy-all"
+env.CARGO_TERM_COLOR = "always"
+
+[jobs.clippy-all]
+command = [
+    "bash",
+    "-c",
+    "count=$(.github/scripts/package-count.sh); if [ \"$count\" = 0 ]; then echo 'No workspace packages; skipping clippy.'; exit 0; fi; cargo clippy --workspace --all-targets --all-features -- -D warnings",
+]
+need_stdout = false

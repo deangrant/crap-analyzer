@@ -1,0 +1,70 @@
+name: supply-chain
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 0 * * 0"
+  workflow_dispatch:
+
+concurrency:
+  group: supply-chain-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deny:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
+        with:
+          toolchain: 1.94.0
+
+      - name: Detect workspace packages
+        id: pkgs
+        run: |
+          count=$(.github/scripts/package-count.sh)
+          echo "count=${count}" >> "$GITHUB_OUTPUT"
+          if [ "${count}" = "0" ]; then
+            echo "No workspace packages; skipping cargo deny."
+          fi
+
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25
+        if: steps.pkgs.outputs.count != '0'
+        with:
+          command: check
+
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      checks: write
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Detect lockfile
+        id: lock
+        run: |
+          if [ -f Cargo.lock ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No Cargo.lock; skipping cargo audit."
+          fi
+
+      - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998
+        if: steps.lock.outputs.present == 'true'
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
