@@ -82,7 +82,8 @@ Exit codes: `0` finished and clean, `1` finished and the gate tripped,
 
 Line coverage is not proof that tests assert anything useful. Some
 complex functions are legitimate. The score does not measure coupling or
-cohesion.
+cohesion. Closures count toward the enclosing function; decisions inside
+unexpanded or opaque macros may be missed.
 
 ## License
 
