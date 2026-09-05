@@ -77,7 +77,7 @@ extract or simplify when complexity stays high even when covered.
   `pessimistic` (default, 0%), `optimistic` (100%), or `skip`
 
 Exit codes: `0` finished and clean, `1` finished and the gate tripped,
-`2` usage or analysis error.
+`2` usage or analysis error (including when every source file fails to parse).
 
 ## Limits
 

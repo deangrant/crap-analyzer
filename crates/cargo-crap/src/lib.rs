@@ -33,8 +33,8 @@ pub struct RunResult {
 ///
 /// # Errors
 ///
-/// Returns I/O, metadata, or usage errors. Individual parse failures
-/// become warnings and do not abort the run.
+/// Returns I/O, metadata, usage, or total-parse errors. Individual
+/// parse failures become warnings unless every file fails.
 pub fn run(args: &Args) -> Result<RunResult> {
     let coverage = coverage::parse_lcov(&args.lcov)?;
     let targets = analysis_targets(args)?;
@@ -99,16 +99,27 @@ fn targets_from_packages(packages: &[Package]) -> Vec<Target> {
 fn collect_functions(targets: &[Target]) -> Result<(Vec<LocatedFn>, Vec<String>)> {
     let mut functions = Vec::new();
     let mut warnings = Vec::new();
+    let mut succeeded = 0_usize;
+    let mut failed = 0_usize;
     for target in targets {
         let files = walk::rust_files(&target.root, &target.skip)?;
         for file in files {
-            take_file(
+            if take_file(
                 &file,
                 target.crate_name.as_deref(),
                 &mut functions,
                 &mut warnings,
-            );
+            ) {
+                succeeded += 1;
+            } else {
+                failed += 1;
+            }
         }
+    }
+    if failed > 0 && succeeded == 0 {
+        return Err(Error::Parse(format!(
+            "failed to parse all {failed} Rust file(s)"
+        )));
     }
     Ok((functions, warnings))
 }
@@ -118,7 +129,7 @@ fn take_file(
     crate_name: Option<&str>,
     functions: &mut Vec<LocatedFn>,
     warnings: &mut Vec<String>,
-) {
+) -> bool {
     match complexity::analyze_file(file) {
         Ok(found) => {
             for function in found {
@@ -127,8 +138,12 @@ fn take_file(
                     crate_name: crate_name.map(str::to_owned),
                 });
             }
+            true
         }
-        Err(err) => warnings.push(parse_warning(file, &err)),
+        Err(err) => {
+            warnings.push(parse_warning(file, &err));
+            false
+        }
     }
 }
 

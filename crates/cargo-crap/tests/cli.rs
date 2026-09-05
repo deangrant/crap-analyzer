@@ -1,5 +1,6 @@
 //! End-to-end checks for the `cargo-crap` binary.
 
+use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -108,4 +109,26 @@ fn cargo_subcommand_argv_is_accepted() {
     let (code, stdout, _) = output_of(bin().args(["crap", "--help"]));
     assert_eq!(code, 0);
     assert!(stdout.contains("USAGE:"));
+}
+
+#[test]
+fn total_parse_failure_exits_two() {
+    let root = std::env::temp_dir().join(format!(
+        "cargo-crap-unparseable-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos())
+    ));
+    let created = fs::create_dir_all(&root);
+    assert!(created.is_ok(), "{created:?}");
+    let written = fs::write(root.join("broken.rs"), "fn not rust {{{");
+    assert!(written.is_ok(), "{written:?}");
+    let lcov = root.join("lcov.info");
+    let lcov_written = fs::write(&lcov, "TN:\nSF:broken.rs\nDA:1,0\nend_of_record\n");
+    assert!(lcov_written.is_ok(), "{lcov_written:?}");
+    let (code, _, stderr) = output_of(bin().arg("--lcov").arg(&lcov).arg("--path").arg(&root));
+    let _ = fs::remove_dir_all(&root);
+    assert_eq!(code, 2, "{stderr}");
+    assert!(stderr.contains("failed to parse") || stderr.contains("skipping"));
 }

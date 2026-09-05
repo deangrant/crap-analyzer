@@ -192,7 +192,7 @@ SCORE:
 EXIT CODES:
     0   Analysis finished; no requested gate tripped
     1   Analysis finished; --fail-above tripped
-    2   Usage, input, or analysis error
+    2   Usage, input, or analysis error (every source failed to parse)
 ",
         name = env!("CARGO_PKG_NAME"),
         version = env!("CARGO_PKG_VERSION"),
