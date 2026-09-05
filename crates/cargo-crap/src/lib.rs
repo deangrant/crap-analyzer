@@ -78,9 +78,9 @@ fn analysis_targets(args: &Args) -> Result<Vec<Target>> {
         }]);
     }
     let packages = if args.workspace {
-        workspace::all_members()?
+        workspace::all_members(&args.path)?
     } else {
-        workspace::selected_members(&args.packages)?
+        workspace::selected_members(&args.packages, &args.path)?
     };
     Ok(targets_from_packages(&packages))
 }

@@ -67,7 +67,7 @@ extract or simplify when complexity stays high even when covered.
 ## Flags
 
 - `--lcov <file>` — LCOV from `cargo llvm-cov` (required)
-- `--path <dir>` — walk this tree (default `.`); ignored with `--workspace` / `-p`
+- `--path <dir>` — walk this tree (default `.`); Cargo workspace root with `--workspace` / `-p`
 - `--threshold <n>` — flag scores strictly above this (default `30`)
 - `--workspace` — every Cargo workspace member
 - `-p, --package <name>` — one member; repeatable; conflicts with `--workspace`

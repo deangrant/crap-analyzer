@@ -14,24 +14,24 @@ pub struct Package {
     pub root: PathBuf,
 }
 
-/// Loads every workspace member from `cargo metadata`.
+/// Loads every workspace member from `cargo metadata` at `root`.
 ///
 /// # Errors
 ///
 /// Returns [`Error::Metadata`] if Cargo fails or the JSON is incomplete.
-pub fn all_members() -> Result<Vec<Package>> {
-    let json = run_metadata()?;
+pub fn all_members(root: &Path) -> Result<Vec<Package>> {
+    let json = run_metadata(root)?;
     packages_from_metadata(&json)
 }
 
-/// Loads the named members. Unknown names fail before analysis.
+/// Loads the named members from the workspace at `root`.
 ///
 /// # Errors
 ///
 /// Returns [`Error::UnknownPackage`] if a name is missing, or
 /// [`Error::Metadata`] if Cargo fails.
-pub fn selected_members(names: &[String]) -> Result<Vec<Package>> {
-    let packages = all_members()?;
+pub fn selected_members(names: &[String], root: &Path) -> Result<Vec<Package>> {
+    let packages = all_members(root)?;
     let mut selected = Vec::with_capacity(names.len());
     for name in names {
         let Some(pkg) = packages.iter().find(|p| p.name == *name) else {
@@ -52,10 +52,16 @@ pub fn nested_member_roots(root: &Path, all: &[Package]) -> Vec<PathBuf> {
         .collect()
 }
 
-fn run_metadata() -> Result<Json> {
+fn manifest_path(root: &Path) -> PathBuf {
+    root.join("Cargo.toml")
+}
+
+fn run_metadata(root: &Path) -> Result<Json> {
     let cargo = std::env::var_os("CARGO").map_or_else(|| PathBuf::from("cargo"), PathBuf::from);
     let output = Command::new(cargo)
         .args(["metadata", "--format-version", "1", "--no-deps"])
+        .arg("--manifest-path")
+        .arg(manifest_path(root))
         .output()
         .map_err(|source| Error::Metadata(source.to_string()))?;
     if !output.status.success() {
@@ -163,5 +169,14 @@ mod tests {
         ];
         let skip = nested_member_roots(Path::new("/ws"), &all);
         assert_eq!(skip, vec![PathBuf::from("/ws/inner")]);
+    }
+
+    #[test]
+    fn manifest_path_joins_cargo_toml() {
+        assert_eq!(
+            manifest_path(Path::new("/other/ws")),
+            PathBuf::from("/other/ws/Cargo.toml")
+        );
+        assert_eq!(manifest_path(Path::new(".")), PathBuf::from("./Cargo.toml"));
     }
 }

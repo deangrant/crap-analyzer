@@ -22,7 +22,7 @@ pub enum Action {
 pub struct Args {
     /// LCOV coverage file.
     pub(crate) lcov: PathBuf,
-    /// Directory to walk when packages are not selected.
+    /// Walk root, or Cargo workspace root when `--workspace` / `-p` is set.
     pub(crate) path: PathBuf,
     /// Score above which a function is flagged.
     pub(crate) threshold: f64,
@@ -154,8 +154,8 @@ USAGE:
 OPTIONS:
     --lcov <file>           LCOV file (required). Produce one with:
                             cargo llvm-cov --lcov --output-path lcov.info
-    --path <dir>            Root to walk for .rs files [default: .]
-                            Ignored when --workspace or -p is set
+    --path <dir>            Walk root [default: .]; Cargo workspace root
+                            when --workspace or -p is set
     --threshold <n>         Flag scores strictly above this [default: 30]
                             Lower values are valid for stricter gates
     --workspace             Analyze every Cargo workspace member
