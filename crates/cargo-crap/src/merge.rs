@@ -113,28 +113,67 @@ impl PathIndex {
 
     fn lookup(&self, source: &Path) -> Option<&FileCoverage> {
         let src = components(source);
-        let mut best: Option<(usize, &FileCoverage)> = None;
+        let mut best_rank: Option<MatchRank> = None;
+        let mut best_file: Option<&FileCoverage> = None;
+        let mut tied = false;
         for (key, file) in &self.files {
-            if !is_suffix_pair(&src, key) {
+            let Some(rank) = match_rank(&src, key) else {
                 continue;
-            }
-            let len = key.len().min(src.len());
-            if best.is_none_or(|(best_len, _)| len > best_len) {
-                best = Some((len, file));
+            };
+            match best_rank {
+                Some(best) if rank < best => {}
+                Some(best) if rank == best => tied = true,
+                _ => {
+                    best_rank = Some(rank);
+                    best_file = Some(file);
+                    tied = false;
+                }
             }
         }
-        best.map(|(_, file)| file)
+        if tied {
+            return None;
+        }
+        best_file
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct MatchRank {
+    len: usize,
+    exact: bool,
+    src_ends_with_key: bool,
+}
+
+fn match_rank(src: &[String], key: &[String]) -> Option<MatchRank> {
+    if !is_suffix_pair(src, key) {
+        return None;
+    }
+    Some(MatchRank {
+        len: key.len().min(src.len()),
+        exact: src == key,
+        src_ends_with_key: src.ends_with(key),
+    })
+}
+
 fn components(path: &Path) -> Vec<String> {
-    path.components()
-        .filter_map(|comp| match comp {
-            Component::Normal(part) => Some(os_to_string(part)),
-            Component::Prefix(prefix) => Some(os_to_string(prefix.as_os_str())),
-            Component::RootDir | Component::CurDir | Component::ParentDir => None,
-        })
-        .collect()
+    let mut stack = Vec::new();
+    for comp in path.components() {
+        match comp {
+            Component::Normal(part) => stack.push(os_to_string(part)),
+            Component::Prefix(prefix) => stack.push(os_to_string(prefix.as_os_str())),
+            Component::ParentDir => push_parent(&mut stack),
+            Component::RootDir | Component::CurDir => {}
+        }
+    }
+    stack
+}
+
+fn push_parent(stack: &mut Vec<String>) {
+    if stack.last().is_some_and(|top| top != "..") {
+        stack.pop();
+    } else {
+        stack.push("..".into());
+    }
 }
 
 fn os_to_string(part: &OsStr) -> String {
@@ -258,5 +297,47 @@ mod tests {
         let coverage = cov("src/foo.rs", &[(1, 1), (20, 1)]);
         let entries = join(&functions, &coverage, MissingPolicy::Optimistic);
         assert_eq!(entries[0].coverage, 100.0);
+    }
+
+    #[test]
+    fn parent_dir_resolves_without_merging_unrelated_keys() {
+        let functions = [func("/proj/b/src/lib.rs", "f", 1, 2)];
+        let mut coverage = cov("a/../b/src/lib.rs", &[(1, 1)]);
+        coverage.insert(
+            PathBuf::from("a/b/src/lib.rs"),
+            FileCoverage {
+                lines: std::iter::once((2, 0)).collect(),
+            },
+        );
+        let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
+        assert_eq!(entries[0].coverage, 100.0);
+    }
+
+    #[test]
+    fn equal_length_crate_suffixes_are_ambiguous() {
+        let functions = [func("src/lib.rs", "f", 1, 1)];
+        let mut coverage = cov("/crate_a/src/lib.rs", &[(1, 1)]);
+        coverage.insert(
+            PathBuf::from("/crate_b/src/lib.rs"),
+            FileCoverage {
+                lines: std::iter::once((1, 0)).collect(),
+            },
+        );
+        let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
+        assert_eq!(entries[0].coverage, 0.0);
+    }
+
+    #[test]
+    fn equal_length_crate_suffixes_skip() {
+        let functions = [func("src/lib.rs", "f", 1, 1)];
+        let mut coverage = cov("/crate_a/src/lib.rs", &[(1, 1)]);
+        coverage.insert(
+            PathBuf::from("/crate_b/src/lib.rs"),
+            FileCoverage {
+                lines: std::iter::once((1, 0)).collect(),
+            },
+        );
+        let entries = join(&functions, &coverage, MissingPolicy::Skip);
+        assert!(entries.is_empty());
     }
 }
