@@ -37,7 +37,8 @@ fn cfg_list(list: &syn::MetaList) -> Vec<syn::Meta> {
 
 #[cfg(test)]
 mod tests {
-    use crate::complexity::{FunctionComplexity, Metric, analyze_source};
+    use crate::complexity::analyze_source;
+    use crap_core::{FunctionComplexity, Metric};
     use std::path::Path;
 
     fn cyclo(src: &str) -> Vec<FunctionComplexity> {

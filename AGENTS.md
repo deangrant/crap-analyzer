@@ -1,12 +1,14 @@
 # Agent and contributor guidance
 
-Structured conventions for AI agents and humans working in this repository. For
-bootstrap and tooling overview, see [README.md](README.md).
+Structured conventions for AI agents and humans working in this
+**crap-analyzer** workspace. For product overview and the `crap-rs` CLI, see
+[README.md](README.md).
 
 ## Docs
 
-- [README.md](README.md) — scaffolding purpose, crate bootstrap, lint/CI notes
-- [`Cargo.toml`](Cargo.toml) — virtual workspace and maximum `[workspace.lints]`
+- [README.md](README.md) — scoring model, `crap-rs` usage, crate layout
+- [`Cargo.toml`](Cargo.toml) — virtual workspace (`crap-core`, `crap-rs`) and
+  maximum `[workspace.lints]`
 - [`clippy.toml`](clippy.toml) — complexity and line thresholds
 - [`rustfmt.toml`](rustfmt.toml) — `max_width` 100
 - [`deny.toml`](deny.toml) — cargo-deny policy

@@ -8,7 +8,7 @@
 /// # Examples
 ///
 /// ```
-/// use cargo_crap::score::crap;
+/// use crap_core::score::crap;
 /// assert_eq!(crap(1.0, 100.0), 1.0);
 /// assert_eq!(crap(6.0, 0.0), 42.0);
 /// ```
@@ -31,7 +31,7 @@ pub fn exceeds_threshold(score: f64, threshold: f64) -> bool {
 )]
 mod tests {
     use super::*;
-    use crate::complexity::Metric;
+    use crate::metric::Metric;
 
     #[test]
     fn trivial_fully_covered_scores_one() {

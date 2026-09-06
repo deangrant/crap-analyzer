@@ -5,54 +5,11 @@ mod cognitive;
 mod cyclomatic;
 mod visitor;
 
-use crate::error::{Error, Result};
-use clap::ValueEnum;
-use std::path::{Path, PathBuf};
+use crap_core::{Error, FunctionComplexity, Metric, Result};
+use std::path::Path;
 use syn::parse::Parser;
 use syn::visit::Visit;
 use visitor::FunctionVisitor;
-
-/// Which complexity metric to apply to each function body.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-pub enum Metric {
-    /// Cyclomatic complexity (one plus each decision point).
-    Cyclomatic,
-    /// Cognitive complexity (nesting-weighted control flow).
-    Cognitive,
-}
-
-impl Metric {
-    /// Default CRAP gate when `--threshold` is omitted.
-    #[must_use]
-    pub const fn default_threshold(self) -> f64 {
-        match self {
-            Self::Cyclomatic => 30.0,
-            Self::Cognitive => 15.0,
-        }
-    }
-
-    fn count(self, body: &syn::Block) -> usize {
-        match self {
-            Self::Cyclomatic => cyclomatic::count(body),
-            Self::Cognitive => cognitive::count(body),
-        }
-    }
-}
-
-/// One function's complexity and inclusive line span.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FunctionComplexity {
-    /// Source path as supplied to the walker.
-    pub file: PathBuf,
-    /// Free function name, or `Type::method` for impl and trait methods.
-    pub name: String,
-    /// One-based first line of the function.
-    pub start_line: usize,
-    /// One-based last line of the function body.
-    pub end_line: usize,
-    /// Selected metric value (cyclomatic minimum 1; cognitive may be 0).
-    pub complexity: usize,
-}
 
 /// Reads `path` and returns every non-test function.
 ///
@@ -88,6 +45,13 @@ pub fn analyze_source(
     Ok(visitor.out)
 }
 
+fn count_metric(metric: Metric, body: &syn::Block) -> usize {
+    match metric {
+        Metric::Cyclomatic => cyclomatic::count(body),
+        Metric::Cognitive => cognitive::count(body),
+    }
+}
+
 /// Best-effort parse of macro tokens as an expression or statement list.
 fn parse_macro_body(
     tokens: &proc_macro2::TokenStream,
@@ -107,19 +71,4 @@ fn parse_stmt_seq(tokens: proc_macro2::TokenStream) -> syn::Result<Vec<syn::Stmt
         Ok(stmts)
     })
     .parse2(tokens)
-}
-
-#[cfg(test)]
-#[expect(
-    clippy::float_cmp,
-    reason = "metric default thresholds are exact literals"
-)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn default_thresholds_differ_by_metric() {
-        assert_eq!(Metric::Cyclomatic.default_threshold(), 30.0);
-        assert_eq!(Metric::Cognitive.default_threshold(), 15.0);
-    }
 }

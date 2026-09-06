@@ -1,9 +1,9 @@
-# cargo-crap
+# crap-analyzer
 
-A Cargo subcommand that scores each Rust function by combining complexity
-with automated test coverage. The score is a **change-risk signal**: it
-is high when a function is both hard to follow and lightly exercised by
-tests. It is not a quality grade, a programmer rating, or a management KPI.
+A virtual workspace that scores each function by combining complexity with
+automated test coverage. The score is a **change-risk signal**: it is high
+when a function is both hard to follow and lightly exercised by tests. It
+is not a quality grade, a programmer rating, or a management KPI.
 
 ```text
 CRAP(m) = CC² × (1 − cov/100)³ + CC
@@ -22,33 +22,36 @@ Use `--threshold` to set either. A score at or below the threshold does
 not mean simple functions should go untested; the usual line just
 highlights the riskiest ones.
 
+## Crates
+
+- [`crap-core`](crates/crap-core) — scoring, LCOV parse, join, and report
+- [`crap-rs`](crates/crap-rs) — Rust discovery, complexity, and the `crap-rs` CLI
+
 ## Install
 
 ```bash
-cargo install --path crates/cargo-crap
+cargo install --path crates/crap-rs
 ```
-
-Then run it as `cargo crap` or `cargo-crap`.
 
 ## Workflow
 
 ```bash
 cargo llvm-cov --lcov --output-path lcov.info
-cargo crap --lcov lcov.info
+crap-rs --lcov lcov.info
 ```
 
 Workspace or selected packages:
 
 ```bash
 cargo llvm-cov --workspace --lcov --output-path lcov.info
-cargo crap --workspace --lcov lcov.info
-cargo crap -p cargo-crap --lcov lcov.info --summary
+crap-rs --workspace --lcov lcov.info
+crap-rs -p crap-rs --lcov lcov.info --summary
 ```
 
 CI gate (exit 1 after the report if anything is over the threshold):
 
 ```bash
-cargo crap --lcov lcov.info --fail-above --threshold 30
+crap-rs --lcov lcov.info --fail-above --threshold 30
 ```
 
 If a function is flagged: add automated tests when coverage is below
@@ -82,6 +85,20 @@ still keeps the score over the threshold.
 
 Exit codes: `0` finished and clean, `1` finished and the gate tripped,
 `2` usage or analysis error (including when every source file fails to parse).
+
+## Architecture
+
+Language-agnostic work lives in `crap-core`: LCOV parse, join, score, and
+the table. A frontend implements `Language` (`resolve_targets` and
+`collect_functions`) and calls `crap_core::run`. Today that frontend is
+`crap-rs`. A later `crap-go` or `crap-ts` crate would depend on
+`crap-core`, implement the same trait, and ship its own binary.
+
+Coverage input stays **LCOV**. Other tools should convert first
+(`gocov`, `c8 --reporter=lcov`) rather than adding a second parser.
+
+A later `crap` meta-binary could dispatch on `--lang`; it is not part of
+this workspace yet.
 
 ## Limits
 

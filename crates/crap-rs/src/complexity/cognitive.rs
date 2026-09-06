@@ -185,7 +185,8 @@ fn walk_bool_side(counter: &mut CognitiveCounter, expr: &Expr, parent: Logical) 
 
 #[cfg(test)]
 mod tests {
-    use super::super::{Metric, analyze_source};
+    use super::super::analyze_source;
+    use crap_core::Metric;
     use std::path::Path;
 
     fn snippet(src: &str) -> usize {

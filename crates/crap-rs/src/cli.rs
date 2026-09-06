@@ -1,9 +1,8 @@
-//! Command-line flags and cargo-style help text.
+//! Command-line flags and help text for `crap-rs`.
 
-use crate::complexity::Metric;
-use crate::error::{Error, Result};
-use crate::merge::MissingPolicy;
+use crate::RustLanguage;
 use clap::Parser;
+use crap_core::{Error, Metric, MissingPolicy, Result, ScanRequest};
 use std::env;
 use std::path::PathBuf;
 
@@ -21,7 +20,7 @@ pub enum Action {
 /// Options for one analysis run.
 #[derive(Debug, Clone, PartialEq, Parser)]
 #[command(
-    name = "cargo-crap",
+    name = "crap-rs",
     disable_help_flag = true,
     disable_version_flag = true
 )]
@@ -56,14 +55,28 @@ pub struct Args {
 }
 
 impl Args {
-    /// Effective gate: explicit `--threshold`, else the metric default.
+    /// Splits Rust-only flags from the language-agnostic scan request.
     #[must_use]
-    pub(crate) fn threshold(&self) -> f64 {
-        self.threshold.unwrap_or_else(|| self.metric.default_threshold())
+    pub fn parts(&self) -> (RustLanguage, ScanRequest) {
+        (
+            RustLanguage {
+                workspace: self.workspace,
+                packages: self.packages.clone(),
+            },
+            ScanRequest {
+                path: self.path.clone(),
+                lcov: self.lcov.clone(),
+                metric: self.metric,
+                threshold: self.threshold,
+                summary: self.summary,
+                fail_above: self.fail_above,
+                missing: self.missing,
+            },
+        )
     }
 }
 
-/// Parses process arguments, stripping a leading `crap` cargo subcommand.
+/// Parses process arguments.
 ///
 /// # Errors
 ///
@@ -78,10 +91,7 @@ pub fn parse() -> Result<Action> {
 /// # Errors
 ///
 /// Returns [`Error::Usage`] for invalid flags.
-fn parse_args(mut raw: Vec<String>) -> Result<Action> {
-    if raw.get(1).is_some_and(|a| a == "crap") {
-        raw.remove(1);
-    }
+fn parse_args(raw: Vec<String>) -> Result<Action> {
     if raw.iter().skip(1).any(|arg| arg == "-h" || arg == "--help") {
         return Ok(Action::Help);
     }
@@ -101,7 +111,7 @@ fn parse_threshold(text: &str) -> std::result::Result<f64, String> {
     Ok(value)
 }
 
-/// Cargo-style help text.
+/// Usage and scoring help text.
 #[must_use]
 pub fn help_text() -> String {
     format!(
@@ -114,8 +124,7 @@ programmer rating, or a management KPI. A high score means the function
 is complex, lightly tested by automated tests, or both.
 
 USAGE:
-    cargo crap [OPTIONS]
-    cargo-crap [OPTIONS]
+    crap-rs [OPTIONS]
 
 OPTIONS:
     --lcov <file>           LCOV file (required). Produce one with:
@@ -188,15 +197,15 @@ mod tests {
     use std::path::Path;
 
     fn argv(args: &[&str]) -> Vec<String> {
-        std::iter::once("cargo-crap")
+        std::iter::once("crap-rs")
             .chain(args.iter().copied())
             .map(str::to_owned)
             .collect()
     }
 
     #[test]
-    fn strips_cargo_subcommand_and_parses_flags() {
-        let action = parse_args(argv(&["crap", "--lcov", "lcov.info", "--summary"]));
+    fn parses_flags() {
+        let action = parse_args(argv(&["--lcov", "lcov.info", "--summary"]));
         assert!(matches!(
             action,
             Ok(Action::Run(ref args))
@@ -207,10 +216,7 @@ mod tests {
     #[test]
     fn help_and_version_short_circuit() {
         assert!(matches!(parse_args(argv(&["--help"])), Ok(Action::Help)));
-        assert!(matches!(
-            parse_args(argv(&["crap", "-V"])),
-            Ok(Action::Version)
-        ));
+        assert!(matches!(parse_args(argv(&["-V"])), Ok(Action::Version)));
     }
 
     #[test]
@@ -244,7 +250,8 @@ mod tests {
         assert!(matches!(
             action,
             Ok(Action::Run(ref args))
-                if args.metric == Metric::Cyclomatic && args.threshold() == 30.0
+                if args.metric == Metric::Cyclomatic
+                    && args.parts().1.effective_threshold() == 30.0
         ));
     }
 
@@ -254,7 +261,8 @@ mod tests {
         assert!(matches!(
             action,
             Ok(Action::Run(ref args))
-                if args.metric == Metric::Cognitive && args.threshold() == 15.0
+                if args.metric == Metric::Cognitive
+                    && args.parts().1.effective_threshold() == 15.0
         ));
     }
 
@@ -270,14 +278,14 @@ mod tests {
         ]));
         assert!(matches!(
             action,
-            Ok(Action::Run(ref args)) if args.threshold() == 8.0
+            Ok(Action::Run(ref args)) if args.parts().1.effective_threshold() == 8.0
         ));
     }
 
     #[test]
     fn version_text_includes_crate_name_and_version() {
         let text = version_text();
-        assert!(text.starts_with("cargo-crap "));
+        assert!(text.starts_with("crap-rs "));
         assert!(text.contains(env!("CARGO_PKG_VERSION")));
     }
 
@@ -286,5 +294,30 @@ mod tests {
         assert!(parse_args(argv(&["--lcov", "x", "--threshold", "abc"])).is_err());
         assert!(parse_args(argv(&["--lcov", "x", "--threshold", "-1"])).is_err());
         assert!(parse_args(argv(&["--lcov", "x", "--threshold", "inf"])).is_err());
+    }
+
+    #[test]
+    fn leftover_crap_token_is_usage() {
+        assert!(parse_args(argv(&["crap", "--lcov", "x"])).is_err());
+    }
+
+    #[test]
+    fn parts_split_rust_flags_from_the_request() {
+        let action = parse_args(argv(&[
+            "--lcov",
+            "x.info",
+            "--workspace",
+            "--summary",
+            "--fail-above",
+        ]));
+        assert!(action.is_ok(), "{action:?}");
+        let Ok(Action::Run(args)) = action else {
+            return;
+        };
+        let (lang, request) = args.parts();
+        assert!(lang.workspace);
+        assert!(request.summary);
+        assert!(request.fail_above);
+        assert_eq!(request.lcov, Path::new("x.info"));
     }
 }

@@ -1,11 +1,11 @@
-//! End-to-end checks for the `cargo-crap` binary.
+//! End-to-end checks for the `crap-rs` binary.
 
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
 fn bin() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_cargo-crap"))
+    Command::new(env!("CARGO_BIN_EXE_crap-rs"))
 }
 
 fn sample_root() -> PathBuf {
@@ -39,6 +39,7 @@ fn help_describes_the_tool() {
     assert!(stdout.contains("--lcov"));
     assert!(stdout.contains("CRAP(m)"));
     assert!(stdout.contains("not a quality score"));
+    assert!(stdout.contains("crap-rs [OPTIONS]"));
 }
 
 #[test]
@@ -119,17 +120,17 @@ fn unknown_package_exits_two() {
 }
 
 #[test]
-fn cargo_subcommand_argv_is_accepted() {
-    let (code, stdout, _) = output_of(bin().args(["crap", "--help"]));
-    assert_eq!(code, 0);
-    assert!(stdout.contains("USAGE:"));
+fn leftover_crap_token_exits_two() {
+    let (code, _, stderr) = output_of(bin().args(["crap", "--lcov", "x"]));
+    assert_eq!(code, 2);
+    assert!(!stderr.is_empty());
 }
 
 #[test]
 fn version_prints_crate_name() {
     let (code, stdout, _) = output_of(bin().arg("--version"));
     assert_eq!(code, 0);
-    assert!(stdout.contains("cargo-crap"));
+    assert!(stdout.contains("crap-rs"));
 }
 
 #[test]
@@ -143,7 +144,7 @@ fn selected_package_exits_zero() {
             .arg("--path")
             .arg(&workspace)
             .arg("-p")
-            .arg("cargo-crap")
+            .arg("crap-rs")
             .arg("--summary"),
     );
     assert_eq!(code, 0, "{stdout}{stderr}");
@@ -171,11 +172,11 @@ fn workspace_flag_exits_zero() {
 fn missing_cargo_binary_exits_two() {
     let (code, _, stderr) = output_of(
         bin()
-            .env("CARGO", "/no/such/cargo-crap-metadata")
+            .env("CARGO", "/no/such/crap-rs-metadata")
             .arg("--lcov")
             .arg(sample_root().join("lcov.info"))
             .arg("-p")
-            .arg("cargo-crap"),
+            .arg("crap-rs"),
     );
     assert_eq!(code, 2);
     assert!(stderr.contains("cargo metadata"));
@@ -192,7 +193,7 @@ fn fake_cargo(dir: &std::path::Path, script: &str) -> PathBuf {
 
 fn metadata_with_fake_cargo(script: &str) -> (i32, String) {
     let root = std::env::temp_dir().join(format!(
-        "cargo-crap-fake-cargo-{}-{}",
+        "crap-rs-fake-cargo-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -207,7 +208,7 @@ fn metadata_with_fake_cargo(script: &str) -> (i32, String) {
             .arg("--lcov")
             .arg(sample_root().join("lcov.info"))
             .arg("-p")
-            .arg("cargo-crap"),
+            .arg("crap-rs"),
     );
     let _ = fs::remove_dir_all(&root);
     (code, stderr)
@@ -230,7 +231,7 @@ fn cargo_metadata_invalid_json_exits_two() {
 #[test]
 fn parse_warning_exits_zero_when_other_files_succeed() {
     let root = std::env::temp_dir().join(format!(
-        "cargo-crap-mixed-{}-{}",
+        "crap-rs-mixed-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -254,7 +255,7 @@ fn parse_warning_exits_zero_when_other_files_succeed() {
 #[test]
 fn total_parse_failure_exits_two() {
     let root = std::env::temp_dir().join(format!(
-        "cargo-crap-unparseable-{}-{}",
+        "crap-rs-unparseable-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

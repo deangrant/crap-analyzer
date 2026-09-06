@@ -1,26 +1,29 @@
-//! Binary entry point for the `cargo crap` subcommand.
+//! Binary entry point for `crap-rs`.
 
-use cargo_crap::cli::{self, Action};
-use cargo_crap::error::Error;
+use crap_core::{Error, RunResult, ScanRequest, render, run};
+use crap_rs::cli::{self, Action};
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
     match cli::parse() {
         Ok(Action::Help) => print_ok(&cli::help_text()),
         Ok(Action::Version) => print_ok(&cli::version_text()),
-        Ok(Action::Run(args)) => match cargo_crap::run(&args) {
-            Ok(result) => finish_run(&args, &result),
-            Err(err) => print_err(&err),
-        },
+        Ok(Action::Run(args)) => {
+            let (lang, request) = args.parts();
+            match run(&lang, &request) {
+                Ok(result) => finish_run(&request, &result),
+                Err(err) => print_err(&err),
+            }
+        }
         Err(err) => print_err(&err),
     }
 }
 
-fn finish_run(args: &cli::Args, result: &cargo_crap::RunResult) -> ExitCode {
+fn finish_run(request: &ScanRequest, result: &RunResult) -> ExitCode {
     for warning in &result.warnings {
         emit_stderr(warning);
     }
-    emit_stdout(&cargo_crap::render(args, result));
+    emit_stdout(&render(request, result));
     if result.gate_failed {
         ExitCode::from(1)
     } else {

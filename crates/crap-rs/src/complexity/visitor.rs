@@ -1,7 +1,8 @@
 //! Walk a syn file and collect non-test function spans.
 
 use super::cfg_filter::{is_cfg_test, is_test_item};
-use super::{FunctionComplexity, Metric};
+use super::count_metric;
+use crap_core::{FunctionComplexity, Metric};
 use std::path::Path;
 use syn::visit::{self, Visit};
 use syn::{ImplItemFn, ItemFn, ItemImpl, ItemTrait, TraitItemFn};
@@ -21,7 +22,7 @@ impl FunctionVisitor<'_> {
             name,
             start_line,
             end_line,
-            complexity: self.metric.count(body),
+            complexity: count_metric(self.metric, body),
         });
     }
 }
@@ -109,7 +110,8 @@ impl<'ast> Visit<'ast> for FunctionVisitor<'_> {
 #[cfg(test)]
 mod tests {
     use super::qualified_name;
-    use crate::complexity::{FunctionComplexity, Metric, analyze_source};
+    use crate::complexity::analyze_source;
+    use crap_core::{FunctionComplexity, Metric};
     use std::path::Path;
 
     fn snippet(src: &str, metric: Metric) -> Vec<FunctionComplexity> {

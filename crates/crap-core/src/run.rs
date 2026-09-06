@@ -1,0 +1,234 @@
+//! Drive the language-agnostic analysis pipeline.
+
+use crate::coverage;
+use crate::error::Result;
+use crate::language::{Language, ScanRequest};
+use crate::merge::{CrapEntry, join};
+use crate::report;
+use crate::score::exceeds_threshold;
+
+/// Finished analysis ready to print.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct RunResult {
+    /// Functions after join, scored and sorted worst-first.
+    pub entries: Vec<CrapEntry>,
+    /// Skipped files that failed to parse.
+    pub warnings: Vec<String>,
+    /// True when `--fail-above` should trip.
+    pub gate_failed: bool,
+}
+
+/// Parses LCOV, collects functions through `lang`, joins, and scores.
+///
+/// # Errors
+///
+/// Returns I/O, metadata, usage, or total-parse errors. Individual
+/// parse failures become warnings unless every file fails.
+pub fn run<L: Language>(lang: &L, request: &ScanRequest) -> Result<RunResult> {
+    let coverage = coverage::parse_lcov(&request.lcov)?;
+    let targets = lang.resolve_targets(request)?;
+    let (functions, warnings) = lang.collect_functions(&targets, request.metric)?;
+    let entries = join(&functions, &coverage, request.missing);
+    let threshold = request.effective_threshold();
+    let gate_failed =
+        request.fail_above && entries.iter().any(|entry| exceeds_threshold(entry.crap, threshold));
+    Ok(RunResult {
+        entries,
+        warnings,
+        gate_failed,
+    })
+}
+
+/// Formats the human report for `result`.
+#[must_use]
+pub fn render(request: &ScanRequest, result: &RunResult) -> String {
+    let threshold = request.effective_threshold();
+    if request.summary {
+        report::render_summary(&result.entries, threshold, uses_packages(result))
+    } else {
+        report::render_table(&result.entries, threshold, report::color_enabled())
+    }
+}
+
+fn uses_packages(result: &RunResult) -> bool {
+    result.entries.iter().any(|entry| entry.crate_name.is_some())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::Error;
+    use crate::language::Target;
+    use crate::merge::{FunctionComplexity, LocatedFn, MissingPolicy};
+    use crate::metric::Metric;
+    use std::path::{Path, PathBuf};
+
+    struct FakeLang {
+        functions: Vec<LocatedFn>,
+        warnings: Vec<String>,
+        fail: bool,
+    }
+
+    impl Language for FakeLang {
+        fn resolve_targets(&self, request: &ScanRequest) -> Result<Vec<Target>> {
+            Ok(vec![Target {
+                root: request.path.clone(),
+                crate_name: Some("demo".into()),
+                skip: Vec::new(),
+            }])
+        }
+
+        fn collect_functions(
+            &self,
+            _targets: &[Target],
+            _metric: Metric,
+        ) -> Result<(Vec<LocatedFn>, Vec<String>)> {
+            if self.fail {
+                return Err(Error::Parse("failed to parse all 1 file(s)".into()));
+            }
+            Ok((self.functions.clone(), self.warnings.clone()))
+        }
+    }
+
+    fn request(
+        lcov: &Path,
+        summary: bool,
+        fail_above: bool,
+        threshold: Option<f64>,
+    ) -> ScanRequest {
+        ScanRequest {
+            path: PathBuf::from("."),
+            lcov: lcov.to_path_buf(),
+            metric: Metric::Cyclomatic,
+            threshold,
+            summary,
+            fail_above,
+            missing: MissingPolicy::Pessimistic,
+        }
+    }
+
+    fn func(file: &str, name: &str, start: usize, end: usize, complexity: usize) -> LocatedFn {
+        LocatedFn {
+            function: FunctionComplexity {
+                file: PathBuf::from(file),
+                name: name.into(),
+                start_line: start,
+                end_line: end,
+                complexity,
+            },
+            crate_name: Some("demo".into()),
+        }
+    }
+
+    fn write_lcov(dir: &Path) -> PathBuf {
+        let path = dir.join("lcov.info");
+        let written = std::fs::write(&path, "TN:\nSF:src/lib.rs\nDA:1,1\nDA:2,1\nend_of_record\n");
+        assert!(written.is_ok(), "{written:?}");
+        path
+    }
+
+    fn temp_dir() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "crap-core-run-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ));
+        let created = std::fs::create_dir_all(&dir);
+        assert!(created.is_ok(), "{created:?}");
+        dir
+    }
+
+    #[test]
+    fn run_scores_and_trips_the_gate() {
+        let dir = temp_dir();
+        let lcov = write_lcov(&dir);
+        let lang = FakeLang {
+            functions: vec![func("src/lib.rs", "dense", 1, 2, 31)],
+            warnings: vec!["skipping broken.rs: parse".into()],
+            fail: false,
+        };
+        let req = request(&lcov, false, true, Some(8.0));
+        let result = run(&lang, &req);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(result.is_ok(), "{result:?}");
+        let result = result.unwrap_or_default();
+        assert!(result.gate_failed);
+        assert_eq!(result.warnings.len(), 1);
+        assert_eq!(result.entries.len(), 1);
+        let table = render(&req, &result);
+        assert!(table.contains("FAIL"));
+        assert!(table.contains("dense"));
+    }
+
+    #[test]
+    fn render_summary_without_crates() {
+        let result = RunResult {
+            entries: vec![CrapEntry {
+                file: PathBuf::from("src/lib.rs"),
+                function: "okfn".into(),
+                line: 1,
+                complexity: 1,
+                coverage: 100.0,
+                crap: 1.0,
+                crate_name: None,
+            }],
+            warnings: Vec::new(),
+            gate_failed: false,
+        };
+        let req = request(Path::new("lcov.info"), true, false, Some(30.0));
+        let summary = render(&req, &result);
+        assert!(summary.contains("1 functions, 0 exceed threshold"));
+        assert!(!summary.contains("demo:"));
+    }
+
+    #[test]
+    fn render_summary_lists_crates() {
+        let result = RunResult {
+            entries: vec![CrapEntry {
+                file: PathBuf::from("src/lib.rs"),
+                function: "okfn".into(),
+                line: 1,
+                complexity: 1,
+                coverage: 100.0,
+                crap: 1.0,
+                crate_name: Some("demo".into()),
+            }],
+            warnings: Vec::new(),
+            gate_failed: false,
+        };
+        let req = request(Path::new("lcov.info"), true, false, Some(30.0));
+        let summary = render(&req, &result);
+        assert!(summary.contains("demo: 1 functions, 0 over"));
+        assert!(!summary.contains("FUNCTION"));
+    }
+
+    #[test]
+    fn collect_error_is_propagated() {
+        let dir = temp_dir();
+        let lcov = write_lcov(&dir);
+        let lang = FakeLang {
+            functions: Vec::new(),
+            warnings: Vec::new(),
+            fail: true,
+        };
+        let result = run(&lang, &request(&lcov, false, false, None));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn missing_lcov_is_io_error() {
+        let lang = FakeLang {
+            functions: Vec::new(),
+            warnings: Vec::new(),
+            fail: false,
+        };
+        let result = run(
+            &lang,
+            &request(Path::new("/no/such/crap-core.lcov"), false, false, None),
+        );
+        assert!(result.is_err());
+    }
+}

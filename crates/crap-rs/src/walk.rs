@@ -1,6 +1,6 @@
 //! Collect Rust sources under an analysis root.
 
-use crate::error::{Error, Result};
+use crap_core::{Error, Result};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -148,7 +148,7 @@ mod unix_tests {
 
     fn temp_root() -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "cargo-crap-walk-{}-{}",
+            "crap-rs-walk-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

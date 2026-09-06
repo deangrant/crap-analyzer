@@ -1,6 +1,6 @@
 //! Discover Cargo workspace members via `cargo metadata`.
 
-use crate::error::{Error, Result};
+use crap_core::{Error, Result};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -238,17 +238,17 @@ mod tests {
     fn selected_members_returns_named_package() {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let workspace = root.parent().and_then(|p| p.parent()).unwrap_or_else(|| Path::new("."));
-        let selected = selected_members(&["cargo-crap".into()], workspace);
+        let selected = selected_members(&["crap-rs".into()], workspace);
         assert!(selected.is_ok(), "{selected:?}");
         let selected = selected.unwrap_or_default();
         assert_eq!(selected.len(), 1);
-        assert_eq!(selected[0].name, "cargo-crap");
+        assert_eq!(selected[0].name, "crap-rs");
     }
 
     #[test]
     fn metadata_fails_without_manifest() {
         let dir = std::env::temp_dir().join(format!(
-            "cargo-crap-nometa-{}-{}",
+            "crap-rs-nometa-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

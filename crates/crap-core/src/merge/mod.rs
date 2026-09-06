@@ -2,7 +2,6 @@
 
 mod path_index;
 
-use crate::complexity::FunctionComplexity;
 use crate::coverage::FileCoverage;
 use crate::score::crap;
 use clap::ValueEnum;
@@ -39,6 +38,21 @@ pub struct CrapEntry {
     pub crap: f64,
     /// Package name when a workspace member was selected.
     pub crate_name: Option<String>,
+}
+
+/// One function's complexity and inclusive line span.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionComplexity {
+    /// Source path as supplied to the walker.
+    pub file: PathBuf,
+    /// Free function name, or `Type::method` for impl and trait methods.
+    pub name: String,
+    /// One-based first line of the function.
+    pub start_line: usize,
+    /// One-based last line of the function body.
+    pub end_line: usize,
+    /// Selected metric value (cyclomatic minimum 1; cognitive may be 0).
+    pub complexity: usize,
 }
 
 /// A function plus the crate it was walked from.
