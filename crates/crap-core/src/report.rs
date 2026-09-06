@@ -238,6 +238,15 @@ mod tests {
         }
     }
 
+    fn assert_contains(haystack: &str, needles: &[&str]) {
+        for needle in needles {
+            assert!(
+                haystack.contains(needle),
+                "missing {needle:?} in {haystack}"
+            );
+        }
+    }
+
     #[test]
     fn table_marks_failures_and_omits_table_in_summary() {
         let entries = [
@@ -245,15 +254,19 @@ mod tests {
             entry("okfn", 1.0, 1, 100.0),
         ];
         let table = render_table(&entries, 30.0, false);
-        assert!(table.contains("FAIL"));
-        assert!(table.contains("RISK"));
-        assert!(table.contains("high"));
-        assert!(table.contains("crappy"));
-        assert!(table.contains("1/2 functions exceed threshold 30"));
+        assert_contains(
+            &table,
+            &[
+                "FAIL",
+                "RISK",
+                "high",
+                "crappy",
+                "1/2 functions exceed threshold 30",
+            ],
+        );
         let summary = render_summary(&entries, 30.0, true);
         assert!(!summary.contains("FUNCTION"));
-        assert!(summary.contains("demo: 2 functions, 1 over"));
-        assert!(summary.contains("worst: crappy"));
+        assert_contains(&summary, &["demo: 2 functions, 1 over", "worst: crappy"]);
     }
 
     #[test]

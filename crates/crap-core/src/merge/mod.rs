@@ -103,7 +103,7 @@ pub fn join<S: BuildHasher>(
         let Some(coverage_pct) = coverage_for(&index, item, functions, missing) else {
             continue;
         };
-        let cc = item.function.complexity as f64;
+        let cc = crate::score::to_f64(item.function.complexity);
         entries.push(CrapEntry {
             file: item.function.file.clone(),
             function: item.function.name.clone(),
@@ -155,9 +155,5 @@ const fn is_nested(outer: &FunctionComplexity, inner: &FunctionComplexity) -> bo
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::float_cmp,
-    reason = "joined coverage is a ratio of integer line counts"
-)]
 #[path = "join_tests.rs"]
 mod tests;

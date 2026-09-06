@@ -144,11 +144,11 @@ mod tests {
     #[test]
     fn nested_fn_is_scored_separately() {
         let fns = cyclo("fn outer() { fn inner() { if true {} } }");
-        assert_eq!(fns.len(), 2);
-        assert_eq!(fns[0].name, "outer");
-        assert_eq!(fns[0].complexity, 1);
-        assert_eq!(fns[1].name, "inner");
-        assert_eq!(fns[1].complexity, 2);
+        let expected = [("outer", 1), ("inner", 2)];
+        assert_eq!(fns.len(), expected.len());
+        for (got, (name, complexity)) in fns.iter().zip(expected) {
+            assert_eq!((got.name.as_str(), got.complexity), (name, complexity));
+        }
     }
 
     #[test]

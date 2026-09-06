@@ -127,6 +127,13 @@ mod tests {
         dir
     }
 
+    fn require_ok<T: Default + std::fmt::Debug, E: std::fmt::Debug>(
+        result: std::result::Result<T, E>,
+    ) -> T {
+        assert!(result.is_ok(), "{result:?}");
+        result.unwrap_or_default()
+    }
+
     #[test]
     fn run_scores_and_trips_the_gate() {
         let dir = temp_dir();
@@ -137,18 +144,12 @@ mod tests {
             fail: false,
         };
         let req = request(&lcov, false, true, Some(8.0));
-        let result = run(&lang, &req);
+        let result = require_ok(run(&lang, &req));
         let _ = std::fs::remove_dir_all(&dir);
-        assert!(result.is_ok(), "{result:?}");
-        let result = result.unwrap_or_default();
         assert!(result.gate_failed);
-        assert_eq!(result.warnings.len(), 1);
-        assert_eq!(result.entries.len(), 1);
-        let table = render(&req, &result, "rust", false);
-        assert!(table.is_ok(), "{table:?}");
-        let table = table.unwrap_or_default();
-        assert!(table.contains("FAIL"));
-        assert!(table.contains("dense"));
+        assert_eq!((result.warnings.len(), result.entries.len()), (1, 1));
+        let table = require_ok(render(&req, &result, "rust", false));
+        assert!(table.contains("FAIL") && table.contains("dense"));
     }
 
     #[test]

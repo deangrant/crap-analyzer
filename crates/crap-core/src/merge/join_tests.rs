@@ -1,6 +1,7 @@
 //! Join tests for LCOV span matching and missing-policy scoring.
 
 use super::*;
+use crate::score::assert_f64_bits_eq;
 use std::path::PathBuf;
 
 fn func(file: &str, name: &str, start: usize, end: usize) -> LocatedFn {
@@ -57,7 +58,7 @@ fn longest_suffix_wins() {
         },
     );
     let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
-    assert_eq!(entries[0].coverage, 100.0);
+    assert_f64_bits_eq(entries[0].coverage, 100.0);
 }
 
 #[test]
@@ -65,7 +66,7 @@ fn relative_keys_are_not_resolved_against_cwd() {
     let functions = [func("/other/src/foo.rs", "f", 1, 1)];
     let coverage = cov("src/foo.rs", &[(1, 1)]);
     let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
-    assert_eq!(entries[0].coverage, 100.0);
+    assert_f64_bits_eq(entries[0].coverage, 100.0);
     assert!(
         !std::env::current_dir()
             .is_ok_and(|cwd| { coverage.contains_key(&cwd.join("src/foo.rs")) })
@@ -76,8 +77,8 @@ fn relative_keys_are_not_resolved_against_cwd() {
 fn missing_pessimistic_is_zero() {
     let functions = [func("src/gone.rs", "f", 1, 1)];
     let entries = join(&functions, &HashMap::new(), MissingPolicy::Pessimistic);
-    assert_eq!(entries[0].coverage, 0.0);
-    assert_eq!(entries[0].crap, 2.0);
+    assert_f64_bits_eq(entries[0].coverage, 0.0);
+    assert_f64_bits_eq(entries[0].crap, 2.0);
     assert_eq!(entries[0].start_line, 1);
     assert_eq!(entries[0].end_line, 1);
 }
@@ -94,7 +95,7 @@ fn foosrc_does_not_match_src() {
     let functions = [func("/proj/foosrc/lib.rs", "f", 1, 1)];
     let coverage = cov("src/lib.rs", &[(1, 1)]);
     let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
-    assert_eq!(entries[0].coverage, 0.0);
+    assert_f64_bits_eq(entries[0].coverage, 0.0);
 }
 
 #[test]
@@ -102,8 +103,8 @@ fn empty_span_is_pessimistic_zero() {
     let functions = [func("src/foo.rs", "f", 10, 12)];
     let coverage = cov("src/foo.rs", &[(1, 1), (20, 1)]);
     let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
-    assert_eq!(entries[0].coverage, 0.0);
-    assert_eq!(entries[0].crap, 2.0);
+    assert_f64_bits_eq(entries[0].coverage, 0.0);
+    assert_f64_bits_eq(entries[0].crap, 2.0);
 }
 
 #[test]
@@ -119,7 +120,7 @@ fn empty_span_optimistic_is_full() {
     let functions = [func("src/foo.rs", "f", 10, 12)];
     let coverage = cov("src/foo.rs", &[(1, 1), (20, 1)]);
     let entries = join(&functions, &coverage, MissingPolicy::Optimistic);
-    assert_eq!(entries[0].coverage, 100.0);
+    assert_f64_bits_eq(entries[0].coverage, 100.0);
 }
 
 #[test]
@@ -133,7 +134,7 @@ fn parent_dir_resolves_without_merging_unrelated_keys() {
         },
     );
     let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
-    assert_eq!(entries[0].coverage, 100.0);
+    assert_f64_bits_eq(entries[0].coverage, 100.0);
 }
 
 #[test]
@@ -147,7 +148,7 @@ fn equal_length_crate_suffixes_are_ambiguous() {
         },
     );
     let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
-    assert_eq!(entries[0].coverage, 0.0);
+    assert_f64_bits_eq(entries[0].coverage, 0.0);
 }
 
 #[test]
@@ -161,7 +162,7 @@ fn crate_name_breaks_equal_length_suffix_tie() {
         },
     );
     let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
-    assert_eq!(entries[0].coverage, 100.0);
+    assert_f64_bits_eq(entries[0].coverage, 100.0);
 }
 
 #[test]
@@ -184,9 +185,9 @@ fn nested_fn_lines_are_excluded_from_outer_coverage() {
     let Some(inner) = inner else {
         return;
     };
-    assert_eq!(outer.coverage, 100.0);
-    assert_eq!(inner.coverage, 0.0);
-    assert_eq!(outer.crap, 1.0);
+    assert_f64_bits_eq(outer.coverage, 100.0);
+    assert_f64_bits_eq(inner.coverage, 0.0);
+    assert_f64_bits_eq(outer.crap, 1.0);
 }
 
 #[test]
@@ -202,12 +203,17 @@ fn inner_only_hits_leave_outer_on_missing_policy() {
     let named = |rows: &[CrapEntry], name: &str| {
         rows.iter().find(|e| e.function == name).map(|e| e.coverage)
     };
-    assert_eq!(named(&pessimistic, "outer"), Some(0.0));
-    assert_eq!(named(&pessimistic, "inner"), Some(100.0));
-    assert_eq!(named(&skip, "outer"), None);
-    assert_eq!(named(&skip, "inner"), Some(100.0));
-    assert_eq!(named(&optimistic, "outer"), Some(100.0));
-    assert_eq!(named(&optimistic, "inner"), Some(100.0));
+    let cases = [
+        (named(&pessimistic, "outer"), Some(0.0)),
+        (named(&pessimistic, "inner"), Some(100.0)),
+        (named(&skip, "outer"), None),
+        (named(&skip, "inner"), Some(100.0)),
+        (named(&optimistic, "outer"), Some(100.0)),
+        (named(&optimistic, "inner"), Some(100.0)),
+    ];
+    for (got, want) in cases {
+        assert_eq!(got, want);
+    }
 }
 
 #[test]
@@ -236,27 +242,30 @@ fn equal_length_crate_suffixes_optimistic() {
     );
     let entries = join(&functions, &coverage, MissingPolicy::Optimistic);
     assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].coverage, 100.0);
+    assert_f64_bits_eq(entries[0].coverage, 100.0);
 }
 
 #[test]
 fn parses_and_displays_missing_policy() {
-    assert_eq!(
-        "pessimistic".parse::<MissingPolicy>().ok(),
-        Some(MissingPolicy::Pessimistic)
-    );
-    assert_eq!(
-        "optimistic".parse::<MissingPolicy>().ok(),
-        Some(MissingPolicy::Optimistic)
-    );
-    assert_eq!(
-        "skip".parse::<MissingPolicy>().ok(),
-        Some(MissingPolicy::Skip)
-    );
-    assert!("nope".parse::<MissingPolicy>().is_err());
-    assert_eq!(MissingPolicy::Pessimistic.to_string(), "pessimistic");
-    assert_eq!(MissingPolicy::Optimistic.to_string(), "optimistic");
-    assert_eq!(MissingPolicy::Skip.to_string(), "skip");
+    let parsed = [
+        ("pessimistic", Some(MissingPolicy::Pessimistic)),
+        ("optimistic", Some(MissingPolicy::Optimistic)),
+        ("skip", Some(MissingPolicy::Skip)),
+        ("nope", None),
+    ];
+    for (input, expected) in parsed {
+        assert_eq!(input.parse::<MissingPolicy>().ok(), expected);
+    }
+    for policy in [
+        MissingPolicy::Pessimistic,
+        MissingPolicy::Optimistic,
+        MissingPolicy::Skip,
+    ] {
+        assert_eq!(
+            policy.to_string().parse::<MissingPolicy>().ok(),
+            Some(policy)
+        );
+    }
 }
 
 #[test]
@@ -264,5 +273,5 @@ fn leading_parent_dir_stays_on_the_stack() {
     let functions = [func("/src/lib.rs", "f", 1, 1)];
     let coverage = cov("../src/lib.rs", &[(1, 1)]);
     let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
-    assert_eq!(entries[0].coverage, 100.0);
+    assert_f64_bits_eq(entries[0].coverage, 100.0);
 }

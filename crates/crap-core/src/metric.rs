@@ -44,17 +44,14 @@ impl fmt::Display for Metric {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::float_cmp,
-    reason = "metric default thresholds are exact literals"
-)]
 mod tests {
     use super::*;
+    use crate::score::assert_f64_bits_eq;
 
     #[test]
     fn default_threshold_is_fifteen_for_both_metrics() {
-        assert_eq!(Metric::Cyclomatic.default_threshold(), 15.0);
-        assert_eq!(Metric::Cognitive.default_threshold(), 15.0);
+        assert_f64_bits_eq(Metric::Cyclomatic.default_threshold(), 15.0);
+        assert_f64_bits_eq(Metric::Cognitive.default_threshold(), 15.0);
     }
 
     #[test]

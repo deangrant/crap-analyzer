@@ -213,12 +213,9 @@ pub fn version_text() -> String {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::float_cmp,
-    reason = "CLI thresholds are parsed literals; exact equality is the contract"
-)]
 mod tests {
     use super::*;
+    use std::cmp::Ordering;
     use std::path::Path;
 
     fn argv(args: &[&str]) -> Vec<String> {
@@ -226,6 +223,10 @@ mod tests {
             .chain(args.iter().copied())
             .map(str::to_owned)
             .collect()
+    }
+
+    fn threshold_eq(args: &Args, expected: f64) -> bool {
+        args.parts().1.effective_threshold().total_cmp(&expected) == Ordering::Equal
     }
 
     #[test]
@@ -277,7 +278,7 @@ mod tests {
             Ok(Action::Run(ref args))
                 if args.metric == Metric::Cyclomatic
                     && args.format == ReportFormat::Text
-                    && args.parts().1.effective_threshold() == 15.0
+                    && threshold_eq(args, 15.0)
         ));
     }
 
@@ -287,23 +288,24 @@ mod tests {
         assert!(matches!(
             action,
             Ok(Action::Run(ref args))
-                if args.metric == Metric::Cognitive
-                    && args.parts().1.effective_threshold() == 15.0
+                if args.metric == Metric::Cognitive && threshold_eq(args, 15.0)
         ));
+    }
+
+    fn parsed_threshold(flag: &str) -> Option<f64> {
+        match parse_args(argv(&["--lcov", "x", "--threshold", flag])) {
+            Ok(Action::Run(args)) => Some(args.parts().1.effective_threshold()),
+            _ => None,
+        }
     }
 
     #[test]
     fn threshold_presets() {
-        let strict = parse_args(argv(&["--lcov", "x", "--threshold", "strict"]));
-        assert!(matches!(
-            strict,
-            Ok(Action::Run(ref args)) if args.parts().1.effective_threshold() == 8.0
-        ));
-        let lenient = parse_args(argv(&["--lcov", "x", "--threshold", "lenient"]));
-        assert!(matches!(
-            lenient,
-            Ok(Action::Run(ref args)) if args.parts().1.effective_threshold() == 25.0
-        ));
+        let presets = [("strict", 8.0), ("lenient", 25.0)];
+        for (flag, expected) in presets {
+            let got = parsed_threshold(flag);
+            assert!(got.is_some_and(|value| value.total_cmp(&expected) == Ordering::Equal));
+        }
     }
 
     #[test]
@@ -332,7 +334,7 @@ mod tests {
         ]));
         assert!(matches!(
             action,
-            Ok(Action::Run(ref args)) if args.parts().1.effective_threshold() == 8.0
+            Ok(Action::Run(ref args)) if threshold_eq(args, 8.0)
         ));
     }
 
@@ -382,15 +384,16 @@ mod tests {
             "--summary",
             "--fail-above",
         ]));
-        assert!(action.is_ok(), "{action:?}");
         let Ok(Action::Run(args)) = action else {
             return;
         };
         let (lang, request) = args.parts();
-        assert!(lang.workspace);
-        assert!(!lang.features.all_features);
-        assert!(request.summary);
-        assert!(request.fail_above);
-        assert_eq!(request.lcov, Path::new("x.info"));
+        assert!(
+            lang.workspace
+                && !lang.features.all_features
+                && request.summary
+                && request.fail_above
+                && request.lcov == Path::new("x.info")
+        );
     }
 }

@@ -102,12 +102,9 @@ pub trait Language {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::float_cmp,
-    reason = "effective threshold is an exact metric default"
-)]
 mod tests {
     use super::*;
+    use crate::score::assert_f64_bits_eq;
 
     #[test]
     fn omitted_threshold_uses_metric_default() {
@@ -121,7 +118,7 @@ mod tests {
             missing: MissingPolicy::Pessimistic,
             format: ReportFormat::Text,
         };
-        assert_eq!(request.effective_threshold(), 15.0);
+        assert_f64_bits_eq(request.effective_threshold(), 15.0);
     }
 
     #[test]
@@ -136,21 +133,24 @@ mod tests {
             missing: MissingPolicy::Pessimistic,
             format: ReportFormat::Text,
         };
-        assert_eq!(request.effective_threshold(), 8.0);
+        assert_f64_bits_eq(request.effective_threshold(), 8.0);
     }
 
     #[test]
     fn parses_and_displays_report_format() {
-        assert_eq!(
-            "text".parse::<ReportFormat>().ok(),
-            Some(ReportFormat::Text)
-        );
-        assert_eq!(
-            "json".parse::<ReportFormat>().ok(),
-            Some(ReportFormat::Json)
-        );
-        assert!("nope".parse::<ReportFormat>().is_err());
-        assert_eq!(ReportFormat::Text.to_string(), "text");
-        assert_eq!(ReportFormat::Json.to_string(), "json");
+        let parsed = [
+            ("text", Some(ReportFormat::Text)),
+            ("json", Some(ReportFormat::Json)),
+            ("nope", None),
+        ];
+        for (input, expected) in parsed {
+            assert_eq!(input.parse::<ReportFormat>().ok(), expected);
+        }
+        for format in [ReportFormat::Text, ReportFormat::Json] {
+            assert_eq!(
+                format.to_string().parse::<ReportFormat>().ok(),
+                Some(format)
+            );
+        }
     }
 }

@@ -19,6 +19,22 @@ fn workspace_root() -> PathBuf {
         .map_or_else(|| PathBuf::from("."), PathBuf::from)
 }
 
+fn require_ok<T: Default + std::fmt::Debug, E: std::fmt::Debug>(
+    result: std::result::Result<T, E>,
+) -> T {
+    assert!(result.is_ok(), "{result:?}");
+    result.unwrap_or_default()
+}
+
+fn assert_contains(haystack: &str, needles: &[&str]) {
+    for needle in needles {
+        assert!(
+            haystack.contains(needle),
+            "missing {needle:?} in {haystack}"
+        );
+    }
+}
+
 fn output_of(cmd: &mut Command) -> (i32, String, String) {
     let spawned = cmd.output();
     assert!(spawned.is_ok(), "{spawned:?}");
@@ -35,11 +51,16 @@ fn output_of(cmd: &mut Command) -> (i32, String, String) {
 fn help_describes_the_tool() {
     let (code, stdout, _) = output_of(bin().arg("--help"));
     assert_eq!(code, 0);
-    assert!(stdout.contains("USAGE:"));
-    assert!(stdout.contains("--lcov"));
-    assert!(stdout.contains("not a quality score"));
-    assert!(stdout.contains("crap-rs [OPTIONS]"));
-    assert!(stdout.contains("README.md"));
+    assert_contains(
+        &stdout,
+        &[
+            "USAGE:",
+            "--lcov",
+            "not a quality score",
+            "crap-rs [OPTIONS]",
+            "README.md",
+        ],
+    );
 }
 
 #[test]
@@ -100,13 +121,10 @@ fn empty_lcov_exits_two() {
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_nanos())
     ));
-    let created = fs::create_dir_all(&root);
-    assert!(created.is_ok(), "{created:?}");
-    let written = fs::write(root.join("lib.rs"), "fn f() {}\n");
-    assert!(written.is_ok(), "{written:?}");
+    require_ok(fs::create_dir_all(&root));
+    require_ok(fs::write(root.join("lib.rs"), "fn f() {}\n"));
     let lcov = root.join("lcov.info");
-    let lcov_written = fs::write(&lcov, "");
-    assert!(lcov_written.is_ok(), "{lcov_written:?}");
+    require_ok(fs::write(&lcov, ""));
     let (code, _, stderr) = output_of(bin().arg("--lcov").arg(&lcov).arg("--path").arg(&root));
     let _ = fs::remove_dir_all(&root);
     assert_eq!(code, 2, "{stderr}");
@@ -166,22 +184,34 @@ fn fixture_json_locks_sample_scores() {
 
 fn assert_covered_low(value: &serde_json::Value, name: &str, complexity: i64, crap: f64) {
     let row = fixture_fn(value, name);
-    assert_eq!(row["complexity"], complexity);
-    assert_eq!(row["coverage_percent"], 100.0);
-    assert_eq!(row["crap"], crap);
-    assert_eq!(row["risk"], "low");
-    assert_eq!(row["exceeds"], false);
+    let fields = [
+        (row["complexity"].clone(), serde_json::json!(complexity)),
+        (row["coverage_percent"].clone(), serde_json::json!(100.0)),
+        (row["crap"].clone(), serde_json::json!(crap)),
+        (row["risk"].clone(), serde_json::json!("low")),
+        (row["exceeds"].clone(), serde_json::json!(false)),
+    ];
+    for (got, want) in fields {
+        assert_eq!(got, want);
+    }
 }
 
 fn assert_crappy_high(value: &serde_json::Value) {
     let row = fixture_fn(value, "crappy");
-    assert_eq!(row["complexity"], 11);
-    assert_eq!(row["exceeds"], true);
-    assert_eq!(row["risk"], "high");
+    let fields = [
+        (row["complexity"].clone(), serde_json::json!(11)),
+        (row["exceeds"].clone(), serde_json::json!(true)),
+        (row["risk"].clone(), serde_json::json!("high")),
+    ];
+    for (got, want) in fields {
+        assert_eq!(got, want);
+    }
     let cov = row["coverage_percent"].as_f64().unwrap_or(0.0);
     let crap = row["crap"].as_f64().unwrap_or(0.0);
-    assert!((cov - 3.125).abs() < 0.2, "{cov}");
-    assert!((crap - 121.0).abs() < 1.0, "{crap}");
+    assert!(
+        (cov - 3.125).abs() < 0.2 && (crap - 121.0).abs() < 1.0,
+        "{cov} {crap}"
+    );
 }
 
 fn fixture_fn<'a>(value: &'a serde_json::Value, name: &str) -> &'a serde_json::Value {
@@ -202,13 +232,10 @@ fn garbage_lcov_exits_two() {
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_nanos())
     ));
-    let created = fs::create_dir_all(&root);
-    assert!(created.is_ok(), "{created:?}");
-    let written = fs::write(root.join("lib.rs"), "fn f() {}\n");
-    assert!(written.is_ok(), "{written:?}");
+    require_ok(fs::create_dir_all(&root));
+    require_ok(fs::write(root.join("lib.rs"), "fn f() {}\n"));
     let lcov = root.join("lcov.info");
-    let lcov_written = fs::write(&lcov, "this is not lcov\njust noise\n");
-    assert!(lcov_written.is_ok(), "{lcov_written:?}");
+    require_ok(fs::write(&lcov, "this is not lcov\njust noise\n"));
     let (code, _, stderr) = output_of(bin().arg("--lcov").arg(&lcov).arg("--path").arg(&root));
     let _ = fs::remove_dir_all(&root);
     assert_eq!(code, 2, "{stderr}");
@@ -228,10 +255,15 @@ fn json_format_emits_envelope() {
             .arg("json"),
     );
     assert_eq!(code, 0);
-    assert!(stdout.contains("\"schema_version\""));
-    assert!(stdout.contains("\"result\""));
-    assert!(stdout.contains("\"functions\""));
-    assert!(stdout.contains("\"risk\""));
+    assert_contains(
+        &stdout,
+        &[
+            "\"schema_version\"",
+            "\"result\"",
+            "\"functions\"",
+            "\"risk\"",
+        ],
+    );
     assert!(!stdout.contains("FUNCTION"));
 }
 
@@ -375,15 +407,11 @@ fn parse_warning_exits_zero_when_other_files_succeed() {
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_nanos())
     ));
-    let created = fs::create_dir_all(&root);
-    assert!(created.is_ok(), "{created:?}");
-    let ok = fs::write(root.join("ok.rs"), "fn keep() {}\n");
-    assert!(ok.is_ok(), "{ok:?}");
-    let broken = fs::write(root.join("broken.rs"), "fn not rust {{{");
-    assert!(broken.is_ok(), "{broken:?}");
+    require_ok(fs::create_dir_all(&root));
+    require_ok(fs::write(root.join("ok.rs"), "fn keep() {}\n"));
+    require_ok(fs::write(root.join("broken.rs"), "fn not rust {{{"));
     let lcov = root.join("lcov.info");
-    let lcov_written = fs::write(&lcov, "TN:\nSF:ok.rs\nDA:1,1\nend_of_record\n");
-    assert!(lcov_written.is_ok(), "{lcov_written:?}");
+    require_ok(fs::write(&lcov, "TN:\nSF:ok.rs\nDA:1,1\nend_of_record\n"));
     let (code, _, stderr) = output_of(bin().arg("--lcov").arg(&lcov).arg("--path").arg(&root));
     let _ = fs::remove_dir_all(&root);
     assert_eq!(code, 0, "{stderr}");
@@ -399,13 +427,13 @@ fn total_parse_failure_exits_two() {
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_nanos())
     ));
-    let created = fs::create_dir_all(&root);
-    assert!(created.is_ok(), "{created:?}");
-    let written = fs::write(root.join("broken.rs"), "fn not rust {{{");
-    assert!(written.is_ok(), "{written:?}");
+    require_ok(fs::create_dir_all(&root));
+    require_ok(fs::write(root.join("broken.rs"), "fn not rust {{{"));
     let lcov = root.join("lcov.info");
-    let lcov_written = fs::write(&lcov, "TN:\nSF:broken.rs\nDA:1,0\nend_of_record\n");
-    assert!(lcov_written.is_ok(), "{lcov_written:?}");
+    require_ok(fs::write(
+        &lcov,
+        "TN:\nSF:broken.rs\nDA:1,0\nend_of_record\n",
+    ));
     let (code, _, stderr) = output_of(bin().arg("--lcov").arg(&lcov).arg("--path").arg(&root));
     let _ = fs::remove_dir_all(&root);
     assert_eq!(code, 2, "{stderr}");

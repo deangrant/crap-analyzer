@@ -184,9 +184,21 @@ fn string_ids(json: &Value, key: &str) -> Result<Vec<String>> {
 mod tests {
     use super::*;
 
+    fn require_ok<T: Default + std::fmt::Debug, E: std::fmt::Debug>(
+        result: std::result::Result<T, E>,
+    ) -> T {
+        assert!(result.is_ok(), "{result:?}");
+        result.unwrap_or_default()
+    }
+
+    fn packages_from(text: &str) -> Vec<Package> {
+        let value = require_ok(serde_json::from_str(text));
+        require_ok(packages_from_metadata(&value))
+    }
+
     #[test]
     fn reads_members_from_metadata_json() {
-        let json = serde_json::from_str(
+        let pkgs = packages_from(
             r#"{
               "workspace_members": ["pkg a 1"],
               "packages": [
@@ -203,21 +215,17 @@ mod tests {
               ]
             }"#,
         );
-        assert!(json.is_ok());
-        let value = json.unwrap_or_default();
-        let pkgs = packages_from_metadata(&value);
-        assert!(pkgs.is_ok());
-        let pkgs = pkgs.unwrap_or_default();
         assert_eq!(pkgs.len(), 1);
-        assert_eq!(pkgs[0].name, "a");
-        assert_eq!(pkgs[0].root, PathBuf::from("/tmp/a"));
-        assert!(pkgs[0].default_features.is_empty());
-        assert!(pkgs[0].all_features.is_empty());
+        assert_eq!(
+            (pkgs[0].name.as_str(), pkgs[0].root.as_path()),
+            ("a", Path::new("/tmp/a"))
+        );
+        assert!(pkgs[0].default_features.is_empty() && pkgs[0].all_features.is_empty());
     }
 
     #[test]
     fn reads_package_features_from_metadata() {
-        let json = serde_json::from_str(
+        let pkgs = packages_from(
             r#"{
               "workspace_members": ["pkg a 1"],
               "packages": [{
@@ -232,14 +240,10 @@ mod tests {
               }]
             }"#,
         );
-        assert!(json.is_ok());
-        let pkgs = packages_from_metadata(&json.unwrap_or_default());
-        assert!(pkgs.is_ok());
-        let pkgs = pkgs.unwrap_or_default();
+        let features = &pkgs[0].all_features;
         assert_eq!(pkgs[0].default_features, vec!["std".to_owned()]);
-        assert!(pkgs[0].all_features.contains(&"std".to_owned()));
-        assert!(pkgs[0].all_features.contains(&"serde".to_owned()));
-        assert!(!pkgs[0].all_features.contains(&"default".to_owned()));
+        assert!(features.contains(&"std".to_owned()) && features.contains(&"serde".to_owned()));
+        assert!(!features.contains(&"default".to_owned()));
     }
 
     #[test]

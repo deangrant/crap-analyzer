@@ -55,7 +55,7 @@ impl FileCoverage {
             return None;
         }
         let covered = executable.iter().filter(|hits| **hits > 0).count();
-        Some((covered as f64 / executable.len() as f64) * 100.0)
+        Some((crate::score::to_f64(covered) / crate::score::to_f64(executable.len())) * 100.0)
     }
 }
 

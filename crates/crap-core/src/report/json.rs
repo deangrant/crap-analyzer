@@ -4,7 +4,7 @@ use super::display_path;
 use crate::error::{Error, Result};
 use crate::merge::CrapEntry;
 use crate::metric::Metric;
-use crate::score::{Risk, classify_risk, exceeds_threshold};
+use crate::score::{Risk, classify_risk, exceeds_threshold, to_f64};
 use serde::Serialize;
 
 /// Builds a schema-versioned JSON document for `entries`.
@@ -141,7 +141,7 @@ fn average(scores: &[f64]) -> f64 {
     if scores.is_empty() {
         0.0
     } else {
-        scores.iter().sum::<f64>() / scores.len() as f64
+        scores.iter().sum::<f64>() / to_f64(scores.len())
     }
 }
 
@@ -215,32 +215,51 @@ mod tests {
         ]
     }
 
+    fn assert_fields(value: &Value, fields: &[(&str, Value)]) {
+        for (ptr, want) in fields {
+            let got = value.pointer(ptr).cloned().unwrap_or(Value::Null);
+            assert_eq!(got, *want, "{ptr}");
+        }
+    }
+
     #[test]
     fn envelope_header_and_summary() {
         let value = json(&mixed_entries(), 15.0, Metric::Cyclomatic, false);
-        assert_eq!(value["schema_version"], 1);
-        assert_eq!(value["language"], "rust");
-        assert_eq!(value["metric"], "cyclomatic");
-        assert_eq!(value["threshold"], 15.0);
-        assert_eq!(value["result"]["passed"], false);
-        assert_eq!(value["result"]["gate_failed"], false);
-        assert_eq!(value["result"]["summary"]["functions"], 2);
-        assert_eq!(value["result"]["summary"]["exceeding"], 1);
-        assert_eq!(value["result"]["summary"]["average_crap"], 78.5);
-        assert_eq!(value["result"]["summary"]["median_crap"], 78.5);
-        assert_eq!(value["result"]["summary"]["risk"]["low"], 1);
-        assert_eq!(value["result"]["summary"]["risk"]["high"], 1);
+        assert_fields(
+            &value,
+            &[
+                ("/schema_version", Value::from(1)),
+                ("/language", Value::from("rust")),
+                ("/metric", Value::from("cyclomatic")),
+                ("/threshold", Value::from(15.0)),
+                ("/result/passed", Value::from(false)),
+                ("/result/gate_failed", Value::from(false)),
+                ("/result/summary/functions", Value::from(2)),
+                ("/result/summary/exceeding", Value::from(1)),
+                ("/result/summary/average_crap", Value::from(78.5)),
+                ("/result/summary/median_crap", Value::from(78.5)),
+                ("/result/summary/risk/low", Value::from(1)),
+                ("/result/summary/risk/high", Value::from(1)),
+            ],
+        );
     }
 
     #[test]
     fn envelope_function_axes_are_independent() {
         let value = json(&mixed_entries(), 15.0, Metric::Cyclomatic, false);
-        let funcs = &value["result"]["functions"];
-        assert_eq!(funcs[1]["exceeds"], true);
-        assert_eq!(funcs[1]["risk"], "high");
-        assert_eq!(funcs[1]["identity"]["span"]["end_line"], 24);
-        assert_eq!(funcs[0]["exceeds"], false);
-        assert_eq!(funcs[0]["risk"], "low");
+        assert_fields(
+            &value,
+            &[
+                ("/result/functions/1/exceeds", Value::from(true)),
+                ("/result/functions/1/risk", Value::from("high")),
+                (
+                    "/result/functions/1/identity/span/end_line",
+                    Value::from(24),
+                ),
+                ("/result/functions/0/exceeds", Value::from(false)),
+                ("/result/functions/0/risk", Value::from("low")),
+            ],
+        );
     }
 
     #[test]
@@ -254,12 +273,17 @@ mod tests {
     #[test]
     fn empty_run_zeros_summary() {
         let value = json(&[], 15.0, Metric::Cyclomatic, false);
-        assert_eq!(value["result"]["passed"], true);
-        assert_eq!(value["result"]["summary"]["functions"], 0);
-        assert_eq!(value["result"]["summary"]["exceeding"], 0);
-        assert_eq!(value["result"]["summary"]["average_crap"], 0.0);
-        assert_eq!(value["result"]["summary"]["median_crap"], 0.0);
-        assert_eq!(value["result"]["summary"]["risk"]["low"], 0);
+        assert_fields(
+            &value,
+            &[
+                ("/result/passed", Value::from(true)),
+                ("/result/summary/functions", Value::from(0)),
+                ("/result/summary/exceeding", Value::from(0)),
+                ("/result/summary/average_crap", Value::from(0.0)),
+                ("/result/summary/median_crap", Value::from(0.0)),
+                ("/result/summary/risk/low", Value::from(0)),
+            ],
+        );
         assert!(value["result"]["functions"].as_array().is_some_and(Vec::is_empty));
     }
 

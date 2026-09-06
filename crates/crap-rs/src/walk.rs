@@ -179,52 +179,88 @@ fn is_rust_file(path: &Path) -> bool {
 mod tests {
     use super::*;
 
+    fn assert_skip<'a>(
+        cases: impl IntoIterator<Item = (bool, &'a Path, &'a Path, Option<&'a Path>, &'a [PathBuf])>,
+    ) {
+        for (want, path, walk, pkg, nested) in cases {
+            assert_eq!(
+                skip_dir(path, walk, pkg, nested),
+                want,
+                "{}",
+                path.display()
+            );
+        }
+    }
+
     #[test]
     fn convention_dirs_skip_only_at_package_root() {
         let walk = Path::new("/proj");
         let pkg = Path::new("/proj/crates/foo");
-        assert!(skip_dir(
-            Path::new("/proj/crates/foo/tests"),
-            walk,
-            Some(pkg),
-            &[]
-        ));
-        assert!(skip_dir(
-            Path::new("/proj/crates/foo/benches"),
-            walk,
-            Some(pkg),
-            &[]
-        ));
-        assert!(skip_dir(
-            Path::new("/proj/crates/foo/examples"),
-            walk,
-            Some(pkg),
-            &[]
-        ));
-        assert!(!skip_dir(
-            Path::new("/proj/crates/foo/src/tests"),
-            walk,
-            Some(pkg),
-            &[]
-        ));
-        assert!(!skip_dir(
-            Path::new("/proj/crates/tests"),
-            walk,
-            Some(Path::new("/proj")),
-            &[]
-        ));
-        assert!(!skip_dir(pkg, walk, Some(pkg), &[]));
+        let empty: &[PathBuf] = &[];
+        assert_skip([
+            (
+                true,
+                Path::new("/proj/crates/foo/tests"),
+                walk,
+                Some(pkg),
+                empty,
+            ),
+            (
+                true,
+                Path::new("/proj/crates/foo/benches"),
+                walk,
+                Some(pkg),
+                empty,
+            ),
+            (
+                true,
+                Path::new("/proj/crates/foo/examples"),
+                walk,
+                Some(pkg),
+                empty,
+            ),
+            (
+                false,
+                Path::new("/proj/crates/foo/src/tests"),
+                walk,
+                Some(pkg),
+                empty,
+            ),
+            (
+                false,
+                Path::new("/proj/crates/tests"),
+                walk,
+                Some(Path::new("/proj")),
+                empty,
+            ),
+            (false, pkg, walk, Some(pkg), empty),
+        ]);
     }
 
     #[test]
     fn skip_dir_ignores_target_and_nested_members() {
         let root = Path::new("/proj");
         let nested = [PathBuf::from("/proj/inner")];
-        assert!(skip_dir(Path::new("/proj/target"), root, None, &nested));
-        assert!(skip_dir(Path::new("/proj/inner"), root, None, &nested));
-        assert!(!skip_dir(root, root, None, &nested));
-        assert!(!skip_dir(Path::new("/proj/src"), root, None, &nested));
-        assert!(!skip_dir(Path::new("/"), root, None, &[]));
+        let empty: &[PathBuf] = &[];
+        assert_skip([
+            (
+                true,
+                Path::new("/proj/target"),
+                root,
+                None,
+                nested.as_slice(),
+            ),
+            (
+                true,
+                Path::new("/proj/inner"),
+                root,
+                None,
+                nested.as_slice(),
+            ),
+            (false, root, root, None, nested.as_slice()),
+            (false, Path::new("/proj/src"), root, None, nested.as_slice()),
+            (false, Path::new("/"), root, None, empty),
+        ]);
     }
 
     fn temp_root() -> PathBuf {
@@ -240,33 +276,32 @@ mod tests {
         dir
     }
 
+    fn require_ok<T: Default + std::fmt::Debug, E: std::fmt::Debug>(
+        result: std::result::Result<T, E>,
+    ) -> T {
+        assert!(result.is_ok(), "{result:?}");
+        result.unwrap_or_default()
+    }
+
     #[test]
     fn rust_files_keeps_src_tests_skips_package_tests() {
         let root = temp_root();
-        let manifest = fs::write(
+        require_ok(fs::write(
             root.join("Cargo.toml"),
             "[package]\nname = \"demo\"\nversion = \"0.1.0\"\n",
-        );
-        assert!(manifest.is_ok(), "{manifest:?}");
+        ));
         let src_tests = root.join("src/tests");
-        let made = fs::create_dir_all(&src_tests);
-        assert!(made.is_ok(), "{made:?}");
-        let helper = fs::write(src_tests.join("helper.rs"), "fn h() {}\n");
-        assert!(helper.is_ok(), "{helper:?}");
-        let tests_rs = fs::write(root.join("src/tests.rs"), "fn t() {}\n");
-        assert!(tests_rs.is_ok(), "{tests_rs:?}");
+        require_ok(fs::create_dir_all(&src_tests));
+        require_ok(fs::write(src_tests.join("helper.rs"), "fn h() {}\n"));
+        require_ok(fs::write(root.join("src/tests.rs"), "fn t() {}\n"));
         let integ_dir = root.join("tests");
-        let made_integ = fs::create_dir_all(&integ_dir);
-        assert!(made_integ.is_ok(), "{made_integ:?}");
-        let integ = fs::write(integ_dir.join("integration.rs"), "fn i() {}\n");
-        assert!(integ.is_ok(), "{integ:?}");
-        let files = rust_files(&root, &[]);
+        require_ok(fs::create_dir_all(&integ_dir));
+        require_ok(fs::write(integ_dir.join("integration.rs"), "fn i() {}\n"));
+        let files = require_ok(rust_files(&root, &[]));
         let _ = fs::remove_dir_all(&root);
-        assert!(files.is_ok(), "{files:?}");
-        let files = files.unwrap_or_default();
-        assert!(files.iter().any(|path| path.ends_with("helper.rs")));
-        assert!(files.iter().any(|path| path.ends_with("tests.rs")));
-        assert!(!files.iter().any(|path| path.ends_with("integration.rs")));
+        let names = ["helper.rs", "tests.rs", "integration.rs"];
+        let found = names.map(|name| files.iter().any(|path| path.ends_with(name)));
+        assert_eq!(found, [true, true, false]);
     }
 
     #[test]
@@ -303,49 +338,44 @@ mod unix_tests {
         dir
     }
 
+    fn require_ok<T: Default + std::fmt::Debug, E: std::fmt::Debug>(
+        result: std::result::Result<T, E>,
+    ) -> T {
+        assert!(result.is_ok(), "{result:?}");
+        result.unwrap_or_default()
+    }
+
     #[test]
     fn directory_symlink_cycle_does_not_hang() {
         let root = temp_root();
-        let written = fs::write(root.join("lib.rs"), "fn f() {}\n");
-        assert!(written.is_ok(), "{written:?}");
+        require_ok(fs::write(root.join("lib.rs"), "fn f() {}\n"));
         let loop_dir = root.join("loop");
-        let made = fs::create_dir(&loop_dir);
-        assert!(made.is_ok(), "{made:?}");
-        let linked = symlink(&loop_dir, loop_dir.join("back"));
-        assert!(linked.is_ok(), "{linked:?}");
-        let files = rust_files(&root, &[]);
+        require_ok(fs::create_dir(&loop_dir));
+        require_ok(symlink(&loop_dir, loop_dir.join("back")));
+        let files = require_ok(rust_files(&root, &[]));
         let _ = fs::remove_dir_all(&root);
-        assert!(files.is_ok(), "{files:?}");
-        let files = files.unwrap_or_default();
         assert!(files.iter().any(|path| path.ends_with("lib.rs")));
     }
 
     #[test]
     fn dangling_symlink_is_ignored() {
         let root = temp_root();
-        let written = fs::write(root.join("real.rs"), "fn f() {}\n");
-        assert!(written.is_ok(), "{written:?}");
-        let linked = symlink(root.join("gone.rs"), root.join("alias.rs"));
-        assert!(linked.is_ok(), "{linked:?}");
-        let files = rust_files(&root, &[]);
+        require_ok(fs::write(root.join("real.rs"), "fn f() {}\n"));
+        require_ok(symlink(root.join("gone.rs"), root.join("alias.rs")));
+        let files = require_ok(rust_files(&root, &[]));
         let _ = fs::remove_dir_all(&root);
-        assert!(files.is_ok(), "{files:?}");
-        let files = files.unwrap_or_default();
-        assert!(files.iter().any(|path| path.ends_with("real.rs")));
-        assert!(!files.iter().any(|path| path.ends_with("alias.rs")));
+        let found =
+            ["real.rs", "alias.rs"].map(|name| files.iter().any(|path| path.ends_with(name)));
+        assert_eq!(found, [true, false]);
     }
 
     #[test]
     fn rust_file_symlink_is_collected_once() {
         let root = temp_root();
-        let written = fs::write(root.join("real.rs"), "fn f() {}\n");
-        assert!(written.is_ok(), "{written:?}");
-        let linked = symlink(root.join("real.rs"), root.join("alias.rs"));
-        assert!(linked.is_ok(), "{linked:?}");
-        let files = rust_files(&root, &[]);
+        require_ok(fs::write(root.join("real.rs"), "fn f() {}\n"));
+        require_ok(symlink(root.join("real.rs"), root.join("alias.rs")));
+        let files = require_ok(rust_files(&root, &[]));
         let _ = fs::remove_dir_all(&root);
-        assert!(files.is_ok(), "{files:?}");
-        let files = files.unwrap_or_default();
         assert_eq!(files.len(), 1);
         assert!(
             files[0].ends_with("real.rs") || files[0].ends_with("alias.rs"),
@@ -367,19 +397,36 @@ mod unix_tests {
     #[test]
     fn visit_subdir_skips_missing_and_revisited() {
         let root = temp_root();
-        let written = fs::write(root.join("lib.rs"), "fn f() {}\n");
-        assert!(written.is_ok(), "{written:?}");
+        require_ok(fs::write(root.join("lib.rs"), "fn f() {}\n"));
         let mut visited = HashSet::new();
         let mut out = Vec::new();
-        let missing = visit_subdir(&root.join("gone"), &root, None, &[], &mut visited, &mut out);
-        assert!(missing.is_ok(), "{missing:?}");
+        require_ok(visit_subdir(
+            &root.join("gone"),
+            &root,
+            None,
+            &[],
+            &mut visited,
+            &mut out,
+        ));
         assert!(out.is_empty());
-        let first = visit_subdir(&root, &root, None, &[], &mut visited, &mut out);
-        assert!(first.is_ok(), "{first:?}");
+        require_ok(visit_subdir(
+            &root,
+            &root,
+            None,
+            &[],
+            &mut visited,
+            &mut out,
+        ));
         let before = out.len();
-        let second = visit_subdir(&root, &root, None, &[], &mut visited, &mut out);
+        require_ok(visit_subdir(
+            &root,
+            &root,
+            None,
+            &[],
+            &mut visited,
+            &mut out,
+        ));
         let _ = fs::remove_dir_all(&root);
-        assert!(second.is_ok(), "{second:?}");
         assert_eq!(out.len(), before);
     }
 }

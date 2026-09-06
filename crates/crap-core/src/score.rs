@@ -29,6 +29,24 @@ pub fn exceeds_threshold(score: f64, threshold: f64) -> bool {
     score > threshold
 }
 
+/// Converts a count into a score operand.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "line counts and complexity fit in the f64 mantissa"
+)]
+pub(crate) const fn to_f64(value: usize) -> f64 {
+    value as f64
+}
+
+#[cfg(test)]
+pub(crate) fn assert_f64_bits_eq(actual: f64, expected: f64) {
+    assert_eq!(
+        actual.total_cmp(&expected),
+        std::cmp::Ordering::Equal,
+        "{actual} != {expected}"
+    );
+}
+
 /// Fixed score band. Independent of the threshold gate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Risk {
@@ -89,40 +107,36 @@ impl fmt::Display for Risk {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::float_cmp,
-    reason = "the formula is deterministic; exact equality is the contract"
-)]
 mod tests {
     use super::*;
     use crate::metric::Metric;
 
     #[test]
     fn trivial_fully_covered_scores_one() {
-        assert_eq!(crap(1.0, 100.0), 1.0);
+        assert_f64_bits_eq(crap(1.0, 100.0), 1.0);
     }
 
     #[test]
     fn untested_complexity_six_scores_forty_two() {
-        assert_eq!(crap(6.0, 0.0), 42.0);
+        assert_f64_bits_eq(crap(6.0, 0.0), 42.0);
     }
 
     #[test]
     fn half_covered_complexity_fifteen_scores_forty_three_and_an_eighth() {
-        assert_eq!(crap(15.0, 50.0), 43.125);
+        assert_f64_bits_eq(crap(15.0, 50.0), 43.125);
     }
 
     #[test]
     fn full_coverage_equals_complexity() {
-        assert_eq!(crap(20.0, 100.0), 20.0);
-        assert_eq!(crap(5.0, 100.0), 5.0);
-        assert_ne!(crap(8.0, 100.0), 0.0);
+        assert_f64_bits_eq(crap(20.0, 100.0), 20.0);
+        assert_f64_bits_eq(crap(5.0, 100.0), 5.0);
+        assert_ne!(crap(8.0, 100.0).total_cmp(&0.0), std::cmp::Ordering::Equal);
     }
 
     #[test]
     fn zero_coverage_is_square_plus_linear() {
-        assert_eq!(crap(4.0, 0.0), 20.0);
-        assert_eq!(crap(10.0, 0.0), 110.0);
+        assert_f64_bits_eq(crap(4.0, 0.0), 20.0);
+        assert_f64_bits_eq(crap(10.0, 0.0), 110.0);
     }
 
     #[test]
@@ -154,8 +168,8 @@ mod tests {
 
     #[test]
     fn coverage_is_clamped() {
-        assert_eq!(crap(5.0, -10.0), crap(5.0, 0.0));
-        assert_eq!(crap(5.0, 150.0), crap(5.0, 100.0));
+        assert_f64_bits_eq(crap(5.0, -10.0), crap(5.0, 0.0));
+        assert_f64_bits_eq(crap(5.0, 150.0), crap(5.0, 100.0));
     }
 
     #[test]
@@ -166,13 +180,18 @@ mod tests {
 
     #[test]
     fn classify_risk_edges() {
-        assert_eq!(classify_risk(0.0), Risk::Low);
-        assert_eq!(classify_risk(8.0), Risk::Low);
-        assert_eq!(classify_risk(8.001), Risk::Acceptable);
-        assert_eq!(classify_risk(15.0), Risk::Acceptable);
-        assert_eq!(classify_risk(15.001), Risk::Moderate);
-        assert_eq!(classify_risk(25.0), Risk::Moderate);
-        assert_eq!(classify_risk(25.001), Risk::High);
+        let edges = [
+            (0.0, Risk::Low),
+            (8.0, Risk::Low),
+            (8.001, Risk::Acceptable),
+            (15.0, Risk::Acceptable),
+            (15.001, Risk::Moderate),
+            (25.0, Risk::Moderate),
+            (25.001, Risk::High),
+        ];
+        for (score, risk) in edges {
+            assert_eq!(classify_risk(score), risk);
+        }
     }
 
     #[test]
@@ -195,15 +214,19 @@ mod tests {
 
     #[test]
     fn parses_and_displays_risk_names() {
-        assert_eq!("low".parse::<Risk>().ok(), Some(Risk::Low));
-        assert_eq!("acceptable".parse::<Risk>().ok(), Some(Risk::Acceptable));
-        assert_eq!("moderate".parse::<Risk>().ok(), Some(Risk::Moderate));
-        assert_eq!("high".parse::<Risk>().ok(), Some(Risk::High));
-        assert!("nope".parse::<Risk>().is_err());
-        assert_eq!(Risk::Low.to_string(), "low");
-        assert_eq!(Risk::Acceptable.to_string(), "acceptable");
-        assert_eq!(Risk::Moderate.to_string(), "moderate");
-        assert_eq!(Risk::High.to_string(), "high");
+        let parsed = [
+            ("low", Some(Risk::Low)),
+            ("acceptable", Some(Risk::Acceptable)),
+            ("moderate", Some(Risk::Moderate)),
+            ("high", Some(Risk::High)),
+            ("nope", None),
+        ];
+        for (input, expected) in parsed {
+            assert_eq!(input.parse::<Risk>().ok(), expected);
+        }
+        for risk in [Risk::Low, Risk::Acceptable, Risk::Moderate, Risk::High] {
+            assert_eq!(risk.to_string().parse::<Risk>().ok(), Some(risk));
+        }
     }
 
     fn min_coverage_pct(cc: f64, threshold: f64) -> Option<f64> {
