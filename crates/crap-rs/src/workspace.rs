@@ -22,7 +22,7 @@ pub struct Package {
 ///
 /// # Errors
 ///
-/// Returns [`Error::Metadata`] if Cargo fails or the JSON is incomplete.
+/// Returns [`Error::Resolve`] if Cargo fails or the JSON is incomplete.
 pub fn all_members(root: &Path) -> Result<Vec<Package>> {
     let json = run_metadata(root)?;
     packages_from_metadata(&json)
@@ -32,14 +32,13 @@ pub fn all_members(root: &Path) -> Result<Vec<Package>> {
 ///
 /// # Errors
 ///
-/// Returns [`Error::UnknownPackage`] if a name is missing, or
-/// [`Error::Metadata`] if Cargo fails.
+/// Returns [`Error::Resolve`] if a name is missing or Cargo fails.
 pub fn selected_members(names: &[String], root: &Path) -> Result<Vec<Package>> {
     let packages = all_members(root)?;
     let mut selected = Vec::with_capacity(names.len());
     for name in names {
         let Some(pkg) = packages.iter().find(|p| p.name == *name) else {
-            return Err(Error::UnknownPackage(name.clone()));
+            return Err(Error::resolve(format!("unknown package `{name}`")));
         };
         selected.push(pkg.clone());
     }
@@ -67,14 +66,14 @@ fn run_metadata(root: &Path) -> Result<Value> {
         .arg("--manifest-path")
         .arg(manifest_path(root))
         .output()
-        .map_err(|source| Error::Metadata(source.to_string()))?;
+        .map_err(|source| Error::resolve(format!("cargo metadata: {source}")))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(Error::Metadata(stderr.trim().to_owned()));
+        return Err(Error::resolve(format!("cargo metadata: {}", stderr.trim())));
     }
     let text = String::from_utf8(output.stdout)
-        .map_err(|_| Error::Metadata("metadata was not UTF-8".into()))?;
-    serde_json::from_str(&text).map_err(|err| Error::Metadata(err.to_string()))
+        .map_err(|_| Error::resolve("cargo metadata: metadata was not UTF-8"))?;
+    serde_json::from_str(&text).map_err(|err| Error::resolve(format!("cargo metadata: {err}")))
 }
 
 fn packages_from_metadata(json: &Value) -> Result<Vec<Package>> {
@@ -82,7 +81,7 @@ fn packages_from_metadata(json: &Value) -> Result<Vec<Package>> {
     let array = json
         .get("packages")
         .and_then(Value::as_array)
-        .ok_or_else(|| Error::Metadata("missing packages array".into()))?;
+        .ok_or_else(|| Error::resolve("cargo metadata: missing packages array"))?;
     let mut out = Vec::new();
     for item in array {
         if let Some(pkg) = package_from_item(item, &members)? {
@@ -111,7 +110,7 @@ fn package_from_item(item: &Value, members: &[String]) -> Result<Option<Package>
     };
     let root = Path::new(manifest)
         .parent()
-        .ok_or_else(|| Error::Metadata("manifest_path has no parent".into()))?
+        .ok_or_else(|| Error::resolve("cargo metadata: manifest_path has no parent"))?
         .to_path_buf();
     let (default_features, all_features) = features_from_package(item);
     Ok(Some(Package {
@@ -137,13 +136,19 @@ fn features_from_package(item: &Value) -> (Vec<String>, Vec<String>) {
 
 fn string_ids(json: &Value, key: &str) -> Result<Vec<String>> {
     let Some(array) = json.get(key).and_then(Value::as_array) else {
-        return Err(Error::Metadata(format!("missing {key} array")));
+        return Err(Error::resolve(format!(
+            "cargo metadata: missing {key} array"
+        )));
     };
     let mut ids = Vec::new();
     for item in array {
         match item.as_str() {
             Some(id) => ids.push(id.to_owned()),
-            None => return Err(Error::Metadata(format!("{key} must be strings"))),
+            None => {
+                return Err(Error::resolve(format!(
+                    "cargo metadata: {key} must be strings"
+                )));
+            }
         }
     }
     Ok(ids)

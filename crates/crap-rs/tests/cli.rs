@@ -92,6 +92,28 @@ fn summary_has_no_table_header() {
 }
 
 #[test]
+fn empty_lcov_exits_two() {
+    let root = std::env::temp_dir().join(format!(
+        "crap-rs-empty-lcov-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos())
+    ));
+    let created = fs::create_dir_all(&root);
+    assert!(created.is_ok(), "{created:?}");
+    let written = fs::write(root.join("lib.rs"), "fn f() {}\n");
+    assert!(written.is_ok(), "{written:?}");
+    let lcov = root.join("lcov.info");
+    let lcov_written = fs::write(&lcov, "");
+    assert!(lcov_written.is_ok(), "{lcov_written:?}");
+    let (code, _, stderr) = output_of(bin().arg("--lcov").arg(&lcov).arg("--path").arg(&root));
+    let _ = fs::remove_dir_all(&root);
+    assert_eq!(code, 2, "{stderr}");
+    assert!(stderr.contains("DA") || stderr.contains("line-hit"));
+}
+
+#[test]
 fn missing_lcov_exits_two() {
     let (code, _, stderr) = output_of(bin().arg("--lcov").arg("/no/such/lcov.info"));
     assert_eq!(code, 2);

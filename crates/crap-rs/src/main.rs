@@ -12,10 +12,10 @@ fn main() -> ExitCode {
             let (lang, request) = args.parts();
             match run(&lang, &request) {
                 Ok(result) => finish_run(&request, &result),
-                Err(err) => print_err(&err),
+                Err(err) => print_core_err(&err),
             }
         }
-        Err(err) => print_err(&err),
+        Err(err) => print_usage_err(&err),
     }
 }
 
@@ -36,8 +36,13 @@ fn print_ok(text: &str) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn print_err(err: &Error) -> ExitCode {
+fn print_core_err(err: &Error) -> ExitCode {
     emit_stderr(&err.to_string());
+    ExitCode::from(2)
+}
+
+fn print_usage_err(err: &str) -> ExitCode {
+    emit_stderr(err);
     ExitCode::from(2)
 }
 

@@ -9,8 +9,5 @@ repository = "https://github.com/deangrant/rust-crap"
 keywords = ["coverage", "complexity", "metrics"]
 categories = ["development-tools::testing"]
 
-[dependencies]
-clap = { version = "4", features = ["derive"] }
-
 [lints]
 workspace = true

@@ -4,14 +4,15 @@ mod path_index;
 
 use crate::coverage::FileCoverage;
 use crate::score::crap;
-use clap::ValueEnum;
 use path_index::PathIndex;
 use std::collections::HashMap;
+use std::fmt;
 use std::hash::BuildHasher;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 /// How to treat a function with no matching coverage data.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MissingPolicy {
     /// Score as 0% covered.
     Pessimistic,
@@ -19,6 +20,29 @@ pub enum MissingPolicy {
     Optimistic,
     /// Drop the function from the report.
     Skip,
+}
+
+impl FromStr for MissingPolicy {
+    type Err = String;
+
+    fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
+        match value {
+            "pessimistic" => Ok(Self::Pessimistic),
+            "optimistic" => Ok(Self::Optimistic),
+            "skip" => Ok(Self::Skip),
+            _ => Err(format!("invalid --missing `{value}`")),
+        }
+    }
+}
+
+impl fmt::Display for MissingPolicy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Pessimistic => "pessimistic",
+            Self::Optimistic => "optimistic",
+            Self::Skip => "skip",
+        })
+    }
 }
 
 /// One scored function after the coverage join.
@@ -332,6 +356,26 @@ mod tests {
         );
         let entries = join(&functions, &coverage, MissingPolicy::Skip);
         assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn parses_and_displays_missing_policy() {
+        assert_eq!(
+            "pessimistic".parse::<MissingPolicy>().ok(),
+            Some(MissingPolicy::Pessimistic)
+        );
+        assert_eq!(
+            "optimistic".parse::<MissingPolicy>().ok(),
+            Some(MissingPolicy::Optimistic)
+        );
+        assert_eq!(
+            "skip".parse::<MissingPolicy>().ok(),
+            Some(MissingPolicy::Skip)
+        );
+        assert!("nope".parse::<MissingPolicy>().is_err());
+        assert_eq!(MissingPolicy::Pessimistic.to_string(), "pessimistic");
+        assert_eq!(MissingPolicy::Optimistic.to_string(), "optimistic");
+        assert_eq!(MissingPolicy::Skip.to_string(), "skip");
     }
 
     #[test]

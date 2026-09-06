@@ -85,7 +85,7 @@ mod tests {
             _metric: Metric,
         ) -> Result<(Vec<LocatedFn>, Vec<String>)> {
             if self.fail {
-                return Err(Error::Parse("failed to parse all 1 file(s)".into()));
+                return Err(Error::collect("failed to parse all 1 file(s)"));
             }
             Ok((self.functions.clone(), self.warnings.clone()))
         }

@@ -16,7 +16,7 @@ use visitor::FunctionVisitor;
 ///
 /// # Errors
 ///
-/// Returns [`Error::Io`] if the file cannot be read, or [`Error::Parse`]
+/// Returns [`Error::Io`] if the file cannot be read, or [`Error::Collect`]
 /// if `syn` rejects the source.
 pub fn analyze_file(
     path: &Path,
@@ -36,7 +36,7 @@ pub fn analyze_file(
 ///
 /// # Errors
 ///
-/// Returns [`Error::Parse`] when the text is not valid Rust.
+/// Returns [`Error::Collect`] when the text is not valid Rust.
 #[cfg(test)]
 pub fn analyze_source(
     path: &Path,
@@ -58,7 +58,7 @@ fn analyze_source_cfg(
     cfg: &CfgUniverse,
 ) -> Result<Vec<FunctionComplexity>> {
     let syntax = syn::parse_file(source)
-        .map_err(|err| Error::Parse(format!("{}: {err}", path.display())))?;
+        .map_err(|err| Error::collect(format!("{}: {err}", path.display())))?;
     let mut visitor = FunctionVisitor {
         file: path,
         metric,

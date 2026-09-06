@@ -8,8 +8,8 @@ use std::path::{Path, PathBuf};
 /// Directories skipped at any depth.
 const SKIP_ALWAYS: &[&str] = &["target", ".git"];
 
-/// Directory names skipped at any depth relative to an analysis root.
-const DEFAULT_EXCLUDES: &[&str] = &["tests", "benches", "examples"];
+/// Cargo convention dirs skipped only as children of a package root.
+const CONVENTION_DIRS: &[&str] = &["tests", "benches", "examples"];
 
 /// Walks `root` for `.rs` files, skipping nested member roots.
 ///
@@ -22,24 +22,35 @@ pub fn rust_files(root: &Path, nested_skip: &[PathBuf]) -> Result<Vec<PathBuf>> 
     if let Ok(canon) = fs::canonicalize(root) {
         visited.insert(canon);
     }
-    visit(root, root, nested_skip, &mut visited, &mut out)?;
+    visit(root, root, None, nested_skip, &mut visited, &mut out)?;
     out.sort();
     Ok(out)
 }
 
 fn visit(
     dir: &Path,
-    root: &Path,
+    walk_root: &Path,
+    inherited_pkg: Option<&Path>,
     nested_skip: &[PathBuf],
     visited: &mut HashSet<PathBuf>,
     out: &mut Vec<PathBuf>,
 ) -> Result<()> {
-    if skip_dir(dir, root, nested_skip) {
+    let package_root_buf = dir.join("Cargo.toml").is_file().then(|| dir.to_path_buf());
+    let package_root = package_root_buf.as_deref().or(inherited_pkg);
+    if skip_dir(dir, walk_root, package_root, nested_skip) {
         return Ok(());
     }
     let entries = fs::read_dir(dir).map_err(|source| Error::io(dir, source))?;
     for entry in entries {
-        take_entry(entry, dir, root, nested_skip, visited, out)?;
+        take_entry(
+            entry,
+            dir,
+            walk_root,
+            package_root,
+            nested_skip,
+            visited,
+            out,
+        )?;
     }
     Ok(())
 }
@@ -47,7 +58,8 @@ fn visit(
 fn take_entry(
     entry: std::io::Result<fs::DirEntry>,
     dir: &Path,
-    root: &Path,
+    walk_root: &Path,
+    package_root: Option<&Path>,
     nested_skip: &[PathBuf],
     visited: &mut HashSet<PathBuf>,
     out: &mut Vec<PathBuf>,
@@ -59,15 +71,16 @@ fn take_entry(
         return Ok(());
     }
     if file_type.is_dir() {
-        return visit_subdir(&path, root, nested_skip, visited, out);
+        return visit_subdir(&path, walk_root, package_root, nested_skip, visited, out);
     }
-    collect_rust_file(path, root, out);
+    collect_rust_file(path, out);
     Ok(())
 }
 
 fn visit_subdir(
     path: &Path,
-    root: &Path,
+    walk_root: &Path,
+    package_root: Option<&Path>,
     nested_skip: &[PathBuf],
     visited: &mut HashSet<PathBuf>,
     out: &mut Vec<PathBuf>,
@@ -78,37 +91,38 @@ fn visit_subdir(
     if !visited.insert(canon) {
         return Ok(());
     }
-    visit(path, root, nested_skip, visited, out)
+    visit(path, walk_root, package_root, nested_skip, visited, out)
 }
 
-fn collect_rust_file(path: PathBuf, root: &Path, out: &mut Vec<PathBuf>) {
-    if is_rust_file(&path) && !excluded_rel(&path, root) {
+fn collect_rust_file(path: PathBuf, out: &mut Vec<PathBuf>) {
+    if is_rust_file(&path) {
         out.push(path);
     }
 }
 
-fn skip_dir(dir: &Path, root: &Path, nested_skip: &[PathBuf]) -> bool {
+fn skip_dir(
+    dir: &Path,
+    walk_root: &Path,
+    package_root: Option<&Path>,
+    nested_skip: &[PathBuf],
+) -> bool {
     if nested_skip.iter().any(|skip| dir == skip) {
         return true;
     }
-    if dir == root {
+    if dir == walk_root {
         return false;
     }
-    dir.file_name()
-        .and_then(|n| n.to_str())
-        .is_some_and(|name| SKIP_ALWAYS.contains(&name))
+    let Some(name) = dir.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    if SKIP_ALWAYS.contains(&name) {
+        return true;
+    }
+    package_root.is_some_and(|pkg| dir.parent() == Some(pkg) && CONVENTION_DIRS.contains(&name))
 }
 
 fn is_rust_file(path: &Path) -> bool {
     path.extension().is_some_and(|ext| ext == "rs")
-}
-
-fn excluded_rel(path: &Path, root: &Path) -> bool {
-    let Ok(rel) = path.strip_prefix(root) else {
-        return false;
-    };
-    rel.components()
-        .any(|c| c.as_os_str().to_str().is_some_and(|name| DEFAULT_EXCLUDES.contains(&name)))
 }
 
 #[cfg(test)]
@@ -116,28 +130,92 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_excludes_match_any_component() {
-        let root = Path::new("/proj");
-        assert!(excluded_rel(Path::new("/proj/tests/foo.rs"), root));
-        assert!(excluded_rel(Path::new("/proj/benches/foo.rs"), root));
-        assert!(excluded_rel(Path::new("/proj/examples/foo.rs"), root));
-        assert!(excluded_rel(
-            Path::new("/proj/crates/pkg/tests/foo.rs"),
-            root
+    fn convention_dirs_skip_only_at_package_root() {
+        let walk = Path::new("/proj");
+        let pkg = Path::new("/proj/crates/foo");
+        assert!(skip_dir(
+            Path::new("/proj/crates/foo/tests"),
+            walk,
+            Some(pkg),
+            &[]
         ));
-        assert!(!excluded_rel(Path::new("/proj/src/foo.rs"), root));
-        assert!(!excluded_rel(Path::new("/proj/src/tests.rs"), root));
-        assert!(!excluded_rel(Path::new("/other/foo.rs"), root));
+        assert!(skip_dir(
+            Path::new("/proj/crates/foo/benches"),
+            walk,
+            Some(pkg),
+            &[]
+        ));
+        assert!(skip_dir(
+            Path::new("/proj/crates/foo/examples"),
+            walk,
+            Some(pkg),
+            &[]
+        ));
+        assert!(!skip_dir(
+            Path::new("/proj/crates/foo/src/tests"),
+            walk,
+            Some(pkg),
+            &[]
+        ));
+        assert!(!skip_dir(
+            Path::new("/proj/crates/tests"),
+            walk,
+            Some(Path::new("/proj")),
+            &[]
+        ));
+        assert!(!skip_dir(pkg, walk, Some(pkg), &[]));
     }
 
     #[test]
     fn skip_dir_ignores_target_and_nested_members() {
         let root = Path::new("/proj");
         let nested = [PathBuf::from("/proj/inner")];
-        assert!(skip_dir(Path::new("/proj/target"), root, &nested));
-        assert!(skip_dir(Path::new("/proj/inner"), root, &nested));
-        assert!(!skip_dir(root, root, &nested));
-        assert!(!skip_dir(Path::new("/proj/src"), root, &nested));
+        assert!(skip_dir(Path::new("/proj/target"), root, None, &nested));
+        assert!(skip_dir(Path::new("/proj/inner"), root, None, &nested));
+        assert!(!skip_dir(root, root, None, &nested));
+        assert!(!skip_dir(Path::new("/proj/src"), root, None, &nested));
+    }
+
+    fn temp_root() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "crap-rs-walk-pkg-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ));
+        let created = fs::create_dir_all(&dir);
+        assert!(created.is_ok(), "{created:?}");
+        dir
+    }
+
+    #[test]
+    fn rust_files_keeps_src_tests_skips_package_tests() {
+        let root = temp_root();
+        let manifest = fs::write(
+            root.join("Cargo.toml"),
+            "[package]\nname = \"demo\"\nversion = \"0.1.0\"\n",
+        );
+        assert!(manifest.is_ok(), "{manifest:?}");
+        let src_tests = root.join("src/tests");
+        let made = fs::create_dir_all(&src_tests);
+        assert!(made.is_ok(), "{made:?}");
+        let helper = fs::write(src_tests.join("helper.rs"), "fn h() {}\n");
+        assert!(helper.is_ok(), "{helper:?}");
+        let tests_rs = fs::write(root.join("src/tests.rs"), "fn t() {}\n");
+        assert!(tests_rs.is_ok(), "{tests_rs:?}");
+        let integ_dir = root.join("tests");
+        let made_integ = fs::create_dir_all(&integ_dir);
+        assert!(made_integ.is_ok(), "{made_integ:?}");
+        let integ = fs::write(integ_dir.join("integration.rs"), "fn i() {}\n");
+        assert!(integ.is_ok(), "{integ:?}");
+        let files = rust_files(&root, &[]);
+        let _ = fs::remove_dir_all(&root);
+        assert!(files.is_ok(), "{files:?}");
+        let files = files.unwrap_or_default();
+        assert!(files.iter().any(|path| path.ends_with("helper.rs")));
+        assert!(files.iter().any(|path| path.ends_with("tests.rs")));
+        assert!(!files.iter().any(|path| path.ends_with("integration.rs")));
     }
 }
 
@@ -209,13 +287,13 @@ mod unix_tests {
         assert!(written.is_ok(), "{written:?}");
         let mut visited = HashSet::new();
         let mut out = Vec::new();
-        let missing = visit_subdir(&root.join("gone"), &root, &[], &mut visited, &mut out);
+        let missing = visit_subdir(&root.join("gone"), &root, None, &[], &mut visited, &mut out);
         assert!(missing.is_ok(), "{missing:?}");
         assert!(out.is_empty());
-        let first = visit_subdir(&root, &root, &[], &mut visited, &mut out);
+        let first = visit_subdir(&root, &root, None, &[], &mut visited, &mut out);
         assert!(first.is_ok(), "{first:?}");
         let before = out.len();
-        let second = visit_subdir(&root, &root, &[], &mut visited, &mut out);
+        let second = visit_subdir(&root, &root, None, &[], &mut visited, &mut out);
         let _ = fs::remove_dir_all(&root);
         assert!(second.is_ok(), "{second:?}");
         assert_eq!(out.len(), before);

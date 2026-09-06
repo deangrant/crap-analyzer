@@ -33,20 +33,25 @@ pub struct FeatureSelection {
 
 impl Language for RustLanguage {
     fn resolve_targets(&self, request: &ScanRequest) -> Result<Vec<Target>> {
-        if !self.uses_packages() {
-            return Ok(vec![Target {
-                root: request.path.clone(),
-                crate_name: None,
-                skip: Vec::new(),
-                enabled_features: self.enabled_features(None),
-            }]);
+        if self.uses_packages() {
+            let packages = if self.workspace {
+                workspace::all_members(&request.path)?
+            } else {
+                workspace::selected_members(&self.packages, &request.path)?
+            };
+            return Ok(self.targets_from_packages(&packages));
         }
-        let packages = if self.workspace {
-            workspace::all_members(&request.path)?
-        } else {
-            workspace::selected_members(&self.packages, &request.path)?
-        };
-        Ok(self.targets_from_packages(&packages))
+        if request.path.join("Cargo.toml").is_file()
+            && let Ok(packages) = workspace::all_members(&request.path)
+        {
+            return Ok(self.targets_from_packages(&packages));
+        }
+        Ok(vec![Target {
+            root: request.path.clone(),
+            crate_name: None,
+            skip: Vec::new(),
+            enabled_features: self.enabled_features(None),
+        }])
     }
 
     fn collect_functions(
@@ -118,7 +123,7 @@ fn collect_functions(targets: &[Target], metric: Metric) -> Result<(Vec<LocatedF
         }
     }
     if failed > 0 && succeeded == 0 {
-        return Err(Error::Parse(format!(
+        return Err(Error::collect(format!(
             "failed to parse all {failed} Rust file(s)"
         )));
     }
@@ -232,8 +237,39 @@ mod tests {
 
     #[test]
     fn parse_warning_includes_path() {
-        let warning = parse_warning(Path::new("broken.rs"), &Error::Parse("nope".into()));
+        let warning = parse_warning(Path::new("broken.rs"), &Error::collect("nope"));
         assert!(warning.contains("broken.rs"));
         assert!(warning.contains("nope"));
+    }
+
+    #[test]
+    fn workspace_root_isolates_members_without_workspace_flag() {
+        let lang = RustLanguage {
+            workspace: false,
+            packages: Vec::new(),
+            features: FeatureSelection::default(),
+        };
+        let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(|p| p.parent())
+            .map_or_else(|| PathBuf::from("."), PathBuf::from);
+        let request = ScanRequest {
+            path: workspace,
+            lcov: PathBuf::from("lcov.info"),
+            metric: Metric::Cyclomatic,
+            threshold: None,
+            summary: false,
+            fail_above: false,
+            missing: crap_core::MissingPolicy::Pessimistic,
+        };
+        let targets = lang.resolve_targets(&request);
+        assert!(targets.is_ok(), "{targets:?}");
+        let targets = targets.unwrap_or_default();
+        assert!(targets.len() >= 2, "{targets:?}");
+        assert!(targets.iter().all(|target| target.crate_name.is_some()));
+        let names: Vec<&str> =
+            targets.iter().filter_map(|target| target.crate_name.as_deref()).collect();
+        assert!(names.contains(&"crap-core"), "{names:?}");
+        assert!(names.contains(&"crap-rs"), "{names:?}");
     }
 }

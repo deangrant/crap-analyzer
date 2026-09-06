@@ -2,7 +2,7 @@
 
 use crate::RustLanguage;
 use clap::Parser;
-use crap_core::{Error, Metric, MissingPolicy, Result, ScanRequest};
+use crap_core::{Metric, MissingPolicy, ScanRequest};
 use std::env;
 use std::path::PathBuf;
 
@@ -28,7 +28,7 @@ pub struct Args {
     /// LCOV coverage file.
     #[arg(long, required = true)]
     pub(crate) lcov: PathBuf,
-    /// Walk root, or Cargo workspace root when `--workspace` / `-p` is set.
+    /// Walk root. A Cargo workspace at this path is analyzed per member.
     #[arg(long, default_value = ".")]
     pub(crate) path: PathBuf,
     /// Complexity metric.
@@ -102,8 +102,8 @@ impl Args {
 ///
 /// # Errors
 ///
-/// Returns [`Error::Usage`] for unknown flags, missing values, or conflicts.
-pub fn parse() -> Result<Action> {
+/// Returns a usage message for unknown flags, missing values, or conflicts.
+pub fn parse() -> std::result::Result<Action, String> {
     let raw: Vec<String> = env::args().collect();
     parse_args(raw)
 }
@@ -112,17 +112,15 @@ pub fn parse() -> Result<Action> {
 ///
 /// # Errors
 ///
-/// Returns [`Error::Usage`] for invalid flags.
-fn parse_args(raw: Vec<String>) -> Result<Action> {
+/// Returns a usage message for invalid flags.
+fn parse_args(raw: Vec<String>) -> std::result::Result<Action, String> {
     if raw.iter().skip(1).any(|arg| arg == "-h" || arg == "--help") {
         return Ok(Action::Help);
     }
     if raw.iter().skip(1).any(|arg| arg == "-V" || arg == "--version") {
         return Ok(Action::Version);
     }
-    Args::try_parse_from(raw)
-        .map(Action::Run)
-        .map_err(|err| Error::usage(err.to_string()))
+    Args::try_parse_from(raw).map(Action::Run).map_err(|err| err.to_string())
 }
 
 fn parse_threshold(text: &str) -> std::result::Result<f64, String> {
@@ -149,10 +147,12 @@ USAGE:
     crap-rs [OPTIONS]
 
 OPTIONS:
-    --lcov <file>           LCOV file (required). Produce one with:
+    --lcov <file>           LCOV file (required); must contain at least
+                            one DA line-hit. Produce one with:
                             cargo llvm-cov --lcov --output-path lcov.info
-    --path <dir>            Walk root [default: .]; Cargo workspace root
-                            when --workspace or -p is set
+    --path <dir>            Walk root [default: .]. A Cargo.toml with
+                            workspace members is analyzed per package
+                            (same isolation as --workspace)
     --metric <name>         cyclomatic (default) or cognitive
     --threshold <n>         Flag scores strictly above this
                             [default: 30 cyclomatic, 15 cognitive]

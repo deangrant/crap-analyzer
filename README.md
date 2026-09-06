@@ -72,8 +72,10 @@ still keeps the score over the threshold.
 
 ## Flags
 
-- `--lcov <file>` — LCOV from `cargo llvm-cov` (required)
-- `--path <dir>` — walk this tree (default `.`); Cargo workspace root with `--workspace` / `-p`
+- `--lcov <file>` — LCOV from `cargo llvm-cov` (required); must contain at
+  least one `DA:` line-hit record
+- `--path <dir>` — walk this tree (default `.`). A `Cargo.toml` workspace
+  is analyzed per member (same isolation as `--workspace`)
 - `--metric` — `cyclomatic` (default) or `cognitive`
 - `--threshold <n>` — flag scores strictly above this (default `30` cyclomatic, `15` cognitive)
 - `--workspace` — every Cargo workspace member
