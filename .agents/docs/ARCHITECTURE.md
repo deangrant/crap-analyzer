@@ -1,21 +1,21 @@
 # Architecture document
 
 This document gives the high-level system architecture of the crap-analyzer
-workspace. The workspace scores Rust functions by combining complexity with
-LCOV line coverage. The score is a **change-risk signal**: it rises when a
-function is hard to follow and lightly exercised by tests. It is not a quality
-grade, a programmer rating, or a management KPI.
+workspace. The workspace scores functions by combining complexity with line
+coverage. The score is a **change-risk signal**: it rises when a function is
+hard to follow and lightly exercised by tests. It is not a quality grade, a
+programmer rating, or a management KPI.
 
 ## Purpose and scope
 
 Agents and contributors use this file to place a change in the right crate
-and to follow a run from LCOV to the report.
+and to follow a run from coverage input to the report.
 
 This file covers:
 
 - Workspace crate roles
 - End-to-end analysis flow
-- `crap-core` and `crap-rs` module maps
+- `crap-core`, `crap-rs`, and `crap-go` module maps
 - Hard invariants
 - Verification and agent layout
 
@@ -23,30 +23,41 @@ This file does **not** cover:
 
 - Install steps, CLI flags, and usage examples — see [README.md](../../README.md)
 - Formula, risk bands, and gate presets — see [crap-scoring](../skills/crap-scoring/SKILL.md)
-- Visitor attribution, empty spans, and path ranking — see
+- Rust visitor attribution, empty spans, and path ranking — see
   [complexity-lcov-join](../skills/complexity-lcov-join/SKILL.md)
+- Go coverprofile, build tags, and visitor limits — see
+  [complexity-go](../skills/complexity-go/SKILL.md)
 - Full local vs CI steps — see [verify](../skills/verify/SKILL.md) and
   [AGENTS.md](../../AGENTS.md)
 
 ## System context
 
-You produce LCOV with `cargo llvm-cov`. The `crap-rs` binary reads that file
-and the Rust sources, then calls `crap-core` to join, score, and render.
+You produce coverage with the language toolchain (`cargo llvm-cov` → LCOV,
+`go test -coverprofile` → coverprofile). Each frontend reads that file and
+the sources, then calls `crap-core` to join, score, and render.
+
+- `crap-rs` uses `crap_core::run`, which parses LCOV from disk.
+- `crap-go` parses coverprofile in the frontend, then calls
+  `crap_core::run_with_coverage` with `FileCoverage` maps.
 
 Runtime bar:
 
 - Rust toolchain **1.94.0** ([`rust-toolchain.toml`](../../rust-toolchain.toml))
-- Virtual workspace members: `crap-core` and `crap-rs` only
+- Virtual workspace members: `crap-core`, `crap-rs`, and `crap-go`
   ([`Cargo.toml`](../../Cargo.toml))
-- Coverage input is **LCOV only**. Convert other formats first. Do not add a
-  second parser.
+- `crap-core` parses **LCOV only** on disk. Frontends may load a native
+  format into `FileCoverage` and call `run_with_coverage`.
 
 ```mermaid
 flowchart LR
   llvmCov[cargo_llvm_cov] --> Lcov[lcov_info]
-  Sources[Rust_sources] --> CrapRs[crap_rs]
+  SourcesRs[Rust_sources] --> CrapRs[crap_rs]
   Lcov --> CrapRs
   CrapRs --> Core[crap_core]
+  goTest[go_test_coverprofile] --> CoverOut[cover_out]
+  SourcesGo[Go_sources] --> CrapGo[crap_go]
+  CoverOut --> CrapGo
+  CrapGo --> Core
   Core --> Report[text_or_json_report]
 ```
 
@@ -56,39 +67,42 @@ flowchart LR
 | ----- | ---- |
 | [`crates/crap-core`](../../crates/crap-core) | Language-agnostic LCOV parse, path join, score, risk, and report |
 | [`crates/crap-rs`](../../crates/crap-rs) | Rust frontend: Cargo targets, source walk, complexity, and the `crap-rs` CLI |
+| [`crates/crap-go`](../../crates/crap-go) | Go frontend: modules, coverprofile, complexity, and the `crap-go` CLI |
 
-`crap-rs` depends on `crap-core`. A later language crate (`crap-go`,
-`crap-ts`) would implement [`Language`](../../crates/crap-core/src/language.rs)
-and call [`crap_core::run`](../../crates/crap-core/src/run.rs). That crate is
-not in this workspace.
+`crap-rs` and `crap-go` depend on `crap-core`. Each implements
+[`Language`](../../crates/crap-core/src/language.rs). Rust uses
+[`crap_core::run`](../../crates/crap-core/src/run.rs); Go uses
+[`crap_core::run_with_coverage`](../../crates/crap-core/src/run.rs) after
+parsing coverprofile locally.
 
 A later `crap` meta-binary could dispatch on `--lang`. The workspace does not
 ship it.
 
 ## High-level analysis flow
 
-A `crap-rs` run proceeds as follows:
+A frontend run proceeds as follows:
 
-1. Parse argv into `ScanRequest` and `RustLanguage`
-   ([`cli`](../../crates/crap-rs/src/cli.rs),
-   [`main`](../../crates/crap-rs/src/main.rs)).
-2. `parse_lcov` builds per-file line-hit maps.
+1. Parse argv into `ScanRequest` and the language struct
+   (`cli` + `main` in the frontend crate).
+2. Load coverage into `HashMap<PathBuf, FileCoverage>`:
+   - `crap-rs`: `parse_lcov` inside `crap_core::run`
+   - `crap-go`: `parse_coverprofile`, then `run_with_coverage`
 3. `Language::resolve_targets` selects package roots and nested skip paths.
-4. `Language::collect_functions` walks `.rs` files, applies `#[cfg]`, and
-   scores function spans.
-5. `merge::join` matches source paths to LCOV, applies `--missing`, and
+4. `Language::collect_functions` walks sources and scores function spans.
+5. `merge::join` matches source paths to coverage, applies `--missing`, and
    excludes nested function spans from the outer coverage.
 6. Score each function and sort worst-first. `--fail-above` trips when any
    score is strictly above the threshold.
-7. `report::render` writes a text table or a JSON envelope.
+7. `report::render` writes a text table or a JSON envelope (`"rust"` or
+   `"go"`).
 
 ```mermaid
 flowchart TD
-  Cli[cli_ScanRequest] --> Run[crap_core_run]
-  Run --> Lcov[parse_lcov]
+  Cli[cli_ScanRequest] --> Coverage[load_FileCoverage]
+  Coverage --> Run[run_or_run_with_coverage]
   Run --> Targets[resolve_targets]
   Targets --> Collect[collect_functions]
-  Lcov --> Join[merge_join]
+  Coverage --> Join[merge_join]
   Collect --> Join
   Join --> Score[score_and_gate]
   Score --> Out[render_report]
@@ -97,16 +111,17 @@ flowchart TD
 ## `crap-core` module map
 
 Barrel: [`crates/crap-core/src/lib.rs`](../../crates/crap-core/src/lib.rs).
-Pipeline entry: [`run`](../../crates/crap-core/src/run.rs).
+Pipeline entry: [`run`](../../crates/crap-core/src/run.rs) /
+[`run_with_coverage`](../../crates/crap-core/src/run.rs).
 
 | Area | Path | Role |
 | ---- | ---- | ---- |
-| LCOV parse | [`coverage.rs`](../../crates/crap-core/src/coverage.rs) | `DA:` line hits per source file |
+| LCOV parse | [`coverage.rs`](../../crates/crap-core/src/coverage.rs) | `DA:` line hits → `FileCoverage`; on-disk LCOV only |
 | Join | [`merge/mod.rs`](../../crates/crap-core/src/merge/mod.rs) | Function spans + coverage + `--missing` |
-| Path index | [`merge/path_index.rs`](../../crates/crap-core/src/merge/path_index.rs) | Suffix ranking of LCOV `SF:` vs source paths |
+| Path index | [`merge/path_index.rs`](../../crates/crap-core/src/merge/path_index.rs) | Suffix ranking of coverage paths vs source paths |
 | Score | [`score.rs`](../../crates/crap-core/src/score.rs) | CRAP formula, `exceeds_threshold`, `classify_risk` |
 | Metric | [`metric.rs`](../../crates/crap-core/src/metric.rs) | Cyclomatic or cognitive; default gate 15 |
-| Language port | [`language.rs`](../../crates/crap-core/src/language.rs) | `Language`, `ScanRequest`, `Target`, `ReportFormat` |
+| Language port | [`language.rs`](../../crates/crap-core/src/language.rs) | `Language`, `ScanRequest` (`coverage` path), `Target`, `ReportFormat` |
 | Report | [`report.rs`](../../crates/crap-core/src/report.rs), [`report/json.rs`](../../crates/crap-core/src/report/json.rs) | Text table / `--summary` / JSON envelope |
 | Errors | [`error.rs`](../../crates/crap-core/src/error.rs) | I/O, coverage, resolve, collect |
 
@@ -118,12 +133,12 @@ read a Moderate band as “exceeds threshold.” Detail:
 ## `crap-rs` module map
 
 Composition: [`main.rs`](../../crates/crap-rs/src/main.rs) parses CLI, calls
-`crap_core::run`, then `render`.
+`crap_core::run`, then `render` with language `"rust"`.
 [`RustLanguage`](../../crates/crap-rs/src/lib.rs) implements `Language`.
 
 | Area | Path | Role |
 | ---- | ---- | ---- |
-| CLI | [`cli.rs`](../../crates/crap-rs/src/cli.rs) | Flags → `ScanRequest` + `RustLanguage` |
+| CLI | [`cli.rs`](../../crates/crap-rs/src/cli.rs) | Flags → `ScanRequest` + `RustLanguage` (`--coverage` default `lcov.info`, alias `--lcov`) |
 | Workspace | [`workspace.rs`](../../crates/crap-rs/src/workspace.rs) | `cargo metadata`, members, feature graphs |
 | Walk | [`walk.rs`](../../crates/crap-rs/src/walk.rs) | `.rs` files; skip `tests`, `target`, convention dirs, nested members |
 | Visitor | [`complexity/visitor.rs`](../../crates/crap-rs/src/complexity/visitor.rs) | Function spans and names |
@@ -141,15 +156,48 @@ flowchart TB
   Main --> Run[crap_core_run]
 ```
 
+## `crap-go` module map
+
+Composition: [`main.rs`](../../crates/crap-go/src/main.rs) parses CLI, parses
+coverprofile, calls `crap_core::run_with_coverage`, then `render` with
+language `"go"`. [`GoLanguage`](../../crates/crap-go/src/lib.rs) implements
+`Language`. The analyzer is Rust-only; no Go toolchain and no tree-sitter.
+
+| Area | Path | Role |
+| ---- | ---- | ---- |
+| CLI | [`cli.rs`](../../crates/crap-go/src/cli.rs) | Flags → `ScanRequest` + `GoLanguage` (`--coverage` default `cover.out`) |
+| Coverprofile | [`coverprofile.rs`](../../crates/crap-go/src/coverprofile.rs) | Go coverprofile → `FileCoverage` |
+| Module resolve | [`module_resolve.rs`](../../crates/crap-go/src/module_resolve.rs) | `go.mod` packages and nested module skips |
+| Walk | [`walk.rs`](../../crates/crap-go/src/walk.rs) | `.go` files; skip `vendor`, `.git`, `testdata`, nested modules |
+| Build tags | [`build_tag.rs`](../../crates/crap-go/src/build_tag.rs) | Leading `//go:build` / `// +build` skip |
+| Visitor | [`complexity/visitor.rs`](../../crates/crap-go/src/complexity/visitor.rs) | Named funcs / methods and body spans |
+| Cyclomatic | [`complexity/cyclomatic.rs`](../../crates/crap-go/src/complexity/cyclomatic.rs) | Decision-point count |
+| Cognitive | [`complexity/cognitive.rs`](../../crates/crap-go/src/complexity/cognitive.rs) | Nesting-weighted count |
+
+```mermaid
+flowchart TB
+  Main[main] --> Cli[cli]
+  Cli --> Lang[GoLanguage]
+  Main --> Cover[parse_coverprofile]
+  Lang --> Module[module_resolve]
+  Lang --> Walk[walk]
+  Lang --> Tags[build_tag]
+  Lang --> Visitor[complexity_visitor]
+  Cover --> Run[crap_core_run_with_coverage]
+  Lang --> Run
+```
+
+Detail: [complexity-go](../skills/complexity-go/SKILL.md).
+
 ## Hard invariants
 
 | Invariant | Why |
 | --------- | --- |
-| LCOV is the only coverage format | One parser; other tools convert first |
-| Frontends implement `Language`; scoring stays in `crap-core` | A second language crate must not fork the formula |
+| `crap-core` parses LCOV only on disk; native formats enter via `run_with_coverage` | One on-disk parser; frontends own format adapters |
+| Frontends implement `Language`; scoring stays in `crap-core` | A language crate must not fork the formula |
 | Risk bands never change the gate | Labels classify; `--fail-above` decides pass/fail |
 | Empty spans and missing paths use `--missing` | Do not treat a missing join as 100% coverage |
-| Workspace members are `crap-core` and `crap-rs` only | Do not add `cargo-crap` or other on-disk leftovers |
+| Workspace members are `crap-core`, `crap-rs`, and `crap-go` only | Do not add `cargo-crap` or other on-disk leftovers |
 | No `#[allow]`; use `#[expect(..., reason = "...")]` | Matches workspace lints; see [rust-style-guide](../skills/rust-style-guide/SKILL.md) |
 
 ## Exit codes
@@ -177,7 +225,7 @@ Then the coverage gates in [verify](../skills/verify/SKILL.md), or run
 Agent support lives under `.agents/`:
 
 - `docs/` — this architecture file
-- `skills/` — verify, scoring, LCOV join, Rust style, SOLID
+- `skills/` — verify, scoring, LCOV join, Go frontend, Rust style, SOLID
 - `commands/` — `/verify`, `/audit-rust-skills`
 - `rules/` — agent standards and metric hotspots
 - `hooks/` — rustfmt after edit; session context; verify on stop

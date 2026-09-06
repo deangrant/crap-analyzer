@@ -25,9 +25,9 @@ pub enum Action {
     disable_version_flag = true
 )]
 pub struct Args {
-    /// LCOV coverage file.
-    #[arg(long, required = true)]
-    pub(crate) lcov: PathBuf,
+    /// Coverage file path.
+    #[arg(long = "coverage", visible_alias = "lcov", default_value = "lcov.info")]
+    pub(crate) coverage: PathBuf,
     /// Walk root. A Cargo workspace at this path is analyzed per member.
     #[arg(long, default_value = ".")]
     pub(crate) path: PathBuf,
@@ -90,7 +90,7 @@ impl Args {
             },
             ScanRequest {
                 path: self.path.clone(),
-                lcov: self.lcov.clone(),
+                coverage: self.coverage.clone(),
                 metric: self.metric,
                 threshold: self.threshold,
                 summary: self.summary,
@@ -169,8 +169,9 @@ USAGE:
     crap-rs [OPTIONS]
 
 OPTIONS:
-    --lcov <file>           LCOV file (required); must contain at least
-                            one DA line-hit. Produce one with:
+    --coverage <file>       Coverage file [default: lcov.info]; must
+                            contain at least one DA line-hit. Alias:
+                            --lcov. Produce one with:
                             cargo llvm-cov --lcov --output-path lcov.info
     --path <dir>            Walk root [default: .]. A workspace root is
                             analyzed per member; a member package root
@@ -231,11 +232,11 @@ mod tests {
 
     #[test]
     fn parses_flags() {
-        let action = parse_args(argv(&["--lcov", "lcov.info", "--summary"]));
+        let action = parse_args(argv(&["--coverage", "lcov.info", "--summary"]));
         assert!(matches!(
             action,
             Ok(Action::Run(ref args))
-                if args.lcov == Path::new("lcov.info") && args.summary && !args.fail_above
+                if args.coverage == Path::new("lcov.info") && args.summary && !args.fail_above
         ));
     }
 
@@ -246,19 +247,32 @@ mod tests {
     }
 
     #[test]
-    fn missing_lcov_is_usage() {
-        assert!(parse_args(argv(&[])).is_err());
+    fn default_coverage_is_lcov_info() {
+        let action = parse_args(argv(&[]));
+        assert!(matches!(
+            action,
+            Ok(Action::Run(ref args)) if args.coverage == Path::new("lcov.info")
+        ));
+    }
+
+    #[test]
+    fn lcov_alias_still_works() {
+        let action = parse_args(argv(&["--lcov", "alt.info"]));
+        assert!(matches!(
+            action,
+            Ok(Action::Run(ref args)) if args.coverage == Path::new("alt.info")
+        ));
     }
 
     #[test]
     fn workspace_conflicts_with_package() {
-        let err = parse_args(argv(&["--lcov", "x.info", "--workspace", "-p", "core"]));
+        let err = parse_args(argv(&["--coverage", "x.info", "--workspace", "-p", "core"]));
         assert!(err.is_err());
     }
 
     #[test]
     fn unknown_flag_is_usage() {
-        assert!(parse_args(argv(&["--lcov", "x", "--nope"])).is_err());
+        assert!(parse_args(argv(&["--coverage", "x", "--nope"])).is_err());
     }
 
     #[test]
@@ -272,7 +286,7 @@ mod tests {
 
     #[test]
     fn default_metric_is_cyclomatic_with_threshold_fifteen() {
-        let action = parse_args(argv(&["--lcov", "x"]));
+        let action = parse_args(argv(&["--coverage", "x"]));
         assert!(matches!(
             action,
             Ok(Action::Run(ref args))
@@ -293,7 +307,7 @@ mod tests {
     }
 
     fn parsed_threshold(flag: &str) -> Option<f64> {
-        match parse_args(argv(&["--lcov", "x", "--threshold", flag])) {
+        match parse_args(argv(&["--coverage", "x", "--threshold", flag])) {
             Ok(Action::Run(args)) => Some(args.parts().1.effective_threshold()),
             _ => None,
         }
@@ -322,7 +336,7 @@ mod tests {
 
     #[test]
     fn parses_format() {
-        let action = parse_args(argv(&["--lcov", "x", "--format", "json"]));
+        let action = parse_args(argv(&["--coverage", "x", "--format", "json"]));
         assert!(matches!(
             action,
             Ok(Action::Run(ref args)) if args.format == ReportFormat::Json
@@ -337,7 +351,7 @@ mod tests {
     #[test]
     fn explicit_threshold_wins() {
         let action = parse_args(argv(&[
-            "--lcov",
+            "--coverage",
             "x",
             "--metric",
             "cognitive",
@@ -359,9 +373,9 @@ mod tests {
 
     #[test]
     fn invalid_threshold_is_usage() {
-        assert!(parse_args(argv(&["--lcov", "x", "--threshold", "abc"])).is_err());
+        assert!(parse_args(argv(&["--coverage", "x", "--threshold", "abc"])).is_err());
         assert!(parse_args(argv(&["--lcov", "x", "--threshold", "-1"])).is_err());
-        assert!(parse_args(argv(&["--lcov", "x", "--threshold", "inf"])).is_err());
+        assert!(parse_args(argv(&["--coverage", "x", "--threshold", "inf"])).is_err());
     }
 
     #[test]
@@ -384,13 +398,13 @@ mod tests {
 
     #[test]
     fn leftover_crap_token_is_usage() {
-        assert!(parse_args(argv(&["crap", "--lcov", "x"])).is_err());
+        assert!(parse_args(argv(&["crap", "--coverage", "x"])).is_err());
     }
 
     #[test]
     fn parts_split_rust_flags_from_the_request() {
         let action = parse_args(argv(&[
-            "--lcov",
+            "--coverage",
             "x.info",
             "--workspace",
             "--summary",
@@ -403,7 +417,7 @@ mod tests {
                 && !lang.features.all_features
                 && request.summary
                 && request.fail_above
-                && request.lcov == Path::new("x.info")
+                && request.coverage == Path::new("x.info")
         );
         let skipped = run_args(Ok(Action::Help)).unwrap_or_else(fallback_args);
         assert!(!skipped.workspace);

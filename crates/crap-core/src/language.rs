@@ -12,8 +12,8 @@ use std::str::FromStr;
 pub struct ScanRequest {
     /// Walk root, or language workspace root when the frontend selects packages.
     pub path: PathBuf,
-    /// LCOV coverage file.
-    pub lcov: PathBuf,
+    /// Coverage file path (format is frontend-local).
+    pub coverage: PathBuf,
     /// Complexity metric.
     pub metric: Metric,
     /// Score above which a function is flagged.
@@ -110,7 +110,7 @@ mod tests {
     fn omitted_threshold_uses_metric_default() {
         let request = ScanRequest {
             path: PathBuf::from("."),
-            lcov: PathBuf::from("lcov.info"),
+            coverage: PathBuf::from("lcov.info"),
             metric: Metric::Cyclomatic,
             threshold: None,
             summary: false,
@@ -125,7 +125,7 @@ mod tests {
     fn explicit_threshold_wins() {
         let request = ScanRequest {
             path: PathBuf::from("."),
-            lcov: PathBuf::from("lcov.info"),
+            coverage: PathBuf::from("lcov.info"),
             metric: Metric::Cognitive,
             threshold: Some(8.0),
             summary: false,

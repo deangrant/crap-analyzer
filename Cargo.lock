@@ -107,6 +107,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "crap-go"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "crap-core",
+]
+
+[[package]]
 name = "crap-rs"
 version = "0.1.0"
 dependencies = [

@@ -11,6 +11,8 @@ pub mod score;
 mod run;
 
 #[doc(inline)]
+pub use coverage::FileCoverage;
+#[doc(inline)]
 pub use error::{Error, Result};
 #[doc(inline)]
 pub use language::{Language, ReportFormat, ScanRequest, Target};
@@ -21,6 +23,6 @@ pub use metric::Metric;
 #[doc(inline)]
 pub use report::render;
 #[doc(inline)]
-pub use run::{RunResult, run};
+pub use run::{RunResult, run, run_with_coverage};
 #[doc(inline)]
 pub use score::Risk;

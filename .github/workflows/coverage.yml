@@ -56,5 +56,5 @@ jobs:
         if: steps.pkgs.outputs.count != '0'
         run: |
           cargo run -p crap-rs --locked -- \
-            --lcov lcov.info --path . --workspace \
+            --coverage lcov.info --path . --workspace \
             --fail-above --threshold strict

@@ -1,14 +1,17 @@
 ---
 description: CRAP metric hotspots — match scoring, path ranking, empty spans
-globs: "crates/crap-rs/src/complexity/**/*.rs,crates/crap-core/src/merge/**/*.rs,crates/crap-core/src/coverage.rs"
+globs: "crates/crap-rs/src/complexity/**/*.rs,crates/crap-go/src/complexity/**/*.rs,crates/crap-go/src/coverprofile.rs,crates/crap-go/src/build_tag.rs,crates/crap-core/src/merge/**/*.rs,crates/crap-core/src/coverage.rs"
 alwaysApply: false
 ---
 
 # CRAP Metric Hotspots
 
-Read [`.agents/skills/complexity-lcov-join/SKILL.md`](../../skills/complexity-lcov-join/SKILL.md) before changing these files.
+Read [`.agents/skills/complexity-lcov-join/SKILL.md`](../../skills/complexity-lcov-join/SKILL.md) before changing Rust complexity, merge, or LCOV parse files.
 
-- Cognitive `match` is one nesting-weighted increment, not one per arm.
-- Closures fold into the enclosing function; nested `fn` items are separate rows.
+Read [`.agents/skills/complexity-go/SKILL.md`](../../skills/complexity-go/SKILL.md) before changing `crap-go` complexity, coverprofile, or build tags.
+
+- Cognitive `match` is one nesting-weighted increment, not one per arm (Rust).
+- Closures fold into the enclosing function; nested `fn` / named funcs are separate rows.
 - Empty instrumented spans use `--missing` (default 0%). Do not treat them as 100%.
 - `MatchRank` prefers forward path matches over reverse suffix length.
+- Coverprofile parsing stays in `crap-go`; do not add it to `crap-core`.

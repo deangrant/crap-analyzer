@@ -1,10 +1,13 @@
 //! Drive the language-agnostic analysis pipeline.
 
-use crate::coverage;
+use crate::coverage::{self, FileCoverage};
 use crate::error::Result;
 use crate::language::{Language, ScanRequest};
 use crate::merge::{CrapEntry, join};
 use crate::score::exceeds_threshold;
+use std::collections::HashMap;
+use std::hash::BuildHasher;
+use std::path::PathBuf;
 
 /// Finished analysis ready to print.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -17,17 +20,33 @@ pub struct RunResult {
     pub gate_failed: bool,
 }
 
-/// Parses LCOV, collects functions through `lang`, joins, and scores.
+/// Parses LCOV from `request.coverage`, then runs the join and gate.
 ///
 /// # Errors
 ///
 /// Returns I/O, metadata, usage, or collect errors. Any source file
 /// that fails to parse fails the run.
 pub fn run<L: Language>(lang: &L, request: &ScanRequest) -> Result<RunResult> {
-    let coverage = coverage::parse_lcov(&request.lcov)?;
+    let coverage = coverage::parse_lcov(&request.coverage)?;
+    run_with_coverage(lang, request, &coverage)
+}
+
+/// Resolves targets, collects functions, joins coverage, and applies the gate.
+///
+/// Same pipeline as [`run`] after coverage has already been parsed.
+///
+/// # Errors
+///
+/// Returns metadata, usage, or collect errors. Any source file that fails
+/// to parse fails the run.
+pub fn run_with_coverage<L: Language, S: BuildHasher>(
+    lang: &L,
+    request: &ScanRequest,
+    coverage: &HashMap<PathBuf, FileCoverage, S>,
+) -> Result<RunResult> {
     let targets = lang.resolve_targets(request)?;
     let (functions, warnings) = lang.collect_functions(&targets, request.metric)?;
-    let entries = join(&functions, &coverage, request.missing);
+    let entries = join(&functions, coverage, request.missing);
     let threshold = request.effective_threshold();
     let gate_failed =
         request.fail_above && entries.iter().any(|entry| exceeds_threshold(entry.crap, threshold));
@@ -77,14 +96,14 @@ mod tests {
     }
 
     fn request(
-        lcov: &Path,
+        coverage: &Path,
         summary: bool,
         fail_above: bool,
         threshold: Option<f64>,
     ) -> ScanRequest {
         ScanRequest {
             path: PathBuf::from("."),
-            lcov: lcov.to_path_buf(),
+            coverage: coverage.to_path_buf(),
             metric: Metric::Cyclomatic,
             threshold,
             summary,
@@ -137,13 +156,13 @@ mod tests {
     #[test]
     fn run_scores_and_trips_the_gate() {
         let dir = temp_dir();
-        let lcov = write_lcov(&dir);
+        let coverage = write_lcov(&dir);
         let lang = FakeLang {
             functions: vec![func("src/lib.rs", "dense", 1, 2, 31)],
             warnings: vec!["skipping broken.rs: parse".into()],
             fail: false,
         };
-        let req = request(&lcov, false, true, Some(8.0));
+        let req = request(&coverage, false, true, Some(8.0));
         let result = require_ok(run(&lang, &req));
         let _ = std::fs::remove_dir_all(&dir);
         assert!(result.gate_failed);
@@ -229,19 +248,19 @@ mod tests {
     #[test]
     fn collect_error_is_propagated() {
         let dir = temp_dir();
-        let lcov = write_lcov(&dir);
+        let coverage = write_lcov(&dir);
         let lang = FakeLang {
             functions: Vec::new(),
             warnings: Vec::new(),
             fail: true,
         };
-        let result = run(&lang, &request(&lcov, false, false, None));
+        let result = run(&lang, &request(&coverage, false, false, None));
         let _ = std::fs::remove_dir_all(&dir);
         assert!(result.is_err());
     }
 
     #[test]
-    fn missing_lcov_is_io_error() {
+    fn missing_coverage_is_io_error() {
         let lang = FakeLang {
             functions: Vec::new(),
             warnings: Vec::new(),

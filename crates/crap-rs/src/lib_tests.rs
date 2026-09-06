@@ -29,7 +29,7 @@ fn path_mode_uses_the_request_root() {
     };
     let request = ScanRequest {
         path: PathBuf::from("/proj"),
-        lcov: PathBuf::from("lcov.info"),
+        coverage: PathBuf::from("lcov.info"),
         metric: Metric::Cyclomatic,
         threshold: None,
         summary: false,
@@ -103,7 +103,7 @@ fn path_mode_uses_explicit_features() {
     };
     let request = ScanRequest {
         path: PathBuf::from("/proj"),
-        lcov: PathBuf::from("lcov.info"),
+        coverage: PathBuf::from("lcov.info"),
         metric: Metric::Cyclomatic,
         threshold: None,
         summary: false,
@@ -149,7 +149,7 @@ fn workspace_root_isolates_members_without_workspace_flag() {
         .map_or_else(|| PathBuf::from("."), PathBuf::from);
     let request = ScanRequest {
         path: workspace,
-        lcov: PathBuf::from("lcov.info"),
+        coverage: PathBuf::from("lcov.info"),
         metric: Metric::Cyclomatic,
         threshold: None,
         summary: false,
@@ -175,7 +175,7 @@ fn member_path_selects_only_that_package() {
     let member = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let request = ScanRequest {
         path: member,
-        lcov: PathBuf::from("lcov.info"),
+        coverage: PathBuf::from("lcov.info"),
         metric: Metric::Cyclomatic,
         threshold: None,
         summary: false,
@@ -210,7 +210,7 @@ fn broken_manifest_is_a_resolve_error() {
     assert!(written.is_ok(), "{written:?}");
     let request = ScanRequest {
         path: dir.clone(),
-        lcov: PathBuf::from("lcov.info"),
+        coverage: PathBuf::from("lcov.info"),
         metric: Metric::Cyclomatic,
         threshold: None,
         summary: false,
@@ -236,7 +236,7 @@ fn package_flag_selects_named_members() {
         .map_or_else(|| PathBuf::from("."), PathBuf::from);
     let request = ScanRequest {
         path: workspace,
-        lcov: PathBuf::from("lcov.info"),
+        coverage: PathBuf::from("lcov.info"),
         metric: Metric::Cyclomatic,
         threshold: None,
         summary: false,

@@ -1,7 +1,8 @@
-//! Binary entry point for `crap-rs`.
+//! Binary entry point for `crap-go`.
 
-use crap_core::{Error, RunResult, ScanRequest, render, run};
-use crap_rs::cli::{self, Action};
+use crap_core::{Error, RunResult, ScanRequest, render, run_with_coverage};
+use crap_go::cli::{self, Action};
+use crap_go::coverprofile::parse_coverprofile;
 use std::io::IsTerminal;
 use std::process::ExitCode;
 
@@ -22,7 +23,9 @@ fn run_action(action: Action) -> ExitCode {
 
 fn run_scan(args: &cli::Args) -> ExitCode {
     let (lang, request) = args.parts();
-    match run(&lang, &request) {
+    match parse_coverprofile(&request.coverage)
+        .and_then(|coverage| run_with_coverage(&lang, &request, &coverage))
+    {
         Ok(result) => finish_run(&request, &result),
         Err(err) => print_core_err(&err),
     }
@@ -33,7 +36,7 @@ fn finish_run(request: &ScanRequest, result: &RunResult) -> ExitCode {
         emit_stderr(warning);
     }
     exit_from_render(
-        render(request, result, "rust", color_enabled()),
+        render(request, result, "go", color_enabled()),
         result.gate_failed,
     )
 }
@@ -92,6 +95,9 @@ fn emit_stderr(text: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::Parser;
+    use crap_go::cli::{self, Action, Args};
+    use std::path::PathBuf;
 
     #[test]
     fn render_error_exits_two() {
@@ -106,10 +112,20 @@ mod tests {
     }
 
     #[test]
+    fn usage_error_exits_two() {
+        assert_eq!(print_usage_err("bad flag"), ExitCode::from(2));
+    }
+
+    #[test]
+    fn version_action_prints_ok() {
+        assert_eq!(run_action(Action::Version), ExitCode::SUCCESS);
+    }
+
+    #[test]
     fn finish_run_emits_warnings() {
         let request = ScanRequest {
             path: std::path::PathBuf::from("."),
-            coverage: std::path::PathBuf::from("lcov.info"),
+            coverage: std::path::PathBuf::from("cover.out"),
             metric: crap_core::Metric::Cyclomatic,
             threshold: None,
             summary: true,
@@ -122,5 +138,59 @@ mod tests {
             ..RunResult::default()
         };
         assert_eq!(finish_run(&request, &result), ExitCode::SUCCESS);
+    }
+
+    #[test]
+    fn run_scan_missing_coverage_exits_two() {
+        let args = Args::parse_from(["crap-go", "--coverage", "/no/such/cover.out", "--path", "."]);
+        assert_eq!(run_scan(&args), ExitCode::from(2));
+    }
+
+    #[test]
+    fn run_scan_sample_fixture_exits_ok() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample");
+        let coverage = root.join("cover.out");
+        let args = Args::parse_from([
+            "crap-go",
+            "--coverage",
+            coverage.to_str().unwrap_or("cover.out"),
+            "--path",
+            root.to_str().unwrap_or("."),
+            "--summary",
+        ]);
+        let code = run_scan(&args);
+        assert!(
+            code == ExitCode::SUCCESS || code == ExitCode::from(1),
+            "{code:?}"
+        );
+    }
+
+    #[test]
+    fn run_scan_sample_cognitive_and_build_tags() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample");
+        let coverage = root.join("cover.out");
+        let args = Args::parse_from([
+            "crap-go",
+            "--coverage",
+            coverage.to_str().unwrap_or("cover.out"),
+            "--path",
+            root.to_str().unwrap_or("."),
+            "--metric",
+            "cognitive",
+            "--tags",
+            "fancy",
+            "--summary",
+        ]);
+        let code = run_scan(&args);
+        assert!(
+            code == ExitCode::SUCCESS || code == ExitCode::from(1),
+            "{code:?}"
+        );
+    }
+
+    #[test]
+    fn help_action_prints_ok() {
+        assert_eq!(run_action(Action::Help), ExitCode::SUCCESS);
+        let _ = cli::help_text();
     }
 }

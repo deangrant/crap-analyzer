@@ -22,6 +22,7 @@ fn help_describes_the_tool() {
         &stdout,
         &[
             "USAGE:",
+            "--coverage",
             "--lcov",
             "not a quality score",
             "crap-rs [OPTIONS]",
@@ -53,7 +54,7 @@ fn without_fail_above_exits_zero() {
     let root = sample_root();
     let (code, _, _) = output_of(
         bin()
-            .arg("--lcov")
+            .arg("--coverage")
             .arg(root.join("lcov.info"))
             .arg("--path")
             .arg(&root)
@@ -106,8 +107,14 @@ fn missing_lcov_exits_two() {
 }
 
 #[test]
-fn missing_required_flag_exits_two() {
-    let (code, _, stderr) = output_of(&mut bin());
+fn missing_default_coverage_exits_two() {
+    let (code, _, stderr) = output_of(
+        bin()
+            .arg("--path")
+            .arg("/no/such/crap-rs-path")
+            .arg("--coverage")
+            .arg("/no/such/lcov.info"),
+    );
     assert_eq!(code, 2);
     assert!(!stderr.is_empty());
 }
