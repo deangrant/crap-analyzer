@@ -1,6 +1,6 @@
 //! Walk a syn file and collect non-test function spans.
 
-use super::cfg_filter::{is_cfg_test, is_test_item};
+use super::cfg_filter::{CfgUniverse, skip_cfg, skip_item};
 use super::count_metric;
 use crap_core::{FunctionComplexity, Metric};
 use std::path::Path;
@@ -13,6 +13,7 @@ pub(super) struct FunctionVisitor<'a> {
     pub(super) out: Vec<FunctionComplexity>,
     pub(super) impl_type: Option<String>,
     pub(super) trait_name: Option<String>,
+    pub(super) cfg: &'a CfgUniverse,
 }
 
 impl FunctionVisitor<'_> {
@@ -40,7 +41,7 @@ pub(super) fn qualified_name(prefix: Option<&str>, method: &str) -> String {
 
 impl<'ast> Visit<'ast> for FunctionVisitor<'_> {
     fn visit_item_fn(&mut self, node: &'ast ItemFn) {
-        if is_test_item(&node.attrs) {
+        if skip_item(&node.attrs, self.cfg) {
             return;
         }
         let start_line = node.sig.fn_token.span.start().line;
@@ -55,7 +56,7 @@ impl<'ast> Visit<'ast> for FunctionVisitor<'_> {
     }
 
     fn visit_item_impl(&mut self, node: &'ast ItemImpl) {
-        if is_cfg_test(&node.attrs) {
+        if skip_cfg(&node.attrs, self.cfg) {
             return;
         }
         let prev = self.impl_type.take();
@@ -65,7 +66,7 @@ impl<'ast> Visit<'ast> for FunctionVisitor<'_> {
     }
 
     fn visit_impl_item_fn(&mut self, node: &'ast ImplItemFn) {
-        if is_test_item(&node.attrs) {
+        if skip_item(&node.attrs, self.cfg) {
             return;
         }
         let method = node.sig.ident.to_string();
@@ -77,7 +78,7 @@ impl<'ast> Visit<'ast> for FunctionVisitor<'_> {
     }
 
     fn visit_item_trait(&mut self, node: &'ast ItemTrait) {
-        if is_cfg_test(&node.attrs) {
+        if skip_cfg(&node.attrs, self.cfg) {
             return;
         }
         let prev = self.trait_name.take();
@@ -87,7 +88,7 @@ impl<'ast> Visit<'ast> for FunctionVisitor<'_> {
     }
 
     fn visit_trait_item_fn(&mut self, node: &'ast TraitItemFn) {
-        if is_test_item(&node.attrs) {
+        if skip_item(&node.attrs, self.cfg) {
             return;
         }
         if let Some(body) = &node.default {
@@ -101,7 +102,7 @@ impl<'ast> Visit<'ast> for FunctionVisitor<'_> {
     }
 
     fn visit_item_mod(&mut self, node: &'ast syn::ItemMod) {
-        if !is_cfg_test(&node.attrs) {
+        if !skip_cfg(&node.attrs, self.cfg) {
             visit::visit_item_mod(self, node);
         }
     }

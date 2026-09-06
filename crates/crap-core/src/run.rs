@@ -75,6 +75,7 @@ mod tests {
                 root: request.path.clone(),
                 crate_name: Some("demo".into()),
                 skip: Vec::new(),
+                enabled_features: Vec::new(),
             }])
         }
 

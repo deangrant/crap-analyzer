@@ -40,7 +40,17 @@ impl<'ast> Visit<'ast> for CcCounter {
 
     fn visit_arm(&mut self, node: &'ast syn::Arm) {
         self.count += 1;
+        if node.guard.is_some() {
+            self.count += 1;
+        }
         visit::visit_arm(self, node);
+    }
+
+    fn visit_local(&mut self, node: &'ast syn::Local) {
+        if node.init.as_ref().is_some_and(|init| init.diverge.is_some()) {
+            self.count += 1;
+        }
+        visit::visit_local(self, node);
     }
 
     fn visit_expr_binary(&mut self, node: &'ast syn::ExprBinary) {
@@ -153,5 +163,25 @@ mod tests {
     #[test]
     fn question_mark_adds_one() {
         assert_eq!(snippet("fn f() -> Result<(), ()> { Ok(())?; Ok(()) }"), 2);
+    }
+
+    #[test]
+    fn let_else_adds_one() {
+        assert_eq!(
+            snippet("fn f(r: Result<i32, ()>) { let Ok(x) = r else { return; }; x; }"),
+            2
+        );
+    }
+
+    #[test]
+    fn match_guard_adds_one_on_top_of_arm() {
+        let src = "fn f(n: i32) { match n { n if n > 0 => {}, _ => {} } }";
+        assert_eq!(snippet(src), 4);
+    }
+
+    #[test]
+    fn match_guard_and_still_adds() {
+        let src = "fn f(n: i32, a: bool) { match n { n if n > 0 && a => {}, _ => {} } }";
+        assert_eq!(snippet(src), 5);
     }
 }

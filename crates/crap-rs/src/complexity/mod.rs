@@ -5,6 +5,7 @@ mod cognitive;
 mod cyclomatic;
 mod visitor;
 
+use cfg_filter::CfgUniverse;
 use crap_core::{Error, FunctionComplexity, Metric, Result};
 use std::path::Path;
 use syn::parse::Parser;
@@ -17,9 +18,18 @@ use visitor::FunctionVisitor;
 ///
 /// Returns [`Error::Io`] if the file cannot be read, or [`Error::Parse`]
 /// if `syn` rejects the source.
-pub fn analyze_file(path: &Path, metric: Metric) -> Result<Vec<FunctionComplexity>> {
+pub fn analyze_file(
+    path: &Path,
+    metric: Metric,
+    features: &[String],
+) -> Result<Vec<FunctionComplexity>> {
     let source = std::fs::read_to_string(path).map_err(|source| Error::io(path, source))?;
-    analyze_source(path, &source, metric)
+    analyze_source_cfg(
+        path,
+        &source,
+        metric,
+        &CfgUniverse::new(features.iter().cloned()),
+    )
 }
 
 /// Parses `source` as if it lived at `path`.
@@ -27,10 +37,25 @@ pub fn analyze_file(path: &Path, metric: Metric) -> Result<Vec<FunctionComplexit
 /// # Errors
 ///
 /// Returns [`Error::Parse`] when the text is not valid Rust.
+#[cfg(test)]
 pub fn analyze_source(
     path: &Path,
     source: &str,
     metric: Metric,
+) -> Result<Vec<FunctionComplexity>> {
+    analyze_source_cfg(
+        path,
+        source,
+        metric,
+        &CfgUniverse::new(std::iter::empty::<String>()),
+    )
+}
+
+fn analyze_source_cfg(
+    path: &Path,
+    source: &str,
+    metric: Metric,
+    cfg: &CfgUniverse,
 ) -> Result<Vec<FunctionComplexity>> {
     let syntax = syn::parse_file(source)
         .map_err(|err| Error::Parse(format!("{}: {err}", path.display())))?;
@@ -40,6 +65,7 @@ pub fn analyze_source(
         out: Vec::new(),
         impl_type: None,
         trait_name: None,
+        cfg,
     };
     visitor.visit_file(&syntax);
     Ok(visitor.out)

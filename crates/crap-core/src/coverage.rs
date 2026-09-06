@@ -25,15 +25,42 @@ impl FileCoverage {
     /// Returns [`None`] when the span has no instrumented lines.
     #[must_use]
     pub fn coverage_in_span(&self, start: usize, end: usize) -> Option<f64> {
+        self.coverage_in_span_excluding(start, end, &[])
+    }
+
+    /// Like [`Self::coverage_in_span`], omitting lines inside `exclude` ranges.
+    ///
+    /// Nested function spans use this so the outer function is not charged
+    /// for the inner function's instrumented lines.
+    #[must_use]
+    pub fn coverage_in_span_excluding(
+        &self,
+        start: usize,
+        end: usize,
+        exclude: &[(usize, usize)],
+    ) -> Option<f64> {
         let start = u32::try_from(start).unwrap_or(u32::MAX);
         let end = u32::try_from(end).unwrap_or(u32::MAX);
-        let executable: Vec<u64> = self.lines.range(start..=end).map(|(_, h)| *h).collect();
+        let executable: Vec<u64> = self
+            .lines
+            .range(start..=end)
+            .filter(|(line, _)| !line_in_ranges(**line, exclude))
+            .map(|(_, hits)| *hits)
+            .collect();
         if executable.is_empty() {
             return None;
         }
         let covered = executable.iter().filter(|hits| **hits > 0).count();
         Some((covered as f64 / executable.len() as f64) * 100.0)
     }
+}
+
+fn line_in_ranges(line: u32, ranges: &[(usize, usize)]) -> bool {
+    ranges.iter().any(|&(start, end)| {
+        let start = u32::try_from(start).unwrap_or(u32::MAX);
+        let end = u32::try_from(end).unwrap_or(u32::MAX);
+        line >= start && line <= end
+    })
 }
 
 /// Reads an LCOV file from `path`.
@@ -164,6 +191,18 @@ mod tests {
             lines: [(10, 5), (11, 0), (12, 1), (13, 0)].into_iter().collect(),
         };
         assert_eq!(cov.coverage_in_span(10, 13), Some(50.0));
+    }
+
+    #[test]
+    fn excluding_nested_span_drops_those_lines() {
+        let cov = FileCoverage {
+            lines: [(1, 1), (5, 0), (6, 0), (10, 1)].into_iter().collect(),
+        };
+        assert_eq!(
+            cov.coverage_in_span_excluding(1, 10, &[(5, 6)]),
+            Some(100.0)
+        );
+        assert_eq!(cov.coverage_in_span(1, 10), Some(50.0));
     }
 
     #[test]

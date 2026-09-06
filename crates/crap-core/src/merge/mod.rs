@@ -74,7 +74,7 @@ pub fn join<S: BuildHasher>(
     let index = PathIndex::from_coverage(coverage);
     let mut entries = Vec::new();
     for item in functions {
-        let Some(coverage_pct) = coverage_for(&index, &item.function, missing) else {
+        let Some(coverage_pct) = coverage_for(&index, item, functions, missing) else {
             continue;
         };
         let cc = item.function.complexity as f64;
@@ -99,17 +99,32 @@ pub fn join<S: BuildHasher>(
 
 fn coverage_for(
     index: &PathIndex,
-    function: &FunctionComplexity,
+    item: &LocatedFn,
+    functions: &[LocatedFn],
     missing: MissingPolicy,
 ) -> Option<f64> {
-    let found = index
-        .lookup(&function.file)
-        .and_then(|file| file.coverage_in_span(function.start_line, function.end_line));
+    let exclude = nested_excludes(functions, &item.function);
+    let found = index.lookup(&item.function.file, item.crate_name.as_deref()).and_then(|file| {
+        file.coverage_in_span_excluding(item.function.start_line, item.function.end_line, &exclude)
+    });
     found.or(match missing {
         MissingPolicy::Pessimistic => Some(0.0),
         MissingPolicy::Optimistic => Some(100.0),
         MissingPolicy::Skip => None,
     })
+}
+
+fn nested_excludes(functions: &[LocatedFn], current: &FunctionComplexity) -> Vec<(usize, usize)> {
+    functions
+        .iter()
+        .filter(|other| other.function.file == current.file && is_nested(current, &other.function))
+        .map(|other| (other.function.start_line, other.function.end_line))
+        .collect()
+}
+
+const fn is_nested(outer: &FunctionComplexity, inner: &FunctionComplexity) -> bool {
+    let strictly_smaller = inner.start_line > outer.start_line || inner.end_line < outer.end_line;
+    outer.start_line <= inner.start_line && inner.end_line <= outer.end_line && strictly_smaller
 }
 
 #[cfg(test)]
@@ -122,6 +137,16 @@ mod tests {
     use std::path::PathBuf;
 
     fn func(file: &str, name: &str, start: usize, end: usize) -> LocatedFn {
+        func_in(file, name, start, end, None)
+    }
+
+    fn func_in(
+        file: &str,
+        name: &str,
+        start: usize,
+        end: usize,
+        crate_name: Option<&str>,
+    ) -> LocatedFn {
         LocatedFn {
             function: FunctionComplexity {
                 file: PathBuf::from(file),
@@ -130,7 +155,7 @@ mod tests {
                 end_line: end,
                 complexity: 1,
             },
-            crate_name: None,
+            crate_name: crate_name.map(str::to_owned),
         }
     }
 
@@ -254,6 +279,45 @@ mod tests {
         );
         let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
         assert_eq!(entries[0].coverage, 0.0);
+    }
+
+    #[test]
+    fn crate_name_breaks_equal_length_suffix_tie() {
+        let functions = [func_in("src/lib.rs", "f", 1, 1, Some("crate_a"))];
+        let mut coverage = cov("/crate_a/src/lib.rs", &[(1, 1)]);
+        coverage.insert(
+            PathBuf::from("/crate_b/src/lib.rs"),
+            FileCoverage {
+                lines: std::iter::once((1, 0)).collect(),
+            },
+        );
+        let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
+        assert_eq!(entries[0].coverage, 100.0);
+    }
+
+    #[test]
+    fn nested_fn_lines_are_excluded_from_outer_coverage() {
+        let functions = [
+            func("src/foo.rs", "outer", 1, 20),
+            func("src/foo.rs", "inner", 5, 12),
+        ];
+        let coverage = cov(
+            "src/foo.rs",
+            &[(2, 1), (3, 1), (5, 0), (8, 0), (12, 0), (15, 1), (18, 1)],
+        );
+        let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
+        let outer = entries.iter().find(|e| e.function == "outer");
+        let inner = entries.iter().find(|e| e.function == "inner");
+        assert!(outer.is_some() && inner.is_some());
+        let Some(outer) = outer else {
+            return;
+        };
+        let Some(inner) = inner else {
+            return;
+        };
+        assert_eq!(outer.coverage, 100.0);
+        assert_eq!(inner.coverage, 0.0);
+        assert_eq!(outer.crap, 1.0);
     }
 
     #[test]

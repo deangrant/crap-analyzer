@@ -52,6 +52,23 @@ pub struct Args {
     /// Policy for functions with no coverage data.
     #[arg(long, default_value = "pessimistic")]
     pub(crate) missing: MissingPolicy,
+    /// Cargo feature flags used for `#[cfg]` evaluation.
+    #[command(flatten)]
+    pub(crate) features: FeatureArgs,
+}
+
+/// Cargo feature flags mirrored from `cargo llvm-cov` / `cargo test`.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Parser)]
+pub struct FeatureArgs {
+    /// Extra Cargo features to treat as enabled.
+    #[arg(long, value_delimiter = ',')]
+    pub(crate) features: Vec<String>,
+    /// Enable every named package feature.
+    #[arg(long)]
+    pub(crate) all_features: bool,
+    /// Do not enable the package `default` feature list.
+    #[arg(long)]
+    pub(crate) no_default_features: bool,
 }
 
 impl Args {
@@ -62,6 +79,11 @@ impl Args {
             RustLanguage {
                 workspace: self.workspace,
                 packages: self.packages.clone(),
+                features: crate::FeatureSelection {
+                    features: self.features.features.clone(),
+                    all_features: self.features.all_features,
+                    no_default_features: self.features.no_default_features,
+                },
             },
             ScanRequest {
                 path: self.path.clone(),
@@ -138,9 +160,14 @@ OPTIONS:
     -p, --package <name>    Analyze only this member (repeatable)
     --summary               Counts and worst offender; no table
     --fail-above            Exit 1 if any function exceeds --threshold
-    --missing <policy>      No LCOV data, or a span with no instrumented
-                            lines: pessimistic (0%, default),
-                            optimistic (100%), or skip
+    --missing <policy>      No LCOV data, empty span, or an unresolved
+                            path tie: pessimistic (0%, default),
+                            optimistic (100%), or skip. A package name
+                            breaks equal src/lib.rs suffix ties.
+    --features <list>       Extra Cargo features (comma-separated);
+                            pass the same set used for cargo llvm-cov
+    --all-features          Enable every named package feature
+    --no-default-features   Do not enable package default features
     -h, --help              Print help
     -V, --version           Print version
 
@@ -157,11 +184,13 @@ SCORE:
       CC 11-15  ~57%   CC 26-30   100%
       CC 31+    refactor; coverage cannot help
 
-    Cyclomatic: each match arm adds 1, including `_` / catch-alls.
+    Cyclomatic: each match arm adds 1, including `_` / catch-alls;
+    let-else and each match guard add 1.
     Cognitive: nesting-weighted; match is one increment (not per arm);
-    else/else-if are flat +1; same-operator boolean runs count once;
-    labeled break/continue +1; `?` is free. Cognitive does not add
-    for direct recursion.
+    let-else is if/else; each match guard is flat +1; else/else-if
+    are flat +1; same-operator boolean runs count once; labeled
+    break/continue +1; `?` is free. Cognitive does not add for
+    direct recursion.
 
     A low score is not a reason to skip tests on simple functions.
     If a function is flagged: add automated tests when coverage is
@@ -298,6 +327,24 @@ mod tests {
     }
 
     #[test]
+    fn parses_feature_flags() {
+        let action = parse_args(argv(&[
+            "--lcov",
+            "x",
+            "--features",
+            "serde,std",
+            "--no-default-features",
+        ]));
+        assert!(matches!(
+            action,
+            Ok(Action::Run(ref args))
+                if args.features.features == ["serde".to_owned(), "std".to_owned()]
+                    && args.features.no_default_features
+                    && !args.features.all_features
+        ));
+    }
+
+    #[test]
     fn leftover_crap_token_is_usage() {
         assert!(parse_args(argv(&["crap", "--lcov", "x"])).is_err());
     }
@@ -317,6 +364,7 @@ mod tests {
         };
         let (lang, request) = args.parts();
         assert!(lang.workspace);
+        assert!(!lang.features.all_features);
         assert!(request.summary);
         assert!(request.fail_above);
         assert_eq!(request.lcov, Path::new("x.info"));

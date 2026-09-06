@@ -12,6 +12,10 @@ pub struct Package {
     pub name: String,
     /// Directory that contains this package's `Cargo.toml`.
     pub root: PathBuf,
+    /// Names listed in the package `default` feature.
+    pub default_features: Vec<String>,
+    /// Named features other than `default`.
+    pub all_features: Vec<String>,
 }
 
 /// Loads every workspace member from `cargo metadata` at `root`.
@@ -75,33 +79,60 @@ fn run_metadata(root: &Path) -> Result<Value> {
 
 fn packages_from_metadata(json: &Value) -> Result<Vec<Package>> {
     let members = string_ids(json, "workspace_members")?;
-    let Some(array) = json.get("packages").and_then(Value::as_array) else {
-        return Err(Error::Metadata("missing packages array".into()));
-    };
+    let array = json
+        .get("packages")
+        .and_then(Value::as_array)
+        .ok_or_else(|| Error::Metadata("missing packages array".into()))?;
     let mut out = Vec::new();
     for item in array {
-        let Some(id) = item.get("id").and_then(Value::as_str) else {
-            continue;
-        };
-        if !members.iter().any(|m| m == id) {
-            continue;
+        if let Some(pkg) = package_from_item(item, &members)? {
+            out.push(pkg);
         }
-        let Some(name) = item.get("name").and_then(Value::as_str) else {
-            continue;
-        };
-        let Some(manifest) = item.get("manifest_path").and_then(Value::as_str) else {
-            continue;
-        };
-        let root = Path::new(manifest)
-            .parent()
-            .ok_or_else(|| Error::Metadata("manifest_path has no parent".into()))?
-            .to_path_buf();
-        out.push(Package {
-            name: name.to_owned(),
-            root,
-        });
     }
     Ok(out)
+}
+
+fn field<'a>(item: &'a Value, key: &str) -> Option<&'a str> {
+    item.get(key).and_then(Value::as_str)
+}
+
+fn package_from_item(item: &Value, members: &[String]) -> Result<Option<Package>> {
+    let Some(id) = field(item, "id") else {
+        return Ok(None);
+    };
+    if !members.iter().any(|m| m == id) {
+        return Ok(None);
+    }
+    let Some(name) = field(item, "name") else {
+        return Ok(None);
+    };
+    let Some(manifest) = field(item, "manifest_path") else {
+        return Ok(None);
+    };
+    let root = Path::new(manifest)
+        .parent()
+        .ok_or_else(|| Error::Metadata("manifest_path has no parent".into()))?
+        .to_path_buf();
+    let (default_features, all_features) = features_from_package(item);
+    Ok(Some(Package {
+        name: name.to_owned(),
+        root,
+        default_features,
+        all_features,
+    }))
+}
+
+fn features_from_package(item: &Value) -> (Vec<String>, Vec<String>) {
+    let Some(obj) = item.get("features").and_then(Value::as_object) else {
+        return (Vec::new(), Vec::new());
+    };
+    let default_features = obj
+        .get("default")
+        .and_then(Value::as_array)
+        .map(|arr| arr.iter().filter_map(Value::as_str).map(str::to_owned).collect())
+        .unwrap_or_default();
+    let all_features = obj.keys().filter(|key| *key != "default").cloned().collect();
+    (default_features, all_features)
 }
 
 fn string_ids(json: &Value, key: &str) -> Result<Vec<String>> {
@@ -149,6 +180,35 @@ mod tests {
         assert_eq!(pkgs.len(), 1);
         assert_eq!(pkgs[0].name, "a");
         assert_eq!(pkgs[0].root, PathBuf::from("/tmp/a"));
+        assert!(pkgs[0].default_features.is_empty());
+        assert!(pkgs[0].all_features.is_empty());
+    }
+
+    #[test]
+    fn reads_package_features_from_metadata() {
+        let json = serde_json::from_str(
+            r#"{
+              "workspace_members": ["pkg a 1"],
+              "packages": [{
+                "name": "a",
+                "id": "pkg a 1",
+                "manifest_path": "/tmp/a/Cargo.toml",
+                "features": {
+                  "default": ["std"],
+                  "std": [],
+                  "serde": ["std"]
+                }
+              }]
+            }"#,
+        );
+        assert!(json.is_ok());
+        let pkgs = packages_from_metadata(&json.unwrap_or_default());
+        assert!(pkgs.is_ok());
+        let pkgs = pkgs.unwrap_or_default();
+        assert_eq!(pkgs[0].default_features, vec!["std".to_owned()]);
+        assert!(pkgs[0].all_features.contains(&"std".to_owned()));
+        assert!(pkgs[0].all_features.contains(&"serde".to_owned()));
+        assert!(!pkgs[0].all_features.contains(&"default".to_owned()));
     }
 
     #[test]
@@ -157,14 +217,20 @@ mod tests {
             Package {
                 name: "root".into(),
                 root: PathBuf::from("/ws"),
+                default_features: Vec::new(),
+                all_features: Vec::new(),
             },
             Package {
                 name: "inner".into(),
                 root: PathBuf::from("/ws/inner"),
+                default_features: Vec::new(),
+                all_features: Vec::new(),
             },
             Package {
                 name: "sib".into(),
                 root: PathBuf::from("/other"),
+                default_features: Vec::new(),
+                all_features: Vec::new(),
             },
         ];
         let skip = nested_member_roots(Path::new("/ws"), &all);

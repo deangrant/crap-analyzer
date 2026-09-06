@@ -88,9 +88,28 @@ impl<'ast> Visit<'ast> for CognitiveCounter {
         self.visit_expr(&node.expr);
         self.score_loop_like(|this| {
             for arm in &node.arms {
+                if arm.guard.is_some() {
+                    this.count += 1;
+                }
                 visit::visit_arm(this, arm);
             }
         });
+    }
+
+    fn visit_local(&mut self, node: &'ast syn::Local) {
+        self.visit_pat(&node.pat);
+        let Some(init) = &node.init else {
+            return;
+        };
+        self.visit_expr(&init.expr);
+        let Some((_, diverge)) = &init.diverge else {
+            return;
+        };
+        self.add_nested();
+        self.count += 1;
+        self.enter();
+        self.visit_expr(diverge);
+        self.leave();
     }
 
     fn visit_expr_closure(&mut self, node: &'ast syn::ExprClosure) {
@@ -262,6 +281,46 @@ mod tests {
     #[test]
     fn nested_match_adds_nesting_penalty() {
         let src = "fn f(x: i32) { if x > 0 { match x { 0 => {}, 1 => {}, _ => {} } } }";
+        assert_eq!(snippet(src), 3);
+    }
+
+    #[test]
+    fn let_else_scores_like_if_else() {
+        assert_eq!(
+            snippet("fn f(r: Result<i32, ()>) { let Ok(x) = r else { return; }; x; }"),
+            2
+        );
+    }
+
+    #[test]
+    fn let_else_matches_if_let_else() {
+        let let_else = snippet("fn f(r: Option<i32>) { let Some(x) = r else { 0; }; x; }");
+        let if_let = snippet("fn f(r: Option<i32>) { if let Some(x) = r { x; } else { 0; } }");
+        assert_eq!(let_else, 2);
+        assert_eq!(if_let, 2);
+    }
+
+    #[test]
+    fn nested_if_inside_let_else_pays_nesting() {
+        let src = "fn f(r: Result<i32, ()>) { let Ok(x) = r else { if true { return; } }; x; }";
+        assert_eq!(snippet(src), 4);
+    }
+
+    #[test]
+    fn match_guard_adds_one() {
+        let src = "fn f(n: i32) { match n { n if n > 0 => {}, _ => {} } }";
+        assert_eq!(snippet(src), 2);
+    }
+
+    #[test]
+    fn match_guard_bool_chain_still_adds() {
+        let src = "fn f(n: i32, a: bool) { match n { n if n > 0 && a => {}, _ => {} } }";
+        assert_eq!(snippet(src), 3);
+    }
+
+    #[test]
+    fn two_match_guards_add_two() {
+        let src = "fn f(n: i32) { match n { n if n > 0 => {}, n if n < 0 => {}, _ => {} } }";
         assert_eq!(snippet(src), 3);
     }
 

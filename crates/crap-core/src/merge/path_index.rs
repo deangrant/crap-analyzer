@@ -25,29 +25,44 @@ impl PathIndex {
         }
     }
 
-    pub(super) fn lookup(&self, source: &Path) -> Option<&FileCoverage> {
+    pub(super) fn lookup(&self, source: &Path, crate_name: Option<&str>) -> Option<&FileCoverage> {
         let src = components(source);
         let mut best_rank: Option<MatchRank> = None;
-        let mut best_file: Option<&FileCoverage> = None;
-        let mut tied = false;
+        let mut winners: Vec<(&Vec<String>, &FileCoverage)> = Vec::new();
         for (key, file) in &self.files {
             let Some(rank) = match_rank(&src, key) else {
                 continue;
             };
             match best_rank {
                 Some(best) if rank < best => {}
-                Some(best) if rank == best => tied = true,
+                Some(best) if rank == best => winners.push((key, file)),
                 _ => {
                     best_rank = Some(rank);
-                    best_file = Some(file);
-                    tied = false;
+                    winners.clear();
+                    winners.push((key, file));
                 }
             }
         }
-        if tied {
-            return None;
+        pick_winner(&winners, crate_name)
+    }
+}
+
+fn pick_winner<'a>(
+    winners: &[(&'a Vec<String>, &'a FileCoverage)],
+    crate_name: Option<&str>,
+) -> Option<&'a FileCoverage> {
+    match winners {
+        [] => None,
+        [(_, file)] => Some(*file),
+        many => {
+            let name = crate_name?;
+            let mut named = many.iter().filter(|(key, _)| key.iter().any(|part| part == name));
+            let first = named.next()?;
+            if named.next().is_some() {
+                return None;
+            }
+            Some(first.1)
         }
-        best_file
     }
 }
 

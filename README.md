@@ -80,8 +80,11 @@ still keeps the score over the threshold.
 - `-p, --package <name>` — one member; repeatable; conflicts with `--workspace`
 - `--summary` — counts and worst offender; no table
 - `--fail-above` — exit 1 when any function exceeds the threshold
-- `--missing` — no LCOV data, or an AST span with no instrumented lines:
-  `pessimistic` (default, 0%), `optimistic` (100%), or `skip`
+- `--missing` — no LCOV data, an empty span, or an unresolved path tie:
+  `pessimistic` (default, 0%), `optimistic` (100%), or `skip`. A package
+  name (`--workspace` / `-p`) breaks equal `src/lib.rs` suffix ties
+- `--features`, `--all-features`, `--no-default-features` — same feature
+  universe as the `cargo llvm-cov` run that produced the LCOV file
 
 Exit codes: `0` finished and clean, `1` finished and the gate tripped,
 `2` usage or analysis error (including when every source file fails to parse).
@@ -106,10 +109,14 @@ Line coverage is not proof that tests assert anything useful. Some
 complex functions are legitimate. The score does not measure coupling or
 cohesion. Closures count toward the enclosing function; decisions inside
 unexpanded or opaque macros may be missed. Cyclomatic: each match arm
-adds 1, including `_` and other catch-alls. Cognitive: nesting-weighted
-increments; a `match` is one increment (not per arm); `else` / `else if`
-are flat +1; a run of the same boolean operator counts once; labeled
-`break` / `continue` add 1; `?` is free; direct recursion is not counted.
+adds 1, including `_` and other catch-alls; `let … else` and each match
+guard add 1. Cognitive: nesting-weighted increments; a `match` is one
+increment (not per arm); `let … else` is scored like `if` / `else`; each
+match guard is flat +1; `else` / `else if` are flat +1; a run of the same
+boolean operator counts once; labeled `break` / `continue` add 1; `?` is
+free; direct recursion is not counted. Nested function coverage excludes
+the inner span. Feature-gated items are skipped unless those features are
+enabled (pass the same `--features` flags used for `cargo llvm-cov`).
 
 ## License
 

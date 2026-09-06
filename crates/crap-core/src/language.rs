@@ -41,6 +41,8 @@ pub struct Target {
     pub crate_name: Option<String>,
     /// Nested roots the walker must not enter.
     pub skip: Vec<PathBuf>,
+    /// Feature names treated as enabled when evaluating `#[cfg]`.
+    pub enabled_features: Vec<String>,
 }
 
 /// Discovers analysis targets and collects per-function complexity.
