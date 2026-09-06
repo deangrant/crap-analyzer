@@ -121,6 +121,17 @@ mod tests {
     }
 
     #[test]
+    fn one_match_arm_adds_one() {
+        assert_eq!(snippet("fn f(x: i32) { match x { _ => {} } }"), 2);
+    }
+
+    #[test]
+    fn nested_match_arms_still_count() {
+        let src = "fn f(x: i32) { if x > 0 { match x { 0 => {}, 1 => {}, _ => {} } } }";
+        assert_eq!(snippet(src), 5);
+    }
+
+    #[test]
     fn loop_adds_one() {
         assert_eq!(snippet("fn f() { loop { break; } }"), 2);
     }
@@ -183,5 +194,28 @@ mod tests {
     fn match_guard_and_still_adds() {
         let src = "fn f(n: i32, a: bool) { match n { n if n > 0 && a => {}, _ => {} } }";
         assert_eq!(snippet(src), 5);
+    }
+
+    #[test]
+    fn match_guard_range_bool_chain_adds() {
+        let src = "fn f(n: i32) { match n { n if n > 0 && n < 10 => {}, _ => {} } }";
+        assert_eq!(snippet(src), 5);
+    }
+
+    #[test]
+    fn let_some_else_inner_if_still_counts() {
+        let src = "fn f(r: Option<i32>) { let Some(x) = r else { if true { return; } }; x; }";
+        assert_eq!(snippet(src), 3);
+    }
+
+    #[test]
+    fn async_wrapper_does_not_add() {
+        assert_eq!(snippet("async fn f() { if true {} }"), 2);
+        assert_eq!(snippet("fn f() { async { if true {} }; }"), 2);
+    }
+
+    #[test]
+    fn try_block_does_not_add() {
+        assert_eq!(snippet("fn f() { try { if true {} } }"), 2);
     }
 }

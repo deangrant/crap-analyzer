@@ -13,6 +13,7 @@ coverage/
 *.profraw
 *.profdata
 lcov.info
+!crates/crap-rs/tests/fixtures/sample/lcov.info
 cobertura.xml
 tarpaulin-report.html
 

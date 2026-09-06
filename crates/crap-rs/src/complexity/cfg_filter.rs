@@ -200,6 +200,13 @@ mod tests {
     }
 
     #[test]
+    fn cfg_feature_off_is_skipped() {
+        let fns = cyclo("#[cfg(feature = \"off\")] fn gated() {} fn keep() {}");
+        assert_eq!(fns.len(), 1);
+        assert_eq!(fns[0].name, "keep");
+    }
+
+    #[test]
     fn cfg_feature_is_kept_when_enabled() {
         let cfg = CfgUniverse::new(["x"]);
         let fns = cyclo_features("#[cfg(feature = \"x\")] fn f() { if true {} }", &cfg);

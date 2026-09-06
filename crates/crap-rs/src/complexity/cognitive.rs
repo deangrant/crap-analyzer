@@ -279,6 +279,11 @@ mod tests {
     }
 
     #[test]
+    fn one_empty_match_arm_is_still_one() {
+        assert_eq!(snippet("fn f(x: i32) { match x { _ => {} } }"), 1);
+    }
+
+    #[test]
     fn nested_match_adds_nesting_penalty() {
         let src = "fn f(x: i32) { if x > 0 { match x { 0 => {}, 1 => {}, _ => {} } } }";
         assert_eq!(snippet(src), 3);
@@ -315,6 +320,12 @@ mod tests {
     #[test]
     fn match_guard_bool_chain_still_adds() {
         let src = "fn f(n: i32, a: bool) { match n { n if n > 0 && a => {}, _ => {} } }";
+        assert_eq!(snippet(src), 3);
+    }
+
+    #[test]
+    fn match_guard_range_bool_chain_adds() {
+        let src = "fn f(n: i32) { match n { n if n > 0 && n < 10 => {}, _ => {} } }";
         assert_eq!(snippet(src), 3);
     }
 
@@ -387,6 +398,17 @@ mod tests {
             snippet("fn f(a: bool, x: i32, y: i32) { let _ = a && x + y > 0; }"),
             1
         );
+    }
+
+    #[test]
+    fn async_wrapper_does_not_add() {
+        assert_eq!(snippet("async fn f() { if true {} }"), 1);
+        assert_eq!(snippet("fn f() { async { if true {} }; }"), 1);
+    }
+
+    #[test]
+    fn try_block_does_not_add() {
+        assert_eq!(snippet("fn f() { try { if true {} } }"), 1);
     }
 
     #[test]

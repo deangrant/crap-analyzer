@@ -350,6 +350,27 @@ mod tests {
     }
 
     #[test]
+    fn inner_only_hits_leave_outer_on_missing_policy() {
+        let functions = [
+            func("src/foo.rs", "outer", 1, 20),
+            func("src/foo.rs", "inner", 5, 12),
+        ];
+        let coverage = cov("src/foo.rs", &[(5, 1), (8, 1), (12, 1)]);
+        let pessimistic = join(&functions, &coverage, MissingPolicy::Pessimistic);
+        let skip = join(&functions, &coverage, MissingPolicy::Skip);
+        let optimistic = join(&functions, &coverage, MissingPolicy::Optimistic);
+        let named = |rows: &[CrapEntry], name: &str| {
+            rows.iter().find(|e| e.function == name).map(|e| e.coverage)
+        };
+        assert_eq!(named(&pessimistic, "outer"), Some(0.0));
+        assert_eq!(named(&pessimistic, "inner"), Some(100.0));
+        assert_eq!(named(&skip, "outer"), None);
+        assert_eq!(named(&skip, "inner"), Some(100.0));
+        assert_eq!(named(&optimistic, "outer"), Some(100.0));
+        assert_eq!(named(&optimistic, "inner"), Some(100.0));
+    }
+
+    #[test]
     fn equal_length_crate_suffixes_skip() {
         let functions = [func("src/lib.rs", "f", 1, 1)];
         let mut coverage = cov("/crate_a/src/lib.rs", &[(1, 1)]);
@@ -361,6 +382,21 @@ mod tests {
         );
         let entries = join(&functions, &coverage, MissingPolicy::Skip);
         assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn equal_length_crate_suffixes_optimistic() {
+        let functions = [func("src/lib.rs", "f", 1, 1)];
+        let mut coverage = cov("/crate_a/src/lib.rs", &[(1, 1)]);
+        coverage.insert(
+            PathBuf::from("/crate_b/src/lib.rs"),
+            FileCoverage {
+                lines: std::iter::once((1, 0)).collect(),
+            },
+        );
+        let entries = join(&functions, &coverage, MissingPolicy::Optimistic);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].coverage, 100.0);
     }
 
     #[test]

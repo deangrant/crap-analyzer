@@ -98,6 +98,11 @@ fn packages_from_metadata(json: &Value) -> Result<Vec<Package>> {
             out.push(pkg);
         }
     }
+    if !members.is_empty() && out.is_empty() {
+        return Err(Error::resolve(
+            "cargo metadata: workspace members did not match any packages",
+        ));
+    }
     Ok(out)
 }
 
@@ -259,6 +264,24 @@ mod tests {
             PathBuf::from("/other/ws/Cargo.toml")
         );
         assert_eq!(manifest_path(Path::new(".")), PathBuf::from("./Cargo.toml"));
+    }
+
+    #[test]
+    fn unmatched_workspace_members_is_metadata_error() {
+        let json = serde_json::json!({
+            "workspace_members": ["pkg missing 1"],
+            "packages": [
+                {
+                    "id": "pkg other 1",
+                    "name": "other",
+                    "manifest_path": "/tmp/other/Cargo.toml"
+                }
+            ]
+        });
+        let pkgs = packages_from_metadata(&json);
+        assert!(pkgs.is_err());
+        let message = pkgs.as_ref().err().map_or(String::new(), ToString::to_string);
+        assert!(message.contains("did not match"), "{message}");
     }
 
     #[test]

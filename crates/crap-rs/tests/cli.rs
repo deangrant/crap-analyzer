@@ -142,6 +142,80 @@ fn unknown_package_exits_two() {
 }
 
 #[test]
+fn fixture_json_locks_sample_scores() {
+    let root = sample_root();
+    let (code, stdout, stderr) = output_of(
+        bin()
+            .arg("--lcov")
+            .arg(root.join("lcov.info"))
+            .arg("--path")
+            .arg(&root)
+            .arg("--format")
+            .arg("json")
+            .arg("--threshold")
+            .arg("30"),
+    );
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    let parsed = serde_json::from_str::<serde_json::Value>(&stdout);
+    assert!(parsed.is_ok(), "{parsed:?}");
+    let value = parsed.unwrap_or_default();
+    assert_covered_low(&value, "trivial", 1, 1.0);
+    assert_covered_low(&value, "moderate", 3, 3.0);
+    assert_crappy_high(&value);
+}
+
+fn assert_covered_low(value: &serde_json::Value, name: &str, complexity: i64, crap: f64) {
+    let row = fixture_fn(value, name);
+    assert_eq!(row["complexity"], complexity);
+    assert_eq!(row["coverage_percent"], 100.0);
+    assert_eq!(row["crap"], crap);
+    assert_eq!(row["risk"], "low");
+    assert_eq!(row["exceeds"], false);
+}
+
+fn assert_crappy_high(value: &serde_json::Value) {
+    let row = fixture_fn(value, "crappy");
+    assert_eq!(row["complexity"], 11);
+    assert_eq!(row["exceeds"], true);
+    assert_eq!(row["risk"], "high");
+    let cov = row["coverage_percent"].as_f64().unwrap_or(0.0);
+    let crap = row["crap"].as_f64().unwrap_or(0.0);
+    assert!((cov - 3.125).abs() < 0.2, "{cov}");
+    assert!((crap - 121.0).abs() < 1.0, "{crap}");
+}
+
+fn fixture_fn<'a>(value: &'a serde_json::Value, name: &str) -> &'a serde_json::Value {
+    value["result"]["functions"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|row| row["identity"]["function"] == name)
+        .unwrap_or(&serde_json::Value::Null)
+}
+
+#[test]
+fn garbage_lcov_exits_two() {
+    let root = std::env::temp_dir().join(format!(
+        "crap-rs-garbage-lcov-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos())
+    ));
+    let created = fs::create_dir_all(&root);
+    assert!(created.is_ok(), "{created:?}");
+    let written = fs::write(root.join("lib.rs"), "fn f() {}\n");
+    assert!(written.is_ok(), "{written:?}");
+    let lcov = root.join("lcov.info");
+    let lcov_written = fs::write(&lcov, "this is not lcov\njust noise\n");
+    assert!(lcov_written.is_ok(), "{lcov_written:?}");
+    let (code, _, stderr) = output_of(bin().arg("--lcov").arg(&lcov).arg("--path").arg(&root));
+    let _ = fs::remove_dir_all(&root);
+    assert_eq!(code, 2, "{stderr}");
+    assert!(stderr.contains("DA") || stderr.contains("line-hit"));
+}
+
+#[test]
 fn json_format_emits_envelope() {
     let root = sample_root();
     let (code, stdout, _) = output_of(

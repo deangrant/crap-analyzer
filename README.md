@@ -134,6 +134,7 @@ this workspace yet.
 - Decisions inside unexpanded or opaque macros may be missed.
 - Cognitive does not add for direct recursion.
 - Closures count toward the enclosing function.
+- Async and `try` blocks do not add; inner decisions still count.
 - Cyclomatic: each match arm adds 1, including `_` and other catch-alls;
   `let … else` and each match guard add 1.
 - Cognitive: nesting-weighted increments; a `match` is one increment
