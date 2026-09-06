@@ -166,6 +166,20 @@ fn equal_length_crate_suffixes_are_ambiguous() {
 }
 
 #[test]
+fn crate_name_requires_package_src_dir() {
+    let functions = [func_in("lib.rs", "f", 1, 1, Some("demo"))];
+    let mut coverage = cov("demo/src/lib.rs", &[(1, 1)]);
+    coverage.insert(
+        PathBuf::from("src/demo/lib.rs"),
+        FileCoverage {
+            lines: std::iter::once((1, 0)).collect(),
+        },
+    );
+    let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
+    assert_f64_bits_eq(entries[0].coverage, 100.0);
+}
+
+#[test]
 fn crate_name_breaks_equal_length_suffix_tie() {
     let functions = [func_in("src/lib.rs", "f", 1, 1, Some("crate_a"))];
     let mut coverage = cov("/crate_a/src/lib.rs", &[(1, 1)]);

@@ -45,17 +45,21 @@ impl FileCoverage {
     ) -> Option<f64> {
         let start = u32::try_from(start).unwrap_or(u32::MAX);
         let end = u32::try_from(end).unwrap_or(u32::MAX);
-        let executable: Vec<u64> = self
-            .lines
-            .range(start..=end)
-            .filter(|(line, _)| !line_in_ranges(**line, exclude))
-            .map(|(_, hits)| *hits)
-            .collect();
-        if executable.is_empty() {
+        let mut total = 0_usize;
+        let mut covered = 0_usize;
+        for (line, hits) in self.lines.range(start..=end) {
+            if line_in_ranges(*line, exclude) {
+                continue;
+            }
+            total += 1;
+            if *hits > 0 {
+                covered += 1;
+            }
+        }
+        if total == 0 {
             return None;
         }
-        let covered = executable.iter().filter(|hits| **hits > 0).count();
-        Some((crate::score::to_f64(covered) / crate::score::to_f64(executable.len())) * 100.0)
+        Some((crate::score::to_f64(covered) / crate::score::to_f64(total)) * 100.0)
     }
 }
 

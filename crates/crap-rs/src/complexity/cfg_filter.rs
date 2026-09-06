@@ -46,12 +46,12 @@ impl CfgUniverse {
         if list.path.is_ident("not") {
             return cfg_list(list).first().is_none_or(|item| !self.eval_meta(item));
         }
-        true
+        false
     }
 
     fn eval_name_value(&self, nv: &syn::MetaNameValue) -> bool {
         let Some(value) = lit_str(&nv.value) else {
-            return true;
+            return false;
         };
         if nv.path.is_ident("feature") {
             return self.features.contains(&value);
@@ -59,15 +59,15 @@ impl CfgUniverse {
         if nv.path.is_ident("target_os") {
             return host_target_os(&value);
         }
-        true
+        false
     }
 
     fn eval_flag(name: &str) -> bool {
         match name {
-            "test" => false,
             "unix" => cfg!(unix),
             "windows" => cfg!(windows),
-            _ => true,
+            "debug_assertions" => true,
+            _ => false,
         }
     }
 }
@@ -247,10 +247,10 @@ mod tests {
     }
 
     #[test]
-    fn cfg_unknown_list_and_key_are_kept() {
-        assert_eq!(cyclo("#[cfg(weird(x))] fn f() {}").len(), 1);
-        assert_eq!(cyclo("#[cfg(foo = \"bar\")] fn f() {}").len(), 1);
-        assert_eq!(cyclo("#[cfg(foo = 1)] fn f() {}").len(), 1);
+    fn cfg_unknown_list_and_key_are_skipped() {
+        assert!(cyclo("#[cfg(weird(x))] fn f() {}").is_empty());
+        assert!(cyclo("#[cfg(foo = \"bar\")] fn f() {}").is_empty());
+        assert!(cyclo("#[cfg(foo = 1)] fn f() {}").is_empty());
     }
 
     #[test]
@@ -265,8 +265,15 @@ mod tests {
     }
 
     #[test]
-    fn cfg_unknown_flag_is_kept() {
-        let fns = cyclo("#[cfg(foo)] fn f() {}");
+    fn cfg_unknown_flag_is_skipped() {
+        let fns = cyclo("#[cfg(foo)] fn f() {} fn keep() {}");
+        assert_eq!(fns.len(), 1);
+        assert_eq!(fns[0].name, "keep");
+    }
+
+    #[test]
+    fn cfg_debug_assertions_is_kept() {
+        let fns = cyclo("#[cfg(debug_assertions)] fn f() {}");
         assert_eq!(fns.len(), 1);
         assert_eq!(fns[0].name, "f");
     }

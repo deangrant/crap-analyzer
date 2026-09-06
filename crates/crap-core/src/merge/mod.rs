@@ -8,7 +8,7 @@ use path_index::PathIndex;
 use std::collections::HashMap;
 use std::fmt;
 use std::hash::BuildHasher;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 /// How to treat a function with no matching coverage data.
@@ -98,9 +98,10 @@ pub fn join<S: BuildHasher>(
     missing: MissingPolicy,
 ) -> Vec<CrapEntry> {
     let index = PathIndex::from_coverage(coverage);
+    let by_file = functions_by_file(functions);
     let mut entries = Vec::new();
     for item in functions {
-        let Some(coverage_pct) = coverage_for(&index, item, functions, missing) else {
+        let Some(coverage_pct) = coverage_for(&index, item, &by_file, missing) else {
             continue;
         };
         let cc = crate::score::to_f64(item.function.complexity);
@@ -127,10 +128,12 @@ pub fn join<S: BuildHasher>(
 fn coverage_for(
     index: &PathIndex,
     item: &LocatedFn,
-    functions: &[LocatedFn],
+    by_file: &HashMap<&Path, Vec<&FunctionComplexity>>,
     missing: MissingPolicy,
 ) -> Option<f64> {
-    let exclude = nested_excludes(functions, &item.function);
+    let empty = [];
+    let peers = by_file.get(item.function.file.as_path()).map_or(&empty[..], Vec::as_slice);
+    let exclude = nested_excludes(peers, &item.function);
     let found = index.lookup(&item.function.file, item.crate_name.as_deref()).and_then(|file| {
         file.coverage_in_span_excluding(item.function.start_line, item.function.end_line, &exclude)
     });
@@ -141,17 +144,27 @@ fn coverage_for(
     })
 }
 
-fn nested_excludes(functions: &[LocatedFn], current: &FunctionComplexity) -> Vec<(usize, usize)> {
-    functions
-        .iter()
-        .filter(|other| other.function.file == current.file && is_nested(current, &other.function))
-        .map(|other| (other.function.start_line, other.function.end_line))
+fn nested_excludes(
+    fns: &[&FunctionComplexity],
+    current: &FunctionComplexity,
+) -> Vec<(usize, usize)> {
+    fns.iter()
+        .filter(|other| is_nested(current, other))
+        .map(|other| (other.start_line, other.end_line))
         .collect()
 }
 
 const fn is_nested(outer: &FunctionComplexity, inner: &FunctionComplexity) -> bool {
     let strictly_smaller = inner.start_line > outer.start_line || inner.end_line < outer.end_line;
     outer.start_line <= inner.start_line && inner.end_line <= outer.end_line && strictly_smaller
+}
+
+fn functions_by_file(functions: &[LocatedFn]) -> HashMap<&Path, Vec<&FunctionComplexity>> {
+    let mut by_file: HashMap<&Path, Vec<&FunctionComplexity>> = HashMap::new();
+    for item in functions {
+        by_file.entry(item.function.file.as_path()).or_default().push(&item.function);
+    }
+    by_file
 }
 
 #[cfg(test)]

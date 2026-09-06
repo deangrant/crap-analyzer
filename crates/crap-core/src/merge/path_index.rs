@@ -99,12 +99,20 @@ fn unique_crate_hit<'a>(
     crate_name: Option<&str>,
 ) -> Option<&'a FileCoverage> {
     let name = crate_name?;
-    let mut named = winners.iter().filter(|(key, _)| key.iter().any(|part| part == name));
+    let mut named = winners.iter().filter(|(key, _)| crate_root_hit(key, name));
     let first = named.next()?;
     if named.next().is_some() {
         return None;
     }
     Some(first.1)
+}
+
+fn crate_root_hit(key: &[String], name: &str) -> bool {
+    key.windows(2).any(|pair| pair[0] == name && is_source_root(&pair[1]))
+}
+
+fn is_source_root(part: &str) -> bool {
+    ["src", "tests", "benches", "examples"].contains(&part)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

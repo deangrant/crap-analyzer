@@ -27,7 +27,7 @@ pub fn render_json(
         metric: metric.to_string(),
         threshold,
         result: ResultDoc {
-            passed: exceeding == 0,
+            passed: !gate_failed,
             gate_failed,
             summary: SummaryDoc {
                 functions: entries.len(),
@@ -232,7 +232,7 @@ mod tests {
                 ("/language", Value::from("rust")),
                 ("/metric", Value::from("cyclomatic")),
                 ("/threshold", Value::from(15.0)),
-                ("/result/passed", Value::from(false)),
+                ("/result/passed", Value::from(true)),
                 ("/result/gate_failed", Value::from(false)),
                 ("/result/summary/functions", Value::from(2)),
                 ("/result/summary/exceeding", Value::from(1)),
@@ -316,6 +316,7 @@ mod tests {
         let value = json(&entries, 15.0, Metric::Cyclomatic, true);
         assert_eq!(value["result"]["summary"]["median_crap"], 5.0);
         assert_eq!(value["result"]["gate_failed"], true);
+        assert_eq!(value["result"]["passed"], false);
     }
 
     #[test]
