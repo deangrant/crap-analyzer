@@ -133,7 +133,7 @@ fn match_rank(src: &[String], key: &[String]) -> Option<MatchRank> {
     })
 }
 
-fn components(path: &Path) -> Vec<String> {
+pub(super) fn components(path: &Path) -> Vec<String> {
     let mut stack = Vec::new();
     for comp in path.components() {
         push_component(&mut stack, comp);

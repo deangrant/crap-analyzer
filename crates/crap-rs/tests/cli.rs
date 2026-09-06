@@ -399,7 +399,7 @@ fn cargo_metadata_invalid_json_exits_two() {
 }
 
 #[test]
-fn parse_warning_exits_zero_when_other_files_succeed() {
+fn parse_warning_exits_two_when_any_file_fails() {
     let root = std::env::temp_dir().join(format!(
         "crap-rs-mixed-{}-{}",
         std::process::id(),
@@ -414,8 +414,8 @@ fn parse_warning_exits_zero_when_other_files_succeed() {
     require_ok(fs::write(&lcov, "TN:\nSF:ok.rs\nDA:1,1\nend_of_record\n"));
     let (code, _, stderr) = output_of(bin().arg("--lcov").arg(&lcov).arg("--path").arg(&root));
     let _ = fs::remove_dir_all(&root);
-    assert_eq!(code, 0, "{stderr}");
-    assert!(stderr.contains("skipping"));
+    assert_eq!(code, 2, "{stderr}");
+    assert!(stderr.contains("failed to parse"), "{stderr}");
 }
 
 #[test]

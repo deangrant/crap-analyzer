@@ -110,7 +110,7 @@ The formula is the source of truth.
   universe as the `cargo llvm-cov` run that produced the LCOV file
 
 Exit codes: `0` finished and clean, `1` finished and the gate tripped,
-`2` usage or analysis error (including when every source file fails to parse).
+`2` usage or analysis error (including when any source file fails to parse).
 
 ## Architecture
 
@@ -136,16 +136,24 @@ this workspace yet.
 - Closures count toward the enclosing function.
 - Async and `try` blocks do not add; inner decisions still count.
 - Cyclomatic: each match arm adds 1, including `_` and other catch-alls;
-  `let … else` and each match guard add 1.
+  `let … else` and each match guard add 1; `?` adds 1 (error /
+  early-return branch).
 - Cognitive: nesting-weighted increments; a `match` is one increment
   (not per arm); `let … else` is scored like `if` / `else`; each match
   guard is flat +1; `else` / `else if` are flat +1; a run of the same
   boolean operator counts once; labeled `break` / `continue` add 1; `?`
   is free.
-- Nested function coverage excludes the inner span.
+- Nested function coverage excludes the inner span. Absolute and
+  relative spellings of the same path suffix merge for join and
+  nested-exclude grouping.
+- Trait default methods are omitted (llvm-cov often has no line hits).
 - Feature-gated items are skipped unless those features are enabled
   (pass the same `--features` flags used for `cargo llvm-cov`).
-- File and directory symlinks are followed; cycles are skipped.
+- `#[cfg]` uses the host (`target_os`, `target_arch`, `target_family`,
+  `target_pointer_width`, `unix` / `windows`). Cross-compile LCOV can
+  disagree; there is no `--target` flag.
+- File and directory symlinks are followed only when the target stays
+  under the walk root; cycles are skipped.
 - `$CARGO` is used only when it names an existing file (Cargo’s usual
   override); otherwise `crap-rs` runs `cargo` from `PATH`.
 

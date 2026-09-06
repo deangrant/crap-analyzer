@@ -8,7 +8,7 @@ use path_index::PathIndex;
 use std::collections::HashMap;
 use std::fmt;
 use std::hash::BuildHasher;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::str::FromStr;
 
 /// How to treat a function with no matching coverage data.
@@ -128,11 +128,12 @@ pub fn join<S: BuildHasher>(
 fn coverage_for(
     index: &PathIndex,
     item: &LocatedFn,
-    by_file: &HashMap<&Path, Vec<&FunctionComplexity>>,
+    by_file: &HashMap<Vec<String>, Vec<&FunctionComplexity>>,
     missing: MissingPolicy,
 ) -> Option<f64> {
     let empty = [];
-    let peers = by_file.get(item.function.file.as_path()).map_or(&empty[..], Vec::as_slice);
+    let key = path_index::components(&item.function.file);
+    let peers = by_file.get(&key).map_or(&empty[..], Vec::as_slice);
     let exclude = nested_excludes(peers, &item.function);
     let found = index.lookup(&item.function.file, item.crate_name.as_deref()).and_then(|file| {
         file.coverage_in_span_excluding(item.function.start_line, item.function.end_line, &exclude)
@@ -159,10 +160,13 @@ const fn is_nested(outer: &FunctionComplexity, inner: &FunctionComplexity) -> bo
     outer.start_line <= inner.start_line && inner.end_line <= outer.end_line && strictly_smaller
 }
 
-fn functions_by_file(functions: &[LocatedFn]) -> HashMap<&Path, Vec<&FunctionComplexity>> {
-    let mut by_file: HashMap<&Path, Vec<&FunctionComplexity>> = HashMap::new();
+fn functions_by_file(functions: &[LocatedFn]) -> HashMap<Vec<String>, Vec<&FunctionComplexity>> {
+    let mut by_file: HashMap<Vec<String>, Vec<&FunctionComplexity>> = HashMap::new();
     for item in functions {
-        by_file.entry(item.function.file.as_path()).or_default().push(&item.function);
+        by_file
+            .entry(path_index::components(&item.function.file))
+            .or_default()
+            .push(&item.function);
     }
     by_file
 }

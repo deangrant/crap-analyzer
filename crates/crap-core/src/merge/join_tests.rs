@@ -194,6 +194,30 @@ fn crate_name_breaks_equal_length_suffix_tie() {
 }
 
 #[test]
+fn nested_fn_path_spellings_still_exclude_inner_span() {
+    let functions = [
+        func("src/foo.rs", "outer", 1, 20),
+        func("./src/foo.rs", "inner", 5, 12),
+    ];
+    let coverage = cov(
+        "src/foo.rs",
+        &[(2, 1), (3, 1), (5, 0), (8, 0), (12, 0), (15, 1), (18, 1)],
+    );
+    let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
+    let outer = entries.iter().find(|e| e.function == "outer");
+    let inner = entries.iter().find(|e| e.function == "inner");
+    assert!(outer.is_some() && inner.is_some());
+    let Some(outer) = outer else {
+        return;
+    };
+    let Some(inner) = inner else {
+        return;
+    };
+    assert_f64_bits_eq(outer.coverage, 100.0);
+    assert_f64_bits_eq(inner.coverage, 0.0);
+}
+
+#[test]
 fn nested_fn_lines_are_excluded_from_outer_coverage() {
     let functions = [
         func("src/foo.rs", "outer", 1, 20),

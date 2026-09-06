@@ -64,7 +64,6 @@ fn analyze_source_cfg(
         metric,
         out: Vec::new(),
         impl_type: None,
-        trait_name: None,
         cfg,
     };
     visitor.visit_file(&syntax);
@@ -79,33 +78,44 @@ fn count_metric(metric: Metric, body: &syn::Block) -> usize {
 }
 
 /// Parsed tokens from a function-like macro.
+#[derive(Clone, Copy)]
 enum ParsedMacro<'a> {
     /// The tokens formed one expression.
     Expr(&'a syn::Expr),
     /// The tokens formed a statement list.
     Stmts(&'a [syn::Stmt]),
+    /// The tokens formed a file of items.
+    File(&'a syn::File),
+}
+
+/// Owned parse of a macro body so the visitor can borrow it.
+enum OwnedMacro {
+    Expr(syn::Expr),
+    Stmts(Vec<syn::Stmt>),
+    File(syn::File),
 }
 
 /// Walks a parsed macro body with `visit`.
 fn visit_parsed_macro(tokens: &proc_macro2::TokenStream, visit: impl FnOnce(ParsedMacro<'_>)) {
-    let Some((expr, stmts)) = parse_macro_body(tokens) else {
+    let Some(owned) = parse_macro_body(tokens) else {
         return;
     };
-    if let Some(expr) = &expr {
-        visit(ParsedMacro::Expr(expr));
-        return;
+    match &owned {
+        OwnedMacro::Expr(expr) => visit(ParsedMacro::Expr(expr)),
+        OwnedMacro::Stmts(stmts) => visit(ParsedMacro::Stmts(stmts)),
+        OwnedMacro::File(file) => visit(ParsedMacro::File(file)),
     }
-    visit(ParsedMacro::Stmts(&stmts));
 }
 
-/// Best-effort parse of macro tokens as an expression or statement list.
-fn parse_macro_body(
-    tokens: &proc_macro2::TokenStream,
-) -> Option<(Option<syn::Expr>, Vec<syn::Stmt>)> {
+/// Best-effort parse of macro tokens as an expression, statements, or file.
+fn parse_macro_body(tokens: &proc_macro2::TokenStream) -> Option<OwnedMacro> {
     if let Ok(expr) = syn::parse2::<syn::Expr>(tokens.clone()) {
-        return Some((Some(expr), Vec::new()));
+        return Some(OwnedMacro::Expr(expr));
     }
-    parse_stmt_seq(tokens.clone()).ok().map(|stmts| (None, stmts))
+    if let Ok(file) = syn::parse2::<syn::File>(tokens.clone()) {
+        return Some(OwnedMacro::File(file));
+    }
+    parse_stmt_seq(tokens.clone()).ok().map(OwnedMacro::Stmts)
 }
 
 fn parse_stmt_seq(tokens: proc_macro2::TokenStream) -> syn::Result<Vec<syn::Stmt>> {

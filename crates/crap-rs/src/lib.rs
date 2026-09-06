@@ -123,9 +123,10 @@ fn collect_functions(targets: &[Target], metric: Metric) -> Result<(Vec<LocatedF
     let mut functions = Vec::new();
     let mut warnings = Vec::new();
     let (succeeded, failed) = collect_targets(targets, metric, &mut functions, &mut warnings)?;
-    if failed > 0 && succeeded == 0 {
+    if failed > 0 {
         return Err(Error::collect(format!(
-            "failed to parse all {failed} Rust file(s)"
+            "failed to parse {failed} of {} Rust file(s)",
+            failed + succeeded
         )));
     }
     Ok((functions, warnings))

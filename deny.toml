@@ -27,7 +27,7 @@ confidence-threshold = 0.8
 
 [bans]
 wildcards = "deny"
-multiple-versions = "warn"
+multiple-versions = "deny"
 
 [sources]
 unknown-registry = "deny"

@@ -76,11 +76,10 @@ fn line_in_ranges(line: u32, ranges: &[(usize, usize)]) -> bool {
 /// # Errors
 ///
 /// Returns [`Error::Io`] if the file cannot be read, or [`Error::Coverage`]
-/// if the file has no valid `DA:` line-hit records.
+/// if a `DA:` record is malformed or the file has no valid line-hit records.
 pub fn parse_lcov(path: &Path) -> Result<HashMap<PathBuf, FileCoverage>> {
     let file = File::open(path).map_err(|source| Error::io(path, source))?;
-    let (files, valid_da) =
-        parse_lcov_reader(BufReader::new(file)).map_err(|source| Error::io(path, source))?;
+    let (files, valid_da) = parse_lcov_reader(BufReader::new(file), path)?;
     if valid_da == 0 {
         return Err(Error::coverage(format!(
             "{}: LCOV has no valid line-hit (DA) records",
@@ -92,61 +91,65 @@ pub fn parse_lcov(path: &Path) -> Result<HashMap<PathBuf, FileCoverage>> {
 
 /// Parses LCOV text. Unknown record types are ignored.
 #[cfg(test)]
-fn parse_lcov_text(text: &str) -> (HashMap<PathBuf, FileCoverage>, usize) {
-    parse_lcov_reader(Cursor::new(text)).unwrap_or_else(|_| (HashMap::new(), 0))
+fn parse_lcov_text(text: &str) -> Result<(HashMap<PathBuf, FileCoverage>, usize)> {
+    parse_lcov_reader(Cursor::new(text), Path::new("<text>"))
 }
 
 fn parse_lcov_reader<R: BufRead>(
     reader: R,
-) -> std::io::Result<(HashMap<PathBuf, FileCoverage>, usize)> {
+    origin: &Path,
+) -> Result<(HashMap<PathBuf, FileCoverage>, usize)> {
     let mut files = HashMap::new();
     let mut current: Option<PathBuf> = None;
     let mut valid_da = 0_usize;
     for raw in reader.lines() {
-        apply_record(&raw?, &mut files, &mut current, &mut valid_da);
+        let raw = raw.map_err(|source| Error::io(origin, source))?;
+        apply_record(&raw, origin, &mut files, &mut current, &mut valid_da)?;
     }
     Ok((files, valid_da))
 }
 
 fn apply_record(
     raw: &str,
+    origin: &Path,
     files: &mut HashMap<PathBuf, FileCoverage>,
     current: &mut Option<PathBuf>,
     valid_da: &mut usize,
-) {
+) -> Result<()> {
     if raw == "end_of_record" {
         *current = None;
-        return;
+        return Ok(());
     }
     if let Some(path) = raw.strip_prefix("SF:") {
-        let path = PathBuf::from(path.replace('\\', "/"));
-        files.entry(path.clone()).or_default();
-        *current = Some(path);
-        return;
+        *current = Some(PathBuf::from(path.replace('\\', "/")));
+        return Ok(());
     }
-    apply_da(raw, files, current.as_ref(), valid_da);
+    apply_da(raw, origin, files, current.as_ref(), valid_da)
 }
 
 fn apply_da(
     raw: &str,
+    origin: &Path,
     files: &mut HashMap<PathBuf, FileCoverage>,
     current: Option<&PathBuf>,
     valid_da: &mut usize,
-) {
+) -> Result<()> {
     let Some(rest) = raw.strip_prefix("DA:") else {
-        return;
+        return Ok(());
     };
     let Some(path) = current else {
-        return;
+        return Ok(());
     };
     let Some((line, hits)) = parse_da(rest) else {
-        return;
+        return Err(Error::coverage(format!(
+            "{}: malformed DA record: {raw}",
+            origin.display()
+        )));
     };
     *valid_da += 1;
-    if let Some(file) = files.get_mut(path) {
-        let slot = file.lines.entry(line).or_insert(0);
-        *slot = slot.saturating_add(hits);
-    }
+    let slot = files.entry(path.clone()).or_default().lines.entry(line).or_insert(0);
+    *slot = slot.saturating_add(hits);
+    Ok(())
 }
 
 fn parse_da(rest: &str) -> Option<(u32, u64)> {
@@ -162,11 +165,16 @@ mod tests {
     use std::path::Path;
 
     fn parse(text: &str) -> HashMap<PathBuf, FileCoverage> {
-        parse_lcov_text(text).0
+        let parsed = parse_lcov_text(text);
+        assert!(parsed.is_ok(), "{parsed:?}");
+        parsed.map(|(files, _)| files).unwrap_or_default()
     }
 
     fn reject(text: &str) -> bool {
-        parse_lcov_text(text).1 == 0
+        match parse_lcov_text(text) {
+            Ok((_, 0)) | Err(_) => true,
+            Ok((_, _)) => false,
+        }
     }
 
     #[test]
@@ -259,12 +267,11 @@ mod tests {
     }
 
     #[test]
-    fn malformed_da_records_are_ignored() {
-        let map = parse("SF:src/foo.rs\nDA:not-a-number\nDA:10\nend_of_record\n");
-        assert!(map[Path::new("src/foo.rs")].lines.is_empty());
+    fn malformed_da_is_rejected_even_with_valid_records() {
         assert!(reject(
-            "SF:src/foo.rs\nDA:not-a-number\nDA:10\nend_of_record\n"
+            "SF:src/foo.rs\nDA:not-a-number\nDA:10,1\nend_of_record\n"
         ));
+        assert!(reject("SF:src/foo.rs\nDA:10\nend_of_record\n"));
     }
 
     #[test]
@@ -296,13 +303,15 @@ mod tests {
     }
 
     #[test]
-    fn sparse_sf_without_da_is_ok_when_another_file_has_hits() {
-        let (map, valid_da) = parse_lcov_text(concat!(
+    fn sparse_sf_without_da_is_omitted() {
+        let parsed = parse_lcov_text(concat!(
             "SF:generated.rs\nend_of_record\n",
             "SF:src/lib.rs\nDA:10,1\nend_of_record\n",
         ));
+        assert!(parsed.is_ok(), "{parsed:?}");
+        let (map, valid_da) = parsed.unwrap_or_else(|_| (HashMap::new(), 0));
         assert_eq!(valid_da, 1);
-        assert!(map[Path::new("generated.rs")].lines.is_empty());
+        assert!(!map.contains_key(Path::new("generated.rs")));
         assert_eq!(map[Path::new("src/lib.rs")].lines[&10], 1);
     }
 }

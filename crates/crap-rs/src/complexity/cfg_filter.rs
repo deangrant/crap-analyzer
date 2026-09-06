@@ -56,10 +56,7 @@ impl CfgUniverse {
         if nv.path.is_ident("feature") {
             return self.features.contains(&value);
         }
-        if nv.path.is_ident("target_os") {
-            return host_target_os(&value);
-        }
-        false
+        host_cfg_value(&nv.path, &value)
     }
 
     fn eval_flag(name: &str) -> bool {
@@ -117,8 +114,60 @@ const HOST_OS: &str = if cfg!(target_os = "linux") {
     ""
 };
 
-fn host_target_os(os: &str) -> bool {
-    !HOST_OS.is_empty() && HOST_OS == os
+const HOST_ARCH: &str = if cfg!(target_arch = "x86_64") {
+    "x86_64"
+} else if cfg!(target_arch = "aarch64") {
+    "aarch64"
+} else if cfg!(target_arch = "x86") {
+    "x86"
+} else if cfg!(target_arch = "wasm32") {
+    "wasm32"
+} else if cfg!(target_arch = "riscv64") {
+    "riscv64"
+} else {
+    ""
+};
+
+const HOST_FAMILY: &str = if cfg!(target_family = "unix") {
+    "unix"
+} else if cfg!(target_family = "windows") {
+    "windows"
+} else {
+    ""
+};
+
+const HOST_POINTER_WIDTH: &str = if cfg!(target_pointer_width = "64") {
+    "64"
+} else if cfg!(target_pointer_width = "32") {
+    "32"
+} else if cfg!(target_pointer_width = "16") {
+    "16"
+} else {
+    ""
+};
+
+fn host_cfg_value(path: &syn::Path, value: &str) -> bool {
+    if path.is_ident("target_os") {
+        return host_eq(HOST_OS, value);
+    }
+    if path.is_ident("target_arch") {
+        return host_eq(HOST_ARCH, value);
+    }
+    host_cfg_width(path, value)
+}
+
+fn host_cfg_width(path: &syn::Path, value: &str) -> bool {
+    if path.is_ident("target_family") {
+        return host_eq(HOST_FAMILY, value);
+    }
+    if path.is_ident("target_pointer_width") {
+        return host_eq(HOST_POINTER_WIDTH, value);
+    }
+    false
+}
+
+fn host_eq(host: &str, value: &str) -> bool {
+    !host.is_empty() && host == value
 }
 
 #[cfg(test)]
@@ -274,6 +323,48 @@ mod tests {
     #[test]
     fn cfg_debug_assertions_is_kept() {
         let fns = cyclo("#[cfg(debug_assertions)] fn f() {}");
+        assert_eq!(fns.len(), 1);
+        assert_eq!(fns[0].name, "f");
+    }
+
+    #[test]
+    fn cfg_target_arch_host_is_kept() {
+        let src = format!(
+            "#[cfg(target_arch = \"{arch}\")] fn f() {{}}",
+            arch = super::HOST_ARCH
+        );
+        let fns = cyclo(&src);
+        assert!(!super::HOST_ARCH.is_empty());
+        assert_eq!(fns.len(), 1);
+        assert_eq!(fns[0].name, "f");
+    }
+
+    #[test]
+    fn cfg_target_arch_unknown_is_skipped() {
+        let fns = cyclo("#[cfg(target_arch = \"unknown-arch\")] fn f() {}");
+        assert!(fns.is_empty());
+    }
+
+    #[test]
+    fn cfg_target_family_host_is_kept() {
+        let src = format!(
+            "#[cfg(target_family = \"{family}\")] fn f() {{}}",
+            family = super::HOST_FAMILY
+        );
+        let fns = cyclo(&src);
+        assert!(!super::HOST_FAMILY.is_empty());
+        assert_eq!(fns.len(), 1);
+        assert_eq!(fns[0].name, "f");
+    }
+
+    #[test]
+    fn cfg_target_pointer_width_host_is_kept() {
+        let src = format!(
+            "#[cfg(target_pointer_width = \"{width}\")] fn f() {{}}",
+            width = super::HOST_POINTER_WIDTH
+        );
+        let fns = cyclo(&src);
+        assert!(!super::HOST_POINTER_WIDTH.is_empty());
         assert_eq!(fns.len(), 1);
         assert_eq!(fns[0].name, "f");
     }

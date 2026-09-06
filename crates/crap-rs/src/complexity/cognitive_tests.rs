@@ -173,6 +173,11 @@ fn statement_macro_tokens_add_decisions() {
 }
 
 #[test]
+fn item_macro_tokens_add_decisions() {
+    assert_eq!(snippet("fn f() { m!(fn helper() { if true {} }); }"), 1);
+}
+
+#[test]
 fn opaque_macro_tokens_do_not_add() {
     assert_eq!(snippet("fn f() { opaque!(@@@); }"), 0);
 }

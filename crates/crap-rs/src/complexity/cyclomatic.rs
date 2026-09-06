@@ -40,7 +40,7 @@ impl<'ast> Visit<'ast> for CcCounter {
 
     fn visit_arm(&mut self, node: &'ast syn::Arm) {
         self.count += 1;
-        if node.guard.is_some() {
+        if matches!(&node.pat, syn::Pat::Guard(_)) {
             self.count += 1;
         }
         visit::visit_arm(self, node);
@@ -74,14 +74,27 @@ impl<'ast> Visit<'ast> for CcCounter {
 
 impl CcCounter {
     fn visit_macro_tokens(&mut self, tokens: &proc_macro2::TokenStream) {
-        visit_parsed_macro(tokens, |part| match part {
+        visit_parsed_macro(tokens, |part| self.apply_macro(part));
+    }
+
+    fn apply_macro(&mut self, part: ParsedMacro<'_>) {
+        match part {
             ParsedMacro::Expr(expr) => self.visit_expr(expr),
-            ParsedMacro::Stmts(stmts) => {
-                for stmt in stmts {
-                    self.visit_stmt(stmt);
-                }
-            }
-        });
+            ParsedMacro::Stmts(stmts) => self.visit_macro_stmts(stmts),
+            ParsedMacro::File(file) => self.visit_macro_items(file),
+        }
+    }
+
+    fn visit_macro_stmts(&mut self, stmts: &[syn::Stmt]) {
+        for stmt in stmts {
+            self.visit_stmt(stmt);
+        }
+    }
+
+    fn visit_macro_items(&mut self, file: &syn::File) {
+        for item in &file.items {
+            visit::visit_item(self, item);
+        }
     }
 }
 
@@ -152,6 +165,11 @@ mod tests {
     #[test]
     fn statement_macro_tokens_add_decisions() {
         assert_eq!(snippet("fn f() { m!(let x = 1; if true { x; }); }"), 2);
+    }
+
+    #[test]
+    fn item_macro_tokens_add_decisions() {
+        assert_eq!(snippet("fn f() { m!(fn helper() { if true {} }); }"), 2);
     }
 
     #[test]
