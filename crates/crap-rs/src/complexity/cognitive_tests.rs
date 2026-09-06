@@ -1,3 +1,5 @@
+//! Unit tests for cognitive complexity scoring.
+
 use super::super::analyze_source;
 use crap_core::Metric;
 use std::path::Path;

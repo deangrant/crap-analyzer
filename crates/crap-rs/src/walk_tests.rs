@@ -1,3 +1,5 @@
+//! Unit tests for Rust source walking and skip rules.
+
 use super::*;
 
 fn assert_skip<'a>(
