@@ -1,0 +1,14 @@
+---
+description: CRAP metric hotspots — match scoring, path ranking, empty spans
+globs: "crates/crap-rs/src/complexity/**/*.rs,crates/crap-core/src/merge/**/*.rs,crates/crap-core/src/coverage.rs"
+alwaysApply: false
+---
+
+# CRAP Metric Hotspots
+
+Read [`.agents/skills/complexity-lcov-join/SKILL.md`](../../skills/complexity-lcov-join/SKILL.md) before changing these files.
+
+- Cognitive `match` is one nesting-weighted increment, not one per arm.
+- Closures fold into the enclosing function; nested `fn` items are separate rows.
+- Empty instrumented spans use `--missing` (default 0%). Do not treat them as 100%.
+- `MatchRank` prefers forward path matches over reverse suffix length.

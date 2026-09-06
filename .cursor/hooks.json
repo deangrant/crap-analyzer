@@ -5,6 +5,18 @@
             {
                 "command": "bash .agents/hooks/rustfmt.sh"
             }
+        ],
+        "sessionStart": [
+            {
+                "command": "bash .agents/hooks/session-context.sh"
+            }
+        ],
+        "stop": [
+            {
+                "command": "bash .agents/hooks/verify-on-stop.sh",
+                "loop_limit": 3,
+                "timeout": 600
+            }
         ]
     }
 }

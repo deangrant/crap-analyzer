@@ -1,0 +1,13 @@
+---
+description: Rust agent standards — style/SOLID skills, expect not allow, Clippy 8, 500-line files
+globs: "**/*.rs"
+alwaysApply: false
+---
+
+# Rust Agent Standards
+
+- Before editing Rust, read [`.agents/skills/rust-style-guide/SKILL.md`](../../skills/rust-style-guide/SKILL.md) and [`.agents/skills/rust-solid-design/SKILL.md`](../../skills/rust-solid-design/SKILL.md).
+- No `#[allow]`. Suppressions must be `#[expect(..., reason = "...")]`.
+- Stay under Clippy cognitive complexity **8** and `too-many-lines` 100. Keep `.rs` files at or under 500 lines.
+- Prefer tests that keep `cargo llvm-cov --fail-under-lines 100` green.
+- Do not claim the work is done until `/verify` (or the stop hook) is green. The stop hook enforces this for relevant dirty trees.

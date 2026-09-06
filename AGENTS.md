@@ -62,6 +62,17 @@ Canonical skills live under [`.agents/skills/`](.agents/skills/). Read the match
 
 - [`.agents/skills/rust-style-guide/`](.agents/skills/rust-style-guide/) — formatting, docs, naming, API conventions
 - [`.agents/skills/rust-solid-design/`](.agents/skills/rust-solid-design/) — SOLID in Rust: traits, modules, DI
+- [`.agents/skills/verify/`](.agents/skills/verify/) — full local vs CI (`check.sh`, llvm-cov 100%, CRAP strict)
+- [`.agents/skills/crap-scoring/`](.agents/skills/crap-scoring/) — formula, bands vs gate, `--missing`, dogfood flags
+- [`.agents/skills/complexity-lcov-join/`](.agents/skills/complexity-lcov-join/) — visitor attribution, empty spans, path ranking
+
+## Commands
+
+Slash commands live under [`.agents/commands/`](.agents/commands/). Cursor loads
+[`.cursor/commands`](.cursor/commands) → `../.agents/commands`.
+
+- `/verify` — [`.agents/commands/verify.md`](.agents/commands/verify.md)
+- `/audit-rust-skills` — [`.agents/commands/audit-rust-skills.md`](.agents/commands/audit-rust-skills.md)
 
 ## Rules
 
@@ -70,9 +81,13 @@ Canonical rules live under [`.agents/rules/`](.agents/rules/) (Cursor loads
 that area.
 
 - [`.agents/rules/ai-slop-mitigation/`](.agents/rules/ai-slop-mitigation/) — concrete diffs, no filler (opt-in)
+- [`.agents/rules/rust-agent-standards/`](.agents/rules/rust-agent-standards/) — style/SOLID, `#[expect]`, Clippy 8, 500-line files (`*.rs`)
+- [`.agents/rules/crap-metric-hotspots/`](.agents/rules/crap-metric-hotspots/) — match scoring, path ranking, empty spans
 
 ## Hooks
 
 - Config: [`.cursor/hooks.json`](.cursor/hooks.json)
 - `afterFileEdit` → [`.agents/hooks/rustfmt.sh`](.agents/hooks/rustfmt.sh) formats edited `*.rs` with `rustfmt` (fail-open)
+- `sessionStart` → [`.agents/hooks/session-context.sh`](.agents/hooks/session-context.sh) injects `/verify` and skill reminders (fail-open)
+- `stop` → [`.agents/hooks/verify-on-stop.sh`](.agents/hooks/verify-on-stop.sh) runs [`.agents/hooks/run-verify.sh`](.agents/hooks/run-verify.sh) on relevant dirty trees (`loop_limit` 3, timeout 600s); follow-up on failure, skip docs-only, fail-open on crash
 - Git pre-push: [`scripts/githooks/pre-push`](scripts/githooks/pre-push) (`git config core.hooksPath scripts/githooks`)
