@@ -128,11 +128,21 @@ fn parse_args(raw: Vec<String>) -> std::result::Result<Action, String> {
 }
 
 fn parse_threshold(text: &str) -> std::result::Result<f64, String> {
-    match text {
-        "strict" => return Ok(8.0),
-        "lenient" => return Ok(25.0),
-        _ => {}
+    if let Some(preset) = named_threshold(text) {
+        return Ok(preset);
     }
+    parse_numeric_threshold(text)
+}
+
+fn named_threshold(text: &str) -> Option<f64> {
+    match text {
+        "strict" => Some(8.0),
+        "lenient" => Some(25.0),
+        _ => None,
+    }
+}
+
+fn parse_numeric_threshold(text: &str) -> std::result::Result<f64, String> {
     let value: f64 = text.parse().map_err(|_| format!("invalid --threshold `{text}`"))?;
     if !value.is_finite() || value < 0.0 {
         return Err("--threshold must be a non-negative number or strict|lenient".into());

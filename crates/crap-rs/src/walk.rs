@@ -41,6 +41,26 @@ fn visit(
         return Ok(());
     }
     let entries = fs::read_dir(dir).map_err(|source| Error::io(dir, source))?;
+    walk_entries(
+        entries,
+        dir,
+        walk_root,
+        package_root,
+        nested_skip,
+        visited,
+        out,
+    )
+}
+
+fn walk_entries(
+    entries: impl Iterator<Item = std::io::Result<fs::DirEntry>>,
+    dir: &Path,
+    walk_root: &Path,
+    package_root: Option<&Path>,
+    nested_skip: &[PathBuf],
+    visited: &mut HashSet<PathBuf>,
+    out: &mut Vec<PathBuf>,
+) -> Result<()> {
     for entry in entries {
         take_entry(
             entry,
@@ -138,6 +158,10 @@ fn skip_dir(
     if dir == walk_root {
         return false;
     }
+    skip_named_dir(dir, package_root)
+}
+
+fn skip_named_dir(dir: &Path, package_root: Option<&Path>) -> bool {
     let Some(name) = dir.file_name().and_then(|n| n.to_str()) else {
         return false;
     };
@@ -200,6 +224,7 @@ mod tests {
         assert!(skip_dir(Path::new("/proj/inner"), root, None, &nested));
         assert!(!skip_dir(root, root, None, &nested));
         assert!(!skip_dir(Path::new("/proj/src"), root, None, &nested));
+        assert!(!skip_dir(Path::new("/"), root, None, &[]));
     }
 
     fn temp_root() -> PathBuf {
@@ -243,6 +268,21 @@ mod tests {
         assert!(files.iter().any(|path| path.ends_with("tests.rs")));
         assert!(!files.iter().any(|path| path.ends_with("integration.rs")));
     }
+
+    #[test]
+    fn walk_entries_propagates_read_dir_error() {
+        let err = std::io::Error::other("boom");
+        let result = walk_entries(
+            std::iter::once(Err(err)),
+            Path::new("/proj"),
+            Path::new("/proj"),
+            None,
+            &[],
+            &mut HashSet::new(),
+            &mut Vec::new(),
+        );
+        assert!(result.is_err());
+    }
 }
 
 #[cfg(all(test, unix))]
@@ -278,6 +318,21 @@ mod unix_tests {
         assert!(files.is_ok(), "{files:?}");
         let files = files.unwrap_or_default();
         assert!(files.iter().any(|path| path.ends_with("lib.rs")));
+    }
+
+    #[test]
+    fn dangling_symlink_is_ignored() {
+        let root = temp_root();
+        let written = fs::write(root.join("real.rs"), "fn f() {}\n");
+        assert!(written.is_ok(), "{written:?}");
+        let linked = symlink(root.join("gone.rs"), root.join("alias.rs"));
+        assert!(linked.is_ok(), "{linked:?}");
+        let files = rust_files(&root, &[]);
+        let _ = fs::remove_dir_all(&root);
+        assert!(files.is_ok(), "{files:?}");
+        let files = files.unwrap_or_default();
+        assert!(files.iter().any(|path| path.ends_with("real.rs")));
+        assert!(!files.iter().any(|path| path.ends_with("alias.rs")));
     }
 
     #[test]

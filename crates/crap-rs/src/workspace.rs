@@ -88,22 +88,34 @@ fn run_metadata(root: &Path) -> Result<Value> {
 
 fn packages_from_metadata(json: &Value) -> Result<Vec<Package>> {
     let members = string_ids(json, "workspace_members")?;
-    let array = json
-        .get("packages")
-        .and_then(Value::as_array)
-        .ok_or_else(|| Error::resolve("cargo metadata: missing packages array"))?;
+    let out = collect_packages(packages_array(json)?, &members)?;
+    require_matched_members(&members, &out)?;
+    Ok(out)
+}
+
+fn collect_packages(array: &[Value], members: &[String]) -> Result<Vec<Package>> {
     let mut out = Vec::new();
     for item in array {
-        if let Some(pkg) = package_from_item(item, &members)? {
+        if let Some(pkg) = package_from_item(item, members)? {
             out.push(pkg);
         }
     }
+    Ok(out)
+}
+
+fn packages_array(json: &Value) -> Result<&Vec<Value>> {
+    json.get("packages")
+        .and_then(Value::as_array)
+        .ok_or_else(|| Error::resolve("cargo metadata: missing packages array"))
+}
+
+fn require_matched_members(members: &[String], out: &[Package]) -> Result<()> {
     if !members.is_empty() && out.is_empty() {
         return Err(Error::resolve(
             "cargo metadata: workspace members did not match any packages",
         ));
     }
-    Ok(out)
+    Ok(())
 }
 
 fn field<'a>(item: &'a Value, key: &str) -> Option<&'a str> {
@@ -111,16 +123,7 @@ fn field<'a>(item: &'a Value, key: &str) -> Option<&'a str> {
 }
 
 fn package_from_item(item: &Value, members: &[String]) -> Result<Option<Package>> {
-    let Some(id) = field(item, "id") else {
-        return Ok(None);
-    };
-    if !members.iter().any(|m| m == id) {
-        return Ok(None);
-    }
-    let Some(name) = field(item, "name") else {
-        return Ok(None);
-    };
-    let Some(manifest) = field(item, "manifest_path") else {
+    let Some((name, manifest)) = member_manifest(item, members) else {
         return Ok(None);
     };
     let root = Path::new(manifest)
@@ -134,6 +137,14 @@ fn package_from_item(item: &Value, members: &[String]) -> Result<Option<Package>
         default_features,
         all_features,
     }))
+}
+
+fn member_manifest<'a>(item: &'a Value, members: &[String]) -> Option<(&'a str, &'a str)> {
+    let id = field(item, "id")?;
+    if !members.iter().any(|member| member == id) {
+        return None;
+    }
+    Some((field(item, "name")?, field(item, "manifest_path")?))
 }
 
 fn features_from_package(item: &Value) -> (Vec<String>, Vec<String>) {

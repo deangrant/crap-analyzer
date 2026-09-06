@@ -120,10 +120,19 @@ fn apply_record(
         *current = Some(path);
         return;
     }
+    apply_da(raw, files, current.as_ref(), valid_da);
+}
+
+fn apply_da(
+    raw: &str,
+    files: &mut HashMap<PathBuf, FileCoverage>,
+    current: Option<&PathBuf>,
+    valid_da: &mut usize,
+) {
     let Some(rest) = raw.strip_prefix("DA:") else {
         return;
     };
-    let Some(path) = current.as_ref() else {
+    let Some(path) = current else {
         return;
     };
     let Some((line, hits)) = parse_da(rest) else {

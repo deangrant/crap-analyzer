@@ -219,6 +219,11 @@ mod tests {
     }
 
     #[test]
+    fn uninitialized_let_does_not_add() {
+        assert_eq!(snippet("fn f() { let x; }"), 0);
+    }
+
+    #[test]
     fn top_level_if_is_one() {
         assert_eq!(snippet("fn f(x: i32) { if x > 0 { x; } }"), 1);
     }

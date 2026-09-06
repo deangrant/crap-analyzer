@@ -62,15 +62,25 @@ fn consider_match<'a>(
     let Some(rank) = match_rank(src, &file.parts) else {
         return;
     };
-    match *best_rank {
-        Some(best) if rank < best => {}
-        Some(best) if rank == best => winners.push((&file.parts, &file.coverage)),
-        _ => {
-            *best_rank = Some(rank);
-            winners.clear();
-            winners.push((&file.parts, &file.coverage));
-        }
+    apply_rank(rank, file, best_rank, winners);
+}
+
+fn apply_rank<'a>(
+    rank: MatchRank,
+    file: &'a IndexedFile,
+    best_rank: &mut Option<MatchRank>,
+    winners: &mut Vec<(&'a Vec<String>, &'a FileCoverage)>,
+) {
+    if best_rank.is_some_and(|best| rank < best) {
+        return;
     }
+    if best_rank.is_some_and(|best| rank == best) {
+        winners.push((&file.parts, &file.coverage));
+        return;
+    }
+    *best_rank = Some(rank);
+    winners.clear();
+    winners.push((&file.parts, &file.coverage));
 }
 
 fn pick_winner<'a>(
@@ -80,16 +90,21 @@ fn pick_winner<'a>(
     match winners {
         [] => None,
         [(_, file)] => Some(*file),
-        many => {
-            let name = crate_name?;
-            let mut named = many.iter().filter(|(key, _)| key.iter().any(|part| part == name));
-            let first = named.next()?;
-            if named.next().is_some() {
-                return None;
-            }
-            Some(first.1)
-        }
+        many => unique_crate_hit(many, crate_name),
     }
+}
+
+fn unique_crate_hit<'a>(
+    winners: &[(&'a Vec<String>, &'a FileCoverage)],
+    crate_name: Option<&str>,
+) -> Option<&'a FileCoverage> {
+    let name = crate_name?;
+    let mut named = winners.iter().filter(|(key, _)| key.iter().any(|part| part == name));
+    let first = named.next()?;
+    if named.next().is_some() {
+        return None;
+    }
+    Some(first.1)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -113,19 +128,28 @@ fn match_rank(src: &[String], key: &[String]) -> Option<MatchRank> {
 fn components(path: &Path) -> Vec<String> {
     let mut stack = Vec::new();
     for comp in path.components() {
-        match comp {
-            Component::Normal(part) => stack.push(os_to_string(part)),
-            Component::ParentDir => push_parent(&mut stack),
-            #[cfg(windows)]
-            Component::Prefix(prefix) => stack.push(os_to_string(prefix.as_os_str())),
-            #[cfg(windows)]
-            Component::RootDir | Component::CurDir => {}
-            #[cfg(not(windows))]
-            Component::RootDir | Component::CurDir | Component::Prefix(_) => {}
-        }
+        push_component(&mut stack, comp);
     }
     stack
 }
+
+fn push_component(stack: &mut Vec<String>, comp: Component<'_>) {
+    match comp {
+        Component::Normal(part) => stack.push(os_to_string(part)),
+        Component::ParentDir => push_parent(stack),
+        other => push_prefix(stack, other),
+    }
+}
+
+#[cfg(windows)]
+fn push_prefix(stack: &mut Vec<String>, comp: Component<'_>) {
+    if let Component::Prefix(prefix) = comp {
+        stack.push(os_to_string(prefix.as_os_str()));
+    }
+}
+
+#[cfg(not(windows))]
+const fn push_prefix(_stack: &mut Vec<String>, _comp: Component<'_>) {}
 
 fn push_parent(stack: &mut Vec<String>) {
     if stack.last().is_some_and(|top| top != "..") {
@@ -164,5 +188,34 @@ mod tests {
         assert_eq!(found.and_then(|cov| cov.lines.get(&1).copied()), Some(1));
         assert!(index.lookup(Path::new("/proj/src/missing.rs"), None).is_none());
         assert!(index.lookup(Path::new(""), None).is_none());
+    }
+
+    #[test]
+    fn two_crate_named_suffixes_are_ambiguous() {
+        let coverage = HashMap::from([
+            (PathBuf::from("/ws/demo/src/lib.rs"), file(1)),
+            (PathBuf::from("/other/demo/src/lib.rs"), file(99)),
+        ]);
+        let index = PathIndex::from_coverage(&coverage);
+        assert!(index.lookup(Path::new("src/lib.rs"), Some("demo")).is_none());
+    }
+
+    #[test]
+    fn apply_rank_ignores_a_worse_suffix() {
+        let better = IndexedFile {
+            parts: vec!["src".into(), "foo.rs".into()],
+            coverage: file(1),
+        };
+        let worse = IndexedFile {
+            parts: vec!["foo.rs".into()],
+            coverage: file(9),
+        };
+        let src = vec!["proj".into(), "src".into(), "foo.rs".into()];
+        let mut best_rank = None;
+        let mut winners = Vec::new();
+        consider_match(&src, &better, &mut best_rank, &mut winners);
+        consider_match(&src, &worse, &mut best_rank, &mut winners);
+        assert_eq!(winners.len(), 1);
+        assert_eq!(winners[0].1.lines.get(&1).copied(), Some(1));
     }
 }

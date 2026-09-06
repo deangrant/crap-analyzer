@@ -58,17 +58,22 @@ pub fn classify_risk(score: f64) -> Risk {
     }
 }
 
+const RISK_NAMES: &[(&str, Risk)] = &[
+    ("low", Risk::Low),
+    ("acceptable", Risk::Acceptable),
+    ("moderate", Risk::Moderate),
+    ("high", Risk::High),
+];
+
 impl FromStr for Risk {
     type Err = String;
 
     fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
-        match value {
-            "low" => Ok(Self::Low),
-            "acceptable" => Ok(Self::Acceptable),
-            "moderate" => Ok(Self::Moderate),
-            "high" => Ok(Self::High),
-            _ => Err(format!("invalid risk `{value}`")),
-        }
+        RISK_NAMES
+            .iter()
+            .find(|(name, _)| *name == value)
+            .map(|(_, risk)| *risk)
+            .ok_or_else(|| format!("invalid risk `{value}`"))
     }
 }
 

@@ -34,24 +34,12 @@ pub struct FeatureSelection {
 impl Language for RustLanguage {
     fn resolve_targets(&self, request: &ScanRequest) -> Result<Vec<Target>> {
         if self.uses_packages() {
-            let packages = if self.workspace {
-                workspace::all_members(&request.path)?
-            } else {
-                workspace::selected_members(&self.packages, &request.path)?
-            };
-            return Ok(self.targets_from_packages(&packages));
+            return self.targets_from_selection(request);
         }
-        if request.path.join("Cargo.toml").is_file()
-            && let Ok(packages) = workspace::all_members(&request.path)
-        {
-            return Ok(self.targets_from_packages(&packages));
+        if let Some(targets) = self.targets_from_manifest_root(&request.path) {
+            return Ok(targets);
         }
-        Ok(vec![Target {
-            root: request.path.clone(),
-            crate_name: None,
-            skip: Vec::new(),
-            enabled_features: self.enabled_features(None),
-        }])
+        Ok(vec![self.path_target(request)])
     }
 
     fn collect_functions(
@@ -98,36 +86,91 @@ impl RustLanguage {
             })
             .collect()
     }
+
+    fn targets_from_selection(&self, request: &ScanRequest) -> Result<Vec<Target>> {
+        let packages = if self.workspace {
+            workspace::all_members(&request.path)?
+        } else {
+            workspace::selected_members(&self.packages, &request.path)?
+        };
+        Ok(self.targets_from_packages(&packages))
+    }
+
+    fn targets_from_manifest_root(&self, path: &Path) -> Option<Vec<Target>> {
+        if !path.join("Cargo.toml").is_file() {
+            return None;
+        }
+        let packages = workspace::all_members(path).ok()?;
+        Some(self.targets_from_packages(&packages))
+    }
+
+    fn path_target(&self, request: &ScanRequest) -> Target {
+        Target {
+            root: request.path.clone(),
+            crate_name: None,
+            skip: Vec::new(),
+            enabled_features: self.enabled_features(None),
+        }
+    }
 }
 
 fn collect_functions(targets: &[Target], metric: Metric) -> Result<(Vec<LocatedFn>, Vec<String>)> {
     let mut functions = Vec::new();
     let mut warnings = Vec::new();
-    let mut succeeded = 0_usize;
-    let mut failed = 0_usize;
-    for target in targets {
-        let files = walk::rust_files(&target.root, &target.skip)?;
-        for file in files {
-            if take_file(
-                &file,
-                target.crate_name.as_deref(),
-                metric,
-                &target.enabled_features,
-                &mut functions,
-                &mut warnings,
-            ) {
-                succeeded += 1;
-            } else {
-                failed += 1;
-            }
-        }
-    }
+    let (succeeded, failed) = collect_targets(targets, metric, &mut functions, &mut warnings)?;
     if failed > 0 && succeeded == 0 {
         return Err(Error::collect(format!(
             "failed to parse all {failed} Rust file(s)"
         )));
     }
     Ok((functions, warnings))
+}
+
+fn collect_targets(
+    targets: &[Target],
+    metric: Metric,
+    functions: &mut Vec<LocatedFn>,
+    warnings: &mut Vec<String>,
+) -> Result<(usize, usize)> {
+    let mut succeeded = 0_usize;
+    let mut failed = 0_usize;
+    for target in targets {
+        collect_target(
+            target,
+            metric,
+            functions,
+            warnings,
+            &mut succeeded,
+            &mut failed,
+        )?;
+    }
+    Ok((succeeded, failed))
+}
+
+fn collect_target(
+    target: &Target,
+    metric: Metric,
+    functions: &mut Vec<LocatedFn>,
+    warnings: &mut Vec<String>,
+    succeeded: &mut usize,
+    failed: &mut usize,
+) -> Result<()> {
+    let files = walk::rust_files(&target.root, &target.skip)?;
+    for file in files {
+        if take_file(
+            &file,
+            target.crate_name.as_deref(),
+            metric,
+            &target.enabled_features,
+            functions,
+            warnings,
+        ) {
+            *succeeded += 1;
+        } else {
+            *failed += 1;
+        }
+    }
+    Ok(())
 }
 
 fn take_file(
@@ -211,6 +254,16 @@ mod tests {
             lang.enabled_features(Some(&pkg)),
             vec!["std".to_owned(), "serde".to_owned()]
         );
+        let cli_only = RustLanguage {
+            workspace: false,
+            packages: Vec::new(),
+            features: FeatureSelection {
+                features: vec!["cli".into()],
+                all_features: true,
+                no_default_features: false,
+            },
+        };
+        assert_eq!(cli_only.enabled_features(None), vec!["cli".to_owned()]);
     }
 
     #[test]
@@ -236,6 +289,20 @@ mod tests {
         };
         let targets = lang.resolve_targets(&request).unwrap_or_default();
         assert_eq!(targets[0].enabled_features, vec!["serde".to_owned()]);
+    }
+
+    #[test]
+    fn collect_targets_propagates_walk_error() {
+        let targets = [Target {
+            root: PathBuf::from("/no/such/crap-rs-collect-targets"),
+            crate_name: None,
+            skip: Vec::new(),
+            enabled_features: Vec::new(),
+        }];
+        let mut functions = Vec::new();
+        let mut warnings = Vec::new();
+        let result = collect_targets(&targets, Metric::Cyclomatic, &mut functions, &mut warnings);
+        assert!(result.is_err());
     }
 
     #[test]

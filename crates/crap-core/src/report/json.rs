@@ -118,14 +118,18 @@ fn function_doc(entry: &CrapEntry, threshold: f64) -> FunctionDoc {
 fn risk_counts(entries: &[CrapEntry]) -> RiskCounts {
     let mut counts = RiskCounts::default();
     for entry in entries {
-        match classify_risk(entry.crap) {
-            Risk::Low => counts.low += 1,
-            Risk::Acceptable => counts.acceptable += 1,
-            Risk::Moderate => counts.moderate += 1,
-            Risk::High => counts.high += 1,
-        }
+        increment_risk(&mut counts, classify_risk(entry.crap));
     }
     counts
+}
+
+const fn increment_risk(counts: &mut RiskCounts, risk: Risk) {
+    match risk {
+        Risk::Low => counts.low += 1,
+        Risk::Acceptable => counts.acceptable += 1,
+        Risk::Moderate => counts.moderate += 1,
+        Risk::High => counts.high += 1,
+    }
 }
 
 fn average(scores: &[f64]) -> f64 {
@@ -246,6 +250,15 @@ mod tests {
         assert_eq!(value["result"]["summary"]["median_crap"], 0.0);
         assert_eq!(value["result"]["summary"]["risk"]["low"], 0);
         assert!(value["result"]["functions"].as_array().is_some_and(Vec::is_empty));
+    }
+
+    #[test]
+    fn acceptable_risk_is_counted() {
+        let entries = [entry("mid", 10.0, 5, 80.0, Some("demo"), 20)];
+        let value = parse(&render_json(&entries, 15.0, Metric::Cyclomatic, false));
+        assert_eq!(value["result"]["summary"]["risk"]["acceptable"], 1);
+        assert_eq!(value["result"]["functions"][0]["risk"], "acceptable");
+        assert_eq!(value["result"]["functions"][0]["exceeds"], false);
     }
 
     #[test]

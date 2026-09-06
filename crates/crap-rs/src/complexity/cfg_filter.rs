@@ -252,4 +252,22 @@ mod tests {
         assert_eq!(cyclo("#[cfg(foo = \"bar\")] fn f() {}").len(), 1);
         assert_eq!(cyclo("#[cfg(foo = 1)] fn f() {}").len(), 1);
     }
+
+    #[test]
+    fn cfg_windows_is_host_gated() {
+        let fns = cyclo("#[cfg(windows)] fn w() {} fn keep() {}");
+        if cfg!(windows) {
+            assert_eq!(fns.len(), 2);
+        } else {
+            assert_eq!(fns.len(), 1);
+            assert_eq!(fns[0].name, "keep");
+        }
+    }
+
+    #[test]
+    fn cfg_unknown_flag_is_kept() {
+        let fns = cyclo("#[cfg(foo)] fn f() {}");
+        assert_eq!(fns.len(), 1);
+        assert_eq!(fns[0].name, "f");
+    }
 }
