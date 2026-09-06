@@ -68,12 +68,32 @@ fn take_entry(
     let path = entry.path();
     let file_type = entry.file_type().map_err(|source| Error::io(&path, source))?;
     if file_type.is_symlink() {
-        return Ok(());
+        return take_symlink(&path, walk_root, package_root, nested_skip, visited, out);
     }
     if file_type.is_dir() {
         return visit_subdir(&path, walk_root, package_root, nested_skip, visited, out);
     }
-    collect_rust_file(path, out);
+    collect_rust_file(path, visited, out);
+    Ok(())
+}
+
+fn take_symlink(
+    path: &Path,
+    walk_root: &Path,
+    package_root: Option<&Path>,
+    nested_skip: &[PathBuf],
+    visited: &mut HashSet<PathBuf>,
+    out: &mut Vec<PathBuf>,
+) -> Result<()> {
+    let Ok(meta) = fs::metadata(path) else {
+        return Ok(());
+    };
+    if meta.is_dir() {
+        return visit_subdir(path, walk_root, package_root, nested_skip, visited, out);
+    }
+    if meta.is_file() {
+        collect_rust_file(path.to_path_buf(), visited, out);
+    }
     Ok(())
 }
 
@@ -94,10 +114,16 @@ fn visit_subdir(
     visit(path, walk_root, package_root, nested_skip, visited, out)
 }
 
-fn collect_rust_file(path: PathBuf, out: &mut Vec<PathBuf>) {
-    if is_rust_file(&path) {
-        out.push(path);
+fn collect_rust_file(path: PathBuf, visited: &mut HashSet<PathBuf>, out: &mut Vec<PathBuf>) {
+    if !is_rust_file(&path) {
+        return;
     }
+    if let Ok(canon) = fs::canonicalize(&path)
+        && !visited.insert(canon)
+    {
+        return;
+    }
+    out.push(path);
 }
 
 fn skip_dir(
@@ -255,7 +281,7 @@ mod unix_tests {
     }
 
     #[test]
-    fn rust_file_symlink_is_not_collected() {
+    fn rust_file_symlink_is_collected_once() {
         let root = temp_root();
         let written = fs::write(root.join("real.rs"), "fn f() {}\n");
         assert!(written.is_ok(), "{written:?}");
@@ -266,7 +292,10 @@ mod unix_tests {
         assert!(files.is_ok(), "{files:?}");
         let files = files.unwrap_or_default();
         assert_eq!(files.len(), 1);
-        assert!(files[0].ends_with("real.rs"));
+        assert!(
+            files[0].ends_with("real.rs") || files[0].ends_with("alias.rs"),
+            "{files:?}"
+        );
     }
 
     #[test]

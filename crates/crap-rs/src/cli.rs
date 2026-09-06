@@ -171,35 +171,7 @@ OPTIONS:
     -h, --help              Print help
     -V, --version           Print version
 
-SCORE:
-    CRAP(m) = CC^2 * (1 - cov/100)^3 + CC
-
-    100% coverage => score equals complexity (never zero).
-    0% coverage   => CC^2 + CC.
-    CC 31 or more cannot fall to 30 or below at any coverage.
-
-    Coverage needed to stay at or under 30 (cyclomatic):
-      CC 1-5    0%     CC 16-20   ~71%
-      CC 6-10   ~42%   CC 21-25   ~80%
-      CC 11-15  ~57%   CC 26-30   100%
-      CC 31+    refactor; coverage cannot help
-
-    Cyclomatic: each match arm adds 1, including `_` / catch-alls;
-    let-else and each match guard add 1.
-    Cognitive: nesting-weighted; match is one increment (not per arm);
-    let-else is if/else; each match guard is flat +1; else/else-if
-    are flat +1; same-operator boolean runs count once; labeled
-    break/continue +1; `?` is free. Cognitive does not add for
-    direct recursion.
-
-    A low score is not a reason to skip tests on simple functions.
-    If a function is flagged: add automated tests when coverage is
-    below 90%; extract or simplify when coverage is 90% or more and
-    complexity still keeps the score over the threshold.
-
-    Coverage here is instrumented-line hits from the LCOV file. It does
-    not prove assertions are meaningful. Coupling and cohesion are out
-    of scope. Some complex functions are legitimate.
+    Scoring formula, coverage table, and metric rules: README.md
 
 EXIT CODES:
     0   Analysis finished; no requested gate tripped

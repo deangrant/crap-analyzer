@@ -119,6 +119,9 @@ boolean operator counts once; labeled `break` / `continue` add 1; `?` is
 free; direct recursion is not counted. Nested function coverage excludes
 the inner span. Feature-gated items are skipped unless those features are
 enabled (pass the same `--features` flags used for `cargo llvm-cov`).
+File and directory symlinks are followed; cycles are skipped. `$CARGO` is
+used only when it names an existing file (Cargo’s usual override);
+otherwise `crap-rs` runs `cargo` from `PATH`.
 
 ## License
 

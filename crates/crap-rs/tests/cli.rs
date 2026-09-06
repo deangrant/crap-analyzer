@@ -37,9 +37,9 @@ fn help_describes_the_tool() {
     assert_eq!(code, 0);
     assert!(stdout.contains("USAGE:"));
     assert!(stdout.contains("--lcov"));
-    assert!(stdout.contains("CRAP(m)"));
     assert!(stdout.contains("not a quality score"));
     assert!(stdout.contains("crap-rs [OPTIONS]"));
+    assert!(stdout.contains("README.md"));
 }
 
 #[test]
@@ -191,15 +191,24 @@ fn workspace_flag_exits_zero() {
 }
 
 #[test]
-fn missing_cargo_binary_exits_two() {
-    let (code, _, stderr) = output_of(
+fn missing_cargo_override_falls_back() {
+    let (code, stdout, stderr) = output_of(
         bin()
             .env("CARGO", "/no/such/crap-rs-metadata")
             .arg("--lcov")
             .arg(sample_root().join("lcov.info"))
+            .arg("--path")
+            .arg(workspace_root())
             .arg("-p")
-            .arg("crap-rs"),
+            .arg("crap-rs")
+            .arg("--summary"),
     );
+    assert_eq!(code, 0, "{stdout}{stderr}");
+}
+
+#[test]
+fn failing_cargo_override_exits_two() {
+    let (code, stderr) = metadata_with_fake_cargo("exit 1");
     assert_eq!(code, 2);
     assert!(stderr.contains("cargo metadata"));
 }

@@ -2,6 +2,10 @@
 
 use crate::error::{Error, Result};
 use std::collections::{BTreeMap, HashMap};
+use std::fs::File;
+#[cfg(test)]
+use std::io::Cursor;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
 /// Instrumented line hits for one source file.
@@ -70,8 +74,9 @@ fn line_in_ranges(line: u32, ranges: &[(usize, usize)]) -> bool {
 /// Returns [`Error::Io`] if the file cannot be read, or [`Error::Coverage`]
 /// if the file has no valid `DA:` line-hit records.
 pub fn parse_lcov(path: &Path) -> Result<HashMap<PathBuf, FileCoverage>> {
-    let text = std::fs::read_to_string(path).map_err(|source| Error::io(path, source))?;
-    let (files, valid_da) = parse_lcov_text(&text);
+    let file = File::open(path).map_err(|source| Error::io(path, source))?;
+    let (files, valid_da) =
+        parse_lcov_reader(BufReader::new(file)).map_err(|source| Error::io(path, source))?;
     if valid_da == 0 {
         return Err(Error::coverage(format!(
             "{}: LCOV has no valid line-hit (DA) records",
@@ -82,14 +87,21 @@ pub fn parse_lcov(path: &Path) -> Result<HashMap<PathBuf, FileCoverage>> {
 }
 
 /// Parses LCOV text. Unknown record types are ignored.
+#[cfg(test)]
 fn parse_lcov_text(text: &str) -> (HashMap<PathBuf, FileCoverage>, usize) {
+    parse_lcov_reader(Cursor::new(text)).unwrap_or_else(|_| (HashMap::new(), 0))
+}
+
+fn parse_lcov_reader<R: BufRead>(
+    reader: R,
+) -> std::io::Result<(HashMap<PathBuf, FileCoverage>, usize)> {
     let mut files = HashMap::new();
     let mut current: Option<PathBuf> = None;
     let mut valid_da = 0_usize;
-    for raw in text.lines() {
-        apply_record(raw, &mut files, &mut current, &mut valid_da);
+    for raw in reader.lines() {
+        apply_record(&raw?, &mut files, &mut current, &mut valid_da);
     }
-    (files, valid_da)
+    Ok((files, valid_da))
 }
 
 fn apply_record(

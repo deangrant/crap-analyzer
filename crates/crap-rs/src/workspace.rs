@@ -59,8 +59,18 @@ fn manifest_path(root: &Path) -> PathBuf {
     root.join("Cargo.toml")
 }
 
+fn cargo_from_override(value: Option<&Path>) -> PathBuf {
+    value
+        .filter(|path| path.is_file())
+        .map_or_else(|| PathBuf::from("cargo"), Path::to_path_buf)
+}
+
+fn cargo_bin() -> PathBuf {
+    cargo_from_override(std::env::var_os("CARGO").as_deref().map(Path::new))
+}
+
 fn run_metadata(root: &Path) -> Result<Value> {
-    let cargo = std::env::var_os("CARGO").map_or_else(|| PathBuf::from("cargo"), PathBuf::from);
+    let cargo = cargo_bin();
     let output = Command::new(cargo)
         .args(["metadata", "--format-version", "1", "--no-deps"])
         .arg("--manifest-path")
@@ -330,5 +340,16 @@ mod tests {
         let result = all_members(&dir);
         let _ = std::fs::remove_dir_all(&dir);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn cargo_override_requires_an_existing_file() {
+        assert_eq!(
+            cargo_from_override(Some(Path::new("/no/such/crap-rs-metadata"))),
+            PathBuf::from("cargo")
+        );
+        assert_eq!(cargo_from_override(None), PathBuf::from("cargo"));
+        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
+        assert_eq!(cargo_from_override(Some(&manifest)), manifest);
     }
 }

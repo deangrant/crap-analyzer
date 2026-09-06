@@ -6,9 +6,14 @@ use std::ffi::OsStr;
 use std::hash::BuildHasher;
 use std::path::{Component, Path, PathBuf};
 
-/// Coverage files keyed by resolved path components.
+struct IndexedFile {
+    parts: Vec<String>,
+    coverage: FileCoverage,
+}
+
+/// Coverage files keyed by last path component (file name).
 pub(super) struct PathIndex {
-    files: Vec<(Vec<String>, FileCoverage)>,
+    by_name: HashMap<String, Vec<IndexedFile>>,
 }
 
 impl PathIndex {
@@ -20,30 +25,51 @@ impl PathIndex {
             let key = components(path);
             merged.entry(key).or_default().merge_from(file);
         }
-        Self {
-            files: merged.into_iter().collect(),
+        let mut by_name: HashMap<String, Vec<IndexedFile>> = HashMap::new();
+        for (parts, coverage) in merged {
+            if let Some(name) = parts.last().cloned() {
+                by_name.entry(name).or_default().push(IndexedFile { parts, coverage });
+            }
         }
+        Self { by_name }
     }
 
     pub(super) fn lookup(&self, source: &Path, crate_name: Option<&str>) -> Option<&FileCoverage> {
         let src = components(source);
-        let mut best_rank: Option<MatchRank> = None;
-        let mut winners: Vec<(&Vec<String>, &FileCoverage)> = Vec::new();
-        for (key, file) in &self.files {
-            let Some(rank) = match_rank(&src, key) else {
-                continue;
-            };
-            match best_rank {
-                Some(best) if rank < best => {}
-                Some(best) if rank == best => winners.push((key, file)),
-                _ => {
-                    best_rank = Some(rank);
-                    winners.clear();
-                    winners.push((key, file));
-                }
-            }
+        let files = self.by_name.get(src.last()?)?;
+        pick_winner(&best_matches(&src, files), crate_name)
+    }
+}
+
+fn best_matches<'a>(
+    src: &[String],
+    files: &'a [IndexedFile],
+) -> Vec<(&'a Vec<String>, &'a FileCoverage)> {
+    let mut best_rank = None;
+    let mut winners = Vec::new();
+    for file in files {
+        consider_match(src, file, &mut best_rank, &mut winners);
+    }
+    winners
+}
+
+fn consider_match<'a>(
+    src: &[String],
+    file: &'a IndexedFile,
+    best_rank: &mut Option<MatchRank>,
+    winners: &mut Vec<(&'a Vec<String>, &'a FileCoverage)>,
+) {
+    let Some(rank) = match_rank(src, &file.parts) else {
+        return;
+    };
+    match *best_rank {
+        Some(best) if rank < best => {}
+        Some(best) if rank == best => winners.push((&file.parts, &file.coverage)),
+        _ => {
+            *best_rank = Some(rank);
+            winners.clear();
+            winners.push((&file.parts, &file.coverage));
         }
-        pick_winner(&winners, crate_name)
     }
 }
 
@@ -115,4 +141,28 @@ fn os_to_string(part: &OsStr) -> String {
 
 fn is_suffix_pair(a: &[String], b: &[String]) -> bool {
     a.ends_with(b) || b.ends_with(a)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn file(hits: u64) -> FileCoverage {
+        FileCoverage {
+            lines: std::iter::once((1, hits)).collect(),
+        }
+    }
+
+    #[test]
+    fn lookup_only_considers_the_same_basename() {
+        let coverage = HashMap::from([
+            (PathBuf::from("src/foo.rs"), file(1)),
+            (PathBuf::from("src/bar.rs"), file(99)),
+        ]);
+        let index = PathIndex::from_coverage(&coverage);
+        let found = index.lookup(Path::new("/proj/src/foo.rs"), None);
+        assert_eq!(found.and_then(|cov| cov.lines.get(&1).copied()), Some(1));
+        assert!(index.lookup(Path::new("/proj/src/missing.rs"), None).is_none());
+        assert!(index.lookup(Path::new(""), None).is_none());
+    }
 }
