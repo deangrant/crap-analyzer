@@ -51,6 +51,26 @@ pub fn analyze_source(
     )
 }
 
+/// Parses `source` with `features` treated as enabled for `#[cfg]`.
+///
+/// # Errors
+///
+/// Returns [`Error::Collect`] when the text is not valid Rust.
+#[cfg(test)]
+pub fn analyze_source_features(
+    path: &Path,
+    source: &str,
+    metric: Metric,
+    features: &[String],
+) -> Result<Vec<FunctionComplexity>> {
+    analyze_source_cfg(
+        path,
+        source,
+        metric,
+        &CfgUniverse::new(features.iter().cloned()),
+    )
+}
+
 fn analyze_source_cfg(
     path: &Path,
     source: &str,

@@ -296,6 +296,17 @@ mod tests {
     }
 
     #[test]
+    fn cfg_target_os_linux_is_host_gated() {
+        let fns = cyclo("#[cfg(target_os = \"linux\")] fn linux() {} fn keep() {}");
+        if super::HOST_OS == "linux" {
+            assert_eq!(fns.len(), 2);
+        } else {
+            assert_eq!(fns.len(), 1);
+            assert_eq!(fns[0].name, "keep");
+        }
+    }
+
+    #[test]
     fn cfg_unknown_list_and_key_are_skipped() {
         assert!(cyclo("#[cfg(weird(x))] fn f() {}").is_empty());
         assert!(cyclo("#[cfg(foo = \"bar\")] fn f() {}").is_empty());

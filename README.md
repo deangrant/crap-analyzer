@@ -91,8 +91,9 @@ The formula is the source of truth.
 
 - `--lcov <file>` — LCOV from `cargo llvm-cov` (required); must contain at
   least one `DA:` line-hit record
-- `--path <dir>` — walk this tree (default `.`). A `Cargo.toml` workspace
-  is analyzed per member (same isolation as `--workspace`)
+- `--path <dir>` — walk this tree (default `.`). A workspace root is
+  analyzed per member (same isolation as `--workspace`). A member
+  package root is that package only; `-p` is not required.
 - `--metric` — `cyclomatic` (default) or `cognitive`
 - `--threshold` — flag scores strictly above this. Number, `strict` (8),
   or `lenient` (25). Default `15` for both metrics. Independent of the
@@ -149,6 +150,9 @@ this workspace yet.
 - Trait default methods are omitted (llvm-cov often has no line hits).
 - Feature-gated items are skipped unless those features are enabled
   (pass the same `--features` flags used for `cargo llvm-cov`).
+- Unknown `#[cfg]` predicates (for example `weird`) skip the item.
+  Skipped items are not gated, so they cannot trip `--fail-above`
+  when llvm-cov never compiled them.
 - `#[cfg]` uses the host (`target_os`, `target_arch`, `target_family`,
   `target_pointer_width`, `unix` / `windows`). Cross-compile LCOV can
   disagree; there is no `--target` flag.

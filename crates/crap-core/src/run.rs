@@ -21,8 +21,8 @@ pub struct RunResult {
 ///
 /// # Errors
 ///
-/// Returns I/O, metadata, usage, or total-parse errors. Individual
-/// parse failures become warnings unless every file fails.
+/// Returns I/O, metadata, usage, or collect errors. Any source file
+/// that fails to parse fails the run.
 pub fn run<L: Language>(lang: &L, request: &ScanRequest) -> Result<RunResult> {
     let coverage = coverage::parse_lcov(&request.lcov)?;
     let targets = lang.resolve_targets(request)?;

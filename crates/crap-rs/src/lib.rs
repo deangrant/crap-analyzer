@@ -297,6 +297,9 @@ mod tests {
         );
     }
 
+    #[path = "feature_collect_tests.rs"]
+    mod feature_collect;
+
     #[test]
     fn path_mode_uses_explicit_features() {
         let lang = RustLanguage {

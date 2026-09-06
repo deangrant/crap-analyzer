@@ -172,9 +172,9 @@ OPTIONS:
     --lcov <file>           LCOV file (required); must contain at least
                             one DA line-hit. Produce one with:
                             cargo llvm-cov --lcov --output-path lcov.info
-    --path <dir>            Walk root [default: .]. A Cargo.toml with
-                            workspace members is analyzed per package
-                            (same isolation as --workspace)
+    --path <dir>            Walk root [default: .]. A workspace root is
+                            analyzed per member; a member package root
+                            is that package only (no -p required)
     --metric <name>         cyclomatic (default) or cognitive
     --threshold <n>         Flag scores strictly above this
                             [default: 15; strict=8, lenient=25]

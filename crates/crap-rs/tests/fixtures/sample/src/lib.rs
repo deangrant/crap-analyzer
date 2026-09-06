@@ -39,3 +39,8 @@ pub fn crappy(x: i32) -> i32 {
     }
     x
 }
+
+pub fn question() -> Result<(), ()> {
+    Ok(())?;
+    Ok(())
+}

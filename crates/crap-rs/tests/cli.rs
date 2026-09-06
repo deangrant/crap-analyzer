@@ -177,9 +177,18 @@ fn fixture_json_locks_sample_scores() {
     let parsed = serde_json::from_str::<serde_json::Value>(&stdout);
     assert!(parsed.is_ok(), "{parsed:?}");
     let value = parsed.unwrap_or_default();
+    assert_fixture_gate(&value);
     assert_covered_low(&value, "trivial", 1, 1.0);
     assert_covered_low(&value, "moderate", 3, 3.0);
+    assert_covered_low(&value, "question", 2, 2.0);
     assert_crappy_high(&value);
+}
+
+fn assert_fixture_gate(value: &serde_json::Value) {
+    assert_eq!(value["result"]["passed"], true);
+    assert_eq!(value["result"]["gate_failed"], false);
+    let exceeding = value["result"]["summary"]["exceeding"].as_u64().unwrap_or(0);
+    assert!(exceeding >= 1, "{exceeding}");
 }
 
 fn assert_covered_low(value: &serde_json::Value, name: &str, complexity: i64, crap: f64) {

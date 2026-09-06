@@ -62,6 +62,20 @@ fn forward_relative_sf_beats_longer_reverse_false_friend() {
 }
 
 #[test]
+fn relative_sf_beats_other_proj_reverse_false_friend() {
+    let functions = [func("proj/src/foo.rs", "f", 1, 1)];
+    let mut coverage = cov("src/foo.rs", &[(1, 1)]);
+    coverage.insert(
+        PathBuf::from("other/proj/src/foo.rs"),
+        FileCoverage {
+            lines: std::iter::once((1, 0)).collect(),
+        },
+    );
+    let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
+    assert_f64_bits_eq(entries[0].coverage, 100.0);
+}
+
+#[test]
 fn longest_suffix_wins() {
     let functions = [func("/proj/src/lib.rs", "f", 1, 1)];
     let mut coverage = cov("src/lib.rs", &[(1, 1)]);
@@ -326,4 +340,25 @@ fn leading_parent_dir_stays_on_the_stack() {
     let coverage = cov("../src/lib.rs", &[(1, 1)]);
     let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
     assert_f64_bits_eq(entries[0].coverage, 100.0);
+}
+
+#[test]
+fn join_hundreds_of_nested_functions_finishes_under_a_second() {
+    let mut functions = Vec::with_capacity(300);
+    functions.push(func("src/foo.rs", "outer", 1, 2000));
+    let mut lines = vec![(1, 1_u64)];
+    for i in 0..299 {
+        let start = 2 + i * 6;
+        let end = start + 4;
+        functions.push(func("src/foo.rs", &format!("n{i}"), start, end));
+        for line in start..=end {
+            let line = u32::try_from(line).unwrap_or(1);
+            lines.push((line, 1));
+        }
+    }
+    let coverage = cov("src/foo.rs", &lines);
+    let started = std::time::Instant::now();
+    let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
+    assert!(started.elapsed().as_secs() < 1, "{:?}", started.elapsed());
+    assert_eq!(entries.len(), 300);
 }
