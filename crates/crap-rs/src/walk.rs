@@ -173,6 +173,10 @@ fn skip_named_dir(dir: &Path, package_root: Option<&Path>) -> bool {
 
 fn is_rust_file(path: &Path) -> bool {
     path.extension().is_some_and(|ext| ext == "rs")
+        && !path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.ends_with("_tests.rs"))
 }
 
 #[cfg(test)]
@@ -302,6 +306,19 @@ mod tests {
         let names = ["helper.rs", "tests.rs", "integration.rs"];
         let found = names.map(|name| files.iter().any(|path| path.ends_with(name)));
         assert_eq!(found, [true, true, false]);
+    }
+
+    #[test]
+    fn rust_files_skips_star_tests_rs() {
+        let root = temp_root();
+        require_ok(fs::create_dir_all(root.join("src")));
+        require_ok(fs::write(root.join("src/lib.rs"), "fn prod() {}\n"));
+        require_ok(fs::write(root.join("src/foo_tests.rs"), "fn helper() {}\n"));
+        let files = require_ok(rust_files(&root, &[]));
+        let _ = fs::remove_dir_all(&root);
+        let found =
+            ["lib.rs", "foo_tests.rs"].map(|name| files.iter().any(|path| path.ends_with(name)));
+        assert_eq!(found, [true, false]);
     }
 
     #[test]
