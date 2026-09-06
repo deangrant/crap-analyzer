@@ -210,4 +210,56 @@ mod tests {
         assert!(summary.contains("demo: 2 functions, 1 over"));
         assert!(summary.contains("worst: crappy"));
     }
+
+    #[test]
+    fn action_line_asks_for_tests_when_coverage_is_low() {
+        let entries = [entry("crappy", 156.0, 12, 0.0)];
+        let table = render_table(&entries, 30.0, false);
+        assert!(table.contains("Add automated tests for the under-covered functions."));
+    }
+
+    #[test]
+    fn action_line_asks_to_refactor_when_coverage_is_high() {
+        let entries = [entry("dense", 40.0, 31, 100.0)];
+        let table = render_table(&entries, 30.0, false);
+        assert!(
+            table.contains("Refactor functions whose complexity stays high even when covered.")
+        );
+    }
+
+    #[test]
+    fn action_line_asks_for_both_when_mixed() {
+        let entries = [
+            entry("crappy", 156.0, 12, 0.0),
+            entry("dense", 40.0, 31, 100.0),
+        ];
+        let table = render_table(&entries, 30.0, false);
+        assert!(
+            table.contains("Add tests where coverage is low; refactor when complexity stays high.")
+        );
+    }
+
+    #[test]
+    fn action_line_is_omitted_when_nothing_fails() {
+        let entries = [entry("okfn", 1.0, 1, 100.0)];
+        let table = render_table(&entries, 30.0, false);
+        assert!(!table.contains("Add automated tests"));
+        assert!(!table.contains("Refactor functions"));
+        assert_eq!(action_line(&entries, 30.0), "");
+        assert_eq!(action_line(&[], 30.0), "");
+    }
+
+    #[test]
+    fn empty_summary_has_zero_functions() {
+        let summary = render_summary(&[], 30.0, false);
+        assert_eq!(summary, "0 functions, 0 exceed threshold 30.");
+    }
+
+    #[test]
+    fn fail_rows_use_ansi_when_color_is_on() {
+        let entries = [entry("crappy", 156.0, 12, 0.0)];
+        let table = render_table(&entries, 30.0, true);
+        assert!(table.contains("\u{1b}[31m"));
+        assert!(table.contains("\u{1b}[0m"));
+    }
 }

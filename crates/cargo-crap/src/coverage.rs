@@ -179,4 +179,10 @@ mod tests {
         assert_eq!(a.lines.get(&2), Some(&1));
         assert_eq!(a.lines.get(&3), Some(&0));
     }
+
+    #[test]
+    fn malformed_da_records_are_ignored() {
+        let map = parse("SF:src/foo.rs\nDA:not-a-number\nDA:10\nend_of_record\n");
+        assert!(map[Path::new("src/foo.rs")].lines.is_empty());
+    }
 }

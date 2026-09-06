@@ -161,9 +161,13 @@ fn components(path: &Path) -> Vec<String> {
     for comp in path.components() {
         match comp {
             Component::Normal(part) => stack.push(os_to_string(part)),
-            Component::Prefix(prefix) => stack.push(os_to_string(prefix.as_os_str())),
             Component::ParentDir => push_parent(&mut stack),
+            #[cfg(windows)]
+            Component::Prefix(prefix) => stack.push(os_to_string(prefix.as_os_str())),
+            #[cfg(windows)]
             Component::RootDir | Component::CurDir => {}
+            #[cfg(not(windows))]
+            Component::RootDir | Component::CurDir | Component::Prefix(_) => {}
         }
     }
     stack
@@ -340,5 +344,13 @@ mod tests {
         );
         let entries = join(&functions, &coverage, MissingPolicy::Skip);
         assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn leading_parent_dir_stays_on_the_stack() {
+        let functions = [func("/src/lib.rs", "f", 1, 1)];
+        let coverage = cov("../src/lib.rs", &[(1, 1)]);
+        let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
+        assert_eq!(entries[0].coverage, 100.0);
     }
 }

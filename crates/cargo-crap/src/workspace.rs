@@ -179,4 +179,85 @@ mod tests {
         );
         assert_eq!(manifest_path(Path::new(".")), PathBuf::from("./Cargo.toml"));
     }
+
+    #[test]
+    fn missing_packages_array_is_metadata_error() {
+        let json = serde_json::json!({ "workspace_members": ["pkg a 1"] });
+        let pkgs = packages_from_metadata(&json);
+        assert!(pkgs.is_err());
+    }
+
+    #[test]
+    fn missing_workspace_members_is_metadata_error() {
+        let json = serde_json::json!({ "packages": [] });
+        let pkgs = packages_from_metadata(&json);
+        assert!(pkgs.is_err());
+    }
+
+    #[test]
+    fn non_string_workspace_members_are_rejected() {
+        let json = serde_json::json!({
+            "workspace_members": [1],
+            "packages": []
+        });
+        let pkgs = packages_from_metadata(&json);
+        assert!(pkgs.is_err());
+    }
+
+    #[test]
+    fn packages_without_required_fields_are_skipped() {
+        let json = serde_json::json!({
+            "workspace_members": ["keep 1", "noname 1", "noman 1"],
+            "packages": [
+                { "name": "noid", "manifest_path": "/tmp/x/Cargo.toml" },
+                { "id": "noname 1", "manifest_path": "/tmp/m/Cargo.toml" },
+                { "id": "noman 1", "name": "noman" },
+                { "id": "keep 1", "name": "keep", "manifest_path": "/tmp/k/Cargo.toml" }
+            ]
+        });
+        let pkgs = packages_from_metadata(&json);
+        assert!(pkgs.is_ok());
+        let pkgs = pkgs.unwrap_or_default();
+        assert_eq!(pkgs.len(), 1);
+        assert_eq!(pkgs[0].name, "keep");
+    }
+
+    #[test]
+    fn manifest_without_parent_is_metadata_error() {
+        let json = serde_json::json!({
+            "workspace_members": ["root 1"],
+            "packages": [
+                { "id": "root 1", "name": "root", "manifest_path": "/" }
+            ]
+        });
+        let pkgs = packages_from_metadata(&json);
+        assert!(pkgs.is_err());
+    }
+
+    #[test]
+    fn selected_members_returns_named_package() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let workspace = root.parent().and_then(|p| p.parent()).unwrap_or_else(|| Path::new("."));
+        let selected = selected_members(&["cargo-crap".into()], workspace);
+        assert!(selected.is_ok(), "{selected:?}");
+        let selected = selected.unwrap_or_default();
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].name, "cargo-crap");
+    }
+
+    #[test]
+    fn metadata_fails_without_manifest() {
+        let dir = std::env::temp_dir().join(format!(
+            "cargo-crap-nometa-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ));
+        let created = std::fs::create_dir_all(&dir);
+        assert!(created.is_ok(), "{created:?}");
+        let result = all_members(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(result.is_err());
+    }
 }

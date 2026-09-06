@@ -127,6 +127,7 @@ mod tests {
         ));
         assert!(!excluded_rel(Path::new("/proj/src/foo.rs"), root));
         assert!(!excluded_rel(Path::new("/proj/src/tests.rs"), root));
+        assert!(!excluded_rel(Path::new("/other/foo.rs"), root));
     }
 
     #[test]
@@ -188,5 +189,35 @@ mod unix_tests {
         let files = files.unwrap_or_default();
         assert_eq!(files.len(), 1);
         assert!(files[0].ends_with("real.rs"));
+    }
+
+    #[test]
+    fn nested_skip_of_root_yields_no_files() {
+        let root = temp_root();
+        let written = fs::write(root.join("lib.rs"), "fn f() {}\n");
+        assert!(written.is_ok(), "{written:?}");
+        let files = rust_files(&root, std::slice::from_ref(&root));
+        let _ = fs::remove_dir_all(&root);
+        assert!(files.is_ok(), "{files:?}");
+        assert!(files.unwrap_or_default().is_empty());
+    }
+
+    #[test]
+    fn visit_subdir_skips_missing_and_revisited() {
+        let root = temp_root();
+        let written = fs::write(root.join("lib.rs"), "fn f() {}\n");
+        assert!(written.is_ok(), "{written:?}");
+        let mut visited = HashSet::new();
+        let mut out = Vec::new();
+        let missing = visit_subdir(&root.join("gone"), &root, &[], &mut visited, &mut out);
+        assert!(missing.is_ok(), "{missing:?}");
+        assert!(out.is_empty());
+        let first = visit_subdir(&root, &root, &[], &mut visited, &mut out);
+        assert!(first.is_ok(), "{first:?}");
+        let before = out.len();
+        let second = visit_subdir(&root, &root, &[], &mut visited, &mut out);
+        let _ = fs::remove_dir_all(&root);
+        assert!(second.is_ok(), "{second:?}");
+        assert_eq!(out.len(), before);
     }
 }

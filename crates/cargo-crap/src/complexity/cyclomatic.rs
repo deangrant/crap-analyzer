@@ -136,4 +136,19 @@ mod tests {
     fn opaque_macro_tokens_do_not_add() {
         assert_eq!(snippet("fn f() { opaque!(@@@); }"), 1);
     }
+
+    #[test]
+    fn for_loop_adds_one() {
+        assert_eq!(snippet("fn f(xs: &[i32]) { for _ in xs {} }"), 2);
+    }
+
+    #[test]
+    fn while_loop_adds_one() {
+        assert_eq!(snippet("fn f(mut n: i32) { while n > 0 { n -= 1; } }"), 2);
+    }
+
+    #[test]
+    fn question_mark_adds_one() {
+        assert_eq!(snippet("fn f() -> Result<(), ()> { Ok(())?; Ok(()) }"), 2);
+    }
 }

@@ -292,4 +292,37 @@ mod tests {
     fn labeled_continue_adds_one() {
         assert_eq!(snippet("fn f() { 'a: loop { continue 'a; } }"), 2);
     }
+
+    #[test]
+    fn for_loop_adds_one() {
+        assert_eq!(snippet("fn f(xs: &[i32]) { for _ in xs {} }"), 1);
+    }
+
+    #[test]
+    fn while_loop_adds_one() {
+        assert_eq!(snippet("fn f(mut n: i32) { while n > 0 { n -= 1; } }"), 1);
+    }
+
+    #[test]
+    fn non_logical_binary_inside_and_is_walked() {
+        assert_eq!(
+            snippet("fn f(a: bool, x: i32, y: i32) { let _ = a && x + y > 0; }"),
+            1
+        );
+    }
+
+    #[test]
+    fn score_bool_chain_ignores_non_logical_ops() {
+        let parsed = syn::parse_str::<syn::Expr>("a + b");
+        assert!(parsed.is_ok());
+        let Ok(super::Expr::Binary(bin)) = parsed else {
+            return;
+        };
+        let mut counter = super::CognitiveCounter {
+            count: 0,
+            nesting: 0,
+        };
+        super::score_bool_chain(&mut counter, &bin);
+        assert_eq!(counter.count, 0);
+    }
 }

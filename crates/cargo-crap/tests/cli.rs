@@ -12,6 +12,13 @@ fn sample_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample")
 }
 
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|p| p.parent())
+        .map_or_else(|| PathBuf::from("."), PathBuf::from)
+}
+
 fn output_of(cmd: &mut Command) -> (i32, String, String) {
     let spawned = cmd.output();
     assert!(spawned.is_ok(), "{spawned:?}");
@@ -91,6 +98,13 @@ fn missing_lcov_exits_two() {
 }
 
 #[test]
+fn missing_required_flag_exits_two() {
+    let (code, _, stderr) = output_of(&mut bin());
+    assert_eq!(code, 2);
+    assert!(!stderr.is_empty());
+}
+
+#[test]
 fn unknown_package_exits_two() {
     let root = sample_root();
     let (code, _, stderr) = output_of(
@@ -109,6 +123,132 @@ fn cargo_subcommand_argv_is_accepted() {
     let (code, stdout, _) = output_of(bin().args(["crap", "--help"]));
     assert_eq!(code, 0);
     assert!(stdout.contains("USAGE:"));
+}
+
+#[test]
+fn version_prints_crate_name() {
+    let (code, stdout, _) = output_of(bin().arg("--version"));
+    assert_eq!(code, 0);
+    assert!(stdout.contains("cargo-crap"));
+}
+
+#[test]
+fn selected_package_exits_zero() {
+    let workspace = workspace_root();
+    let lcov = sample_root().join("lcov.info");
+    let (code, stdout, stderr) = output_of(
+        bin()
+            .arg("--lcov")
+            .arg(&lcov)
+            .arg("--path")
+            .arg(&workspace)
+            .arg("-p")
+            .arg("cargo-crap")
+            .arg("--summary"),
+    );
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert!(stdout.contains("exceed threshold"));
+}
+
+#[test]
+fn workspace_flag_exits_zero() {
+    let workspace = workspace_root();
+    let lcov = sample_root().join("lcov.info");
+    let (code, stdout, stderr) = output_of(
+        bin()
+            .arg("--lcov")
+            .arg(&lcov)
+            .arg("--path")
+            .arg(&workspace)
+            .arg("--workspace")
+            .arg("--summary"),
+    );
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert!(stdout.contains("exceed threshold"));
+}
+
+#[test]
+fn missing_cargo_binary_exits_two() {
+    let (code, _, stderr) = output_of(
+        bin()
+            .env("CARGO", "/no/such/cargo-crap-metadata")
+            .arg("--lcov")
+            .arg(sample_root().join("lcov.info"))
+            .arg("-p")
+            .arg("cargo-crap"),
+    );
+    assert_eq!(code, 2);
+    assert!(stderr.contains("cargo metadata"));
+}
+
+fn fake_cargo(dir: &std::path::Path, script: &str) -> PathBuf {
+    let path = dir.join("fake-cargo");
+    let written = fs::write(&path, format!("#!/bin/sh\n{script}\n"));
+    assert!(written.is_ok(), "{written:?}");
+    let mode = Command::new("chmod").arg("+x").arg(&path).status();
+    assert!(mode.is_ok(), "{mode:?}");
+    path
+}
+
+fn metadata_with_fake_cargo(script: &str) -> (i32, String) {
+    let root = std::env::temp_dir().join(format!(
+        "cargo-crap-fake-cargo-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos())
+    ));
+    let created = fs::create_dir_all(&root);
+    assert!(created.is_ok(), "{created:?}");
+    let cargo = fake_cargo(&root, script);
+    let (code, _, stderr) = output_of(
+        bin()
+            .env("CARGO", &cargo)
+            .arg("--lcov")
+            .arg(sample_root().join("lcov.info"))
+            .arg("-p")
+            .arg("cargo-crap"),
+    );
+    let _ = fs::remove_dir_all(&root);
+    (code, stderr)
+}
+
+#[test]
+fn cargo_metadata_non_utf8_exits_two() {
+    let (code, stderr) = metadata_with_fake_cargo("printf '\\xff'; exit 0");
+    assert_eq!(code, 2);
+    assert!(stderr.contains("cargo metadata"));
+}
+
+#[test]
+fn cargo_metadata_invalid_json_exits_two() {
+    let (code, stderr) = metadata_with_fake_cargo("printf 'not-json'; exit 0");
+    assert_eq!(code, 2);
+    assert!(stderr.contains("cargo metadata"));
+}
+
+#[test]
+fn parse_warning_exits_zero_when_other_files_succeed() {
+    let root = std::env::temp_dir().join(format!(
+        "cargo-crap-mixed-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos())
+    ));
+    let created = fs::create_dir_all(&root);
+    assert!(created.is_ok(), "{created:?}");
+    let ok = fs::write(root.join("ok.rs"), "fn keep() {}\n");
+    assert!(ok.is_ok(), "{ok:?}");
+    let broken = fs::write(root.join("broken.rs"), "fn not rust {{{");
+    assert!(broken.is_ok(), "{broken:?}");
+    let lcov = root.join("lcov.info");
+    let lcov_written = fs::write(&lcov, "TN:\nSF:ok.rs\nDA:1,1\nend_of_record\n");
+    assert!(lcov_written.is_ok(), "{lcov_written:?}");
+    let (code, _, stderr) = output_of(bin().arg("--lcov").arg(&lcov).arg("--path").arg(&root));
+    let _ = fs::remove_dir_all(&root);
+    assert_eq!(code, 0, "{stderr}");
+    assert!(stderr.contains("skipping"));
 }
 
 #[test]

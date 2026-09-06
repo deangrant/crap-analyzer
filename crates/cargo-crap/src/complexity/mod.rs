@@ -340,4 +340,60 @@ mod tests {
         assert_eq!(Metric::Cyclomatic.default_threshold(), 30.0);
         assert_eq!(Metric::Cognitive.default_threshold(), 15.0);
     }
+
+    #[test]
+    fn cfg_any_test_only_is_skipped() {
+        let fns = cyclo("#[cfg(any(test))] fn helper() { if true {} } fn keep() {}");
+        assert_eq!(fns.len(), 1);
+        assert_eq!(fns[0].name, "keep");
+    }
+
+    #[test]
+    fn cfg_feature_is_kept() {
+        let fns = cyclo("#[cfg(feature = \"x\")] fn f() { if true {} }");
+        assert_eq!(fns.len(), 1);
+        assert_eq!(fns[0].name, "f");
+    }
+
+    #[test]
+    fn nested_mod_functions_are_scored() {
+        let fns = cyclo("mod inner { fn f() { if true {} } }");
+        assert_eq!(fns.len(), 1);
+        assert_eq!(fns[0].name, "f");
+    }
+
+    #[test]
+    fn cfg_test_trait_is_skipped() {
+        let src = "#[cfg(test)] trait T { fn m(&self) { if true {} } }";
+        assert!(cyclo(src).is_empty());
+    }
+
+    #[test]
+    fn test_impl_method_is_skipped() {
+        let src = "struct Foo; impl Foo { #[test] fn t() { if true {} } fn keep(&self) {} }";
+        let fns = cyclo(src);
+        assert_eq!(fns.len(), 1);
+        assert_eq!(fns[0].name, "Foo::keep");
+    }
+
+    #[test]
+    fn trait_declaration_without_default_is_skipped() {
+        let fns = cyclo("trait T { fn m(&self); }");
+        assert!(fns.is_empty());
+    }
+
+    #[test]
+    fn test_trait_method_is_skipped() {
+        let src = "trait T { #[test] fn t(&self) { if true {} } fn keep(&self) {} }";
+        let fns = cyclo(src);
+        assert_eq!(fns.len(), 1);
+        assert_eq!(fns[0].name, "T::keep");
+    }
+
+    #[test]
+    fn tuple_impl_method_is_unprefixed() {
+        let fns = cyclo("impl (u8, u8) { fn m() {} }");
+        assert_eq!(fns.len(), 1);
+        assert_eq!(fns[0].name, "m");
+    }
 }

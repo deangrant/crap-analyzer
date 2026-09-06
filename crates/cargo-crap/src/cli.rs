@@ -273,4 +273,18 @@ mod tests {
             Ok(Action::Run(ref args)) if args.threshold() == 8.0
         ));
     }
+
+    #[test]
+    fn version_text_includes_crate_name_and_version() {
+        let text = version_text();
+        assert!(text.starts_with("cargo-crap "));
+        assert!(text.contains(env!("CARGO_PKG_VERSION")));
+    }
+
+    #[test]
+    fn invalid_threshold_is_usage() {
+        assert!(parse_args(argv(&["--lcov", "x", "--threshold", "abc"])).is_err());
+        assert!(parse_args(argv(&["--lcov", "x", "--threshold", "-1"])).is_err());
+        assert!(parse_args(argv(&["--lcov", "x", "--threshold", "inf"])).is_err());
+    }
 }

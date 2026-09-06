@@ -82,4 +82,16 @@ mod tests {
         assert!(StdError::source(&Error::Metadata("m".into())).is_none());
         assert!(StdError::source(&Error::UnknownPackage("q".into())).is_none());
     }
+
+    #[test]
+    fn display_covers_every_variant() {
+        assert_eq!(Error::usage("bad").to_string(), "bad");
+        assert_eq!(Error::Parse("p".into()).to_string(), "p");
+        assert!(Error::io("x", io::Error::other("e")).to_string().contains('x'));
+        assert_eq!(Error::Metadata("m".into()).to_string(), "cargo metadata: m");
+        assert_eq!(
+            Error::UnknownPackage("q".into()).to_string(),
+            "unknown package `q`"
+        );
+    }
 }
