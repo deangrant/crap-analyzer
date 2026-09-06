@@ -63,12 +63,15 @@ still keeps the score over the threshold.
 | Cyclomatic complexity | Coverage |
 | --- | --- |
 | 1–5 | 0% |
-| 6–10 | ~42% |
-| 11–15 | ~57% |
-| 16–20 | ~71% |
-| 21–25 | ~80% |
-| 26–30 | 100% |
+| 6–10 | ~13–42% |
+| 11–15 | ~46–59% |
+| 16–20 | ~62–71% |
+| 21–25 | ~73–80% |
+| 26–30 | ~82–100% |
 | 31+ | Refactor |
+
+Each range is the coverage needed at the low and high CC of the band.
+The formula is the source of truth.
 
 ## Flags
 
@@ -107,21 +110,25 @@ this workspace yet.
 
 ## Limits
 
-Line coverage is not proof that tests assert anything useful. Some
-complex functions are legitimate. The score does not measure coupling or
-cohesion. Closures count toward the enclosing function; decisions inside
-unexpanded or opaque macros may be missed. Cyclomatic: each match arm
-adds 1, including `_` and other catch-alls; `let … else` and each match
-guard add 1. Cognitive: nesting-weighted increments; a `match` is one
-increment (not per arm); `let … else` is scored like `if` / `else`; each
-match guard is flat +1; `else` / `else if` are flat +1; a run of the same
-boolean operator counts once; labeled `break` / `continue` add 1; `?` is
-free; direct recursion is not counted. Nested function coverage excludes
-the inner span. Feature-gated items are skipped unless those features are
-enabled (pass the same `--features` flags used for `cargo llvm-cov`).
-File and directory symlinks are followed; cycles are skipped. `$CARGO` is
-used only when it names an existing file (Cargo’s usual override);
-otherwise `crap-rs` runs `cargo` from `PATH`.
+- Line coverage is not proof that tests assert anything useful.
+- Some complex functions are legitimate. The score does not measure
+  coupling or cohesion.
+- Decisions inside unexpanded or opaque macros may be missed.
+- Cognitive does not add for direct recursion.
+- Closures count toward the enclosing function.
+- Cyclomatic: each match arm adds 1, including `_` and other catch-alls;
+  `let … else` and each match guard add 1.
+- Cognitive: nesting-weighted increments; a `match` is one increment
+  (not per arm); `let … else` is scored like `if` / `else`; each match
+  guard is flat +1; `else` / `else if` are flat +1; a run of the same
+  boolean operator counts once; labeled `break` / `continue` add 1; `?`
+  is free.
+- Nested function coverage excludes the inner span.
+- Feature-gated items are skipped unless those features are enabled
+  (pass the same `--features` flags used for `cargo llvm-cov`).
+- File and directory symlinks are followed; cycles are skipped.
+- `$CARGO` is used only when it names an existing file (Cargo’s usual
+  override); otherwise `crap-rs` runs `cargo` from `PATH`.
 
 ## License
 

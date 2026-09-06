@@ -99,4 +99,39 @@ mod tests {
         assert!(!exceeds_threshold(30.0, 30.0));
         assert!(exceeds_threshold(30.0001, 30.0));
     }
+
+    fn min_coverage_pct(cc: f64, threshold: f64) -> Option<f64> {
+        if cc > threshold {
+            return None;
+        }
+        if crap(cc, 0.0) <= threshold {
+            return Some(0.0);
+        }
+        let uncovered = ((threshold - cc) / cc.powi(2)).cbrt();
+        Some((1.0 - uncovered) * 100.0)
+    }
+
+    fn near(got: Option<f64>, want: f64) {
+        assert!(
+            got.is_some_and(|value| (value - want).abs() < 0.5),
+            "got {got:?}, want ~{want}"
+        );
+    }
+
+    #[test]
+    fn readme_band_endpoints_match_the_formula() {
+        let gate = 30.0;
+        near(min_coverage_pct(5.0, gate), 0.0);
+        near(min_coverage_pct(6.0, gate), 13.0);
+        near(min_coverage_pct(10.0, gate), 42.0);
+        near(min_coverage_pct(11.0, gate), 46.0);
+        near(min_coverage_pct(15.0, gate), 59.0);
+        near(min_coverage_pct(16.0, gate), 62.0);
+        near(min_coverage_pct(20.0, gate), 71.0);
+        near(min_coverage_pct(21.0, gate), 73.0);
+        near(min_coverage_pct(25.0, gate), 80.0);
+        near(min_coverage_pct(26.0, gate), 82.0);
+        near(min_coverage_pct(30.0, gate), 100.0);
+        assert!(min_coverage_pct(31.0, gate).is_none());
+    }
 }
