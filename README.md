@@ -1,9 +1,15 @@
 # crap-analyzer
 
-A virtual workspace that scores each function by combining complexity with
-automated test coverage. The score is a **change-risk signal**: it is high
-when a function is both hard to follow and lightly exercised by tests. It
-is not a quality grade, a programmer rating, or a management KPI.
+crap-analyzer scores each Rust function by combining complexity with LCOV
+line coverage. The Change Risk Anti-Patterns (CRAP) score is a
+**change-risk signal**: it rises when a function is hard to follow and
+lightly exercised by tests. It is not a quality grade, a programmer
+rating, or a management KPI.
+
+You produce LCOV with `cargo llvm-cov`. The `crap-rs` CLI reads that file
+and your sources, then prints a table or a JSON report.
+
+## Score
 
 ```text
 CRAP(m) = CC² × (1 − cov/100)³ + CC
@@ -12,30 +18,56 @@ CRAP(m) = CC² × (1 − cov/100)³ + CC
 `CC` is the selected complexity metric. The default is McCabe cyclomatic
 complexity (1 + decision points). `--metric cognitive` uses nesting-weighted
 cognitive complexity instead. `cov` is the percent of instrumented lines
-in that function that tests hit. At 100% coverage the score equals
-complexity — risk is acknowledged, not erased. At 0% coverage the score
-is `CC² + CC`. A cyclomatic value of 31 or more cannot score 30 or below
-at any coverage; simplify it.
+in that function that tests hit.
 
-The default **gate** is **15** for both metrics. Named presets sit on
-the band boundaries: `--threshold strict` is 8 and `--threshold lenient`
-is 25. Use `--threshold <n>` for any other non-negative number. A score
-at or below the gate does not mean simple functions should go untested;
-the line just highlights the ones that exceed the active threshold.
+At 100% coverage the score equals complexity. Risk is acknowledged, not
+erased. At 0% coverage the score is `CC² + CC`. A cyclomatic value of 16
+or more cannot stay at or under the default gate of 15 at any coverage;
+simplify that function.
 
-**Bands and the gate are two axes.** Risk bands (Low ≤ 8, Acceptable ≤
-15, Moderate ≤ 25, High > 25) classify the score via a fixed
-`classify_risk` mapping. They never change. The gate is a separate
-pass/fail line: a function exceeds when its score is strictly above the
-active threshold. The shared 8 / 15 / 25 numbers are a calibration
-convention, not empirically derived values. A function can sit in
-Moderate (score 20) and still pass a lenient gate (threshold 25). Never
-read “risk level: Moderate” as “exceeds threshold,” or vice versa.
+### Bands and the gate
 
-## Crates
+These are two axes. Do not treat one as the other.
 
-- [`crap-core`](crates/crap-core) — scoring, LCOV parse, join, and report
-- [`crap-rs`](crates/crap-rs) — Rust discovery, complexity, and the `crap-rs` CLI
+| Axis | Meaning | Values |
+| ---- | ------- | ------ |
+| Risk band | Fixed `classify_risk` label | Low ≤ 8, Acceptable ≤ 15, Moderate ≤ 25, High > 25 |
+| Gate | `--fail-above` trip line | Default 15; `strict` = 8; `lenient` = 25; or any number ≥ 0 |
+
+A function **exceeds** when its score is **strictly above** the active
+threshold. A Moderate function (score 20) still passes a lenient gate
+(25). Never read “risk level: Moderate” as “exceeds threshold.”
+
+The shared 8 / 15 / 25 numbers are a calibration convention. They are not
+empirically derived cutoffs.
+
+### Coverage needed to stay at or under 15 (cyclomatic)
+
+This table uses the **default gate of 15**. `--threshold strict` is 8;
+`--threshold lenient` is 25. The formula is the source of truth.
+
+| Cyclomatic complexity | Coverage |
+| --------------------- | -------- |
+| 1–3 | 0% |
+| 4–6 | ~12–37% |
+| 7–9 | ~45–58% |
+| 10–12 | ~63–73% |
+| 13–15 | ~77–100% |
+| 16+ | Refactor |
+
+Each range is the coverage needed at the low and high `CC` of that band.
+
+If a function is flagged: add automated tests when coverage is below 90%.
+Extract or simplify when coverage is 90% or more and complexity still
+keeps the score over the threshold.
+
+## Requirements
+
+- Rust toolchain **1.94.0** ([`rust-toolchain.toml`](rust-toolchain.toml))
+- [`cargo-llvm-cov`](https://github.com/taiki-e/cargo-llvm-cov) to produce LCOV
+
+Coverage input is **LCOV only**. Convert other formats first. Do not add a
+second parser.
 
 ## Install
 
@@ -43,7 +75,7 @@ read “risk level: Moderate” as “exceeds threshold,” or vice versa.
 cargo install --path crates/crap-rs
 ```
 
-## Workflow
+## Usage
 
 ```bash
 cargo llvm-cov --lcov --output-path lcov.info
@@ -58,101 +90,82 @@ crap-rs --workspace --lcov lcov.info
 crap-rs -p crap-rs --lcov lcov.info --summary
 ```
 
-CI gate (exit 1 after the report if anything is over the threshold):
+CI gate (exit 1 after the report if any function exceeds the threshold):
 
 ```bash
 crap-rs --lcov lcov.info --fail-above
 crap-rs --lcov lcov.info --fail-above --threshold 30
 ```
 
-If a function is flagged: add automated tests when coverage is below
-90%; extract or simplify when coverage is 90% or more and complexity
-still keeps the score over the threshold.
+This repository runs the same gate in CI at `--threshold strict`
+(see [`.github/workflows/coverage.yml`](.github/workflows/coverage.yml)).
 
-## Coverage needed to stay at or under 30 (cyclomatic)
-
-This table is an example at a **gate of 30**, not the default. The default
-gate is 15; `strict` is 8 and `lenient` is 25.
-
-| Cyclomatic complexity | Coverage |
-| --- | --- |
-| 1–5 | 0% |
-| 6–10 | ~13–42% |
-| 11–15 | ~46–59% |
-| 16–20 | ~62–71% |
-| 21–25 | ~73–80% |
-| 26–30 | ~82–100% |
-| 31+ | Refactor |
-
-Each range is the coverage needed at the low and high CC of the band.
-The formula is the source of truth.
+Pass the same `--features`, `--all-features`, and `--no-default-features`
+flags you used for `cargo llvm-cov`. Feature-gated items are skipped
+unless those features are enabled.
 
 ## Flags
 
-- `--lcov <file>` — LCOV from `cargo llvm-cov` (required); must contain at
-  least one `DA:` line-hit record
-- `--path <dir>` — walk this tree (default `.`). A workspace root is
-  analyzed per member (same isolation as `--workspace`). A member
-  package root is that package only; `-p` is not required.
-- `--metric` — `cyclomatic` (default) or `cognitive`
-- `--threshold` — flag scores strictly above this. Number, `strict` (8),
-  or `lenient` (25). Default `15` for both metrics. Independent of the
-  risk band.
-- `--format` — `text` (default table) or `json` (versioned envelope)
-- `--workspace` — every Cargo workspace member
-- `-p, --package <name>` — one member; repeatable; conflicts with `--workspace`
-- `--summary` — counts and worst offender; text only; no table
-- `--fail-above` — exit 1 when any function exceeds the threshold (not
-  the risk band)
-- `--missing` — no LCOV data, an empty span, or an unresolved path tie:
-  `pessimistic` (default, 0%), `optimistic` (100%), or `skip`. A package
-  name (`--workspace` / `-p`) breaks equal `src/lib.rs` suffix ties
-- `--features`, `--all-features`, `--no-default-features` — same feature
-  universe as the `cargo llvm-cov` run that produced the LCOV file
+| Flag | Role |
+| ---- | ---- |
+| `--lcov <file>` | LCOV from `cargo llvm-cov` (required). Must contain at least one `DA:` line-hit record. |
+| `--path <dir>` | Walk this tree (default `.`). A workspace root is analyzed per member. A member package root is that package only; `-p` is not required. |
+| `--metric` | `cyclomatic` (default) or `cognitive` |
+| `--threshold` | Flag scores strictly above this. Number, `strict` (8), or `lenient` (25). Default `15` for both metrics. Independent of the risk band. |
+| `--format` | `text` (default table) or `json` (versioned envelope, `schema_version` 1) |
+| `--workspace` | Every Cargo workspace member |
+| `-p, --package <name>` | One member; repeatable; conflicts with `--workspace` |
+| `--summary` | Counts and worst offender; text only; no table |
+| `--fail-above` | Exit 1 when any function exceeds the threshold (not the risk band) |
+| `--missing` | No LCOV data, an empty span, or an unresolved path tie: `pessimistic` (default, 0%), `optimistic` (100%), or `skip`. A package name (`--workspace` / `-p`) breaks equal `src/lib.rs` suffix ties. |
+| `--features`, `--all-features`, `--no-default-features` | Same feature universe as the `cargo llvm-cov` run that produced the LCOV file |
 
-Exit codes: `0` finished and clean, `1` finished and the gate tripped,
-`2` usage or analysis error (including when any source file fails to parse).
+## Exit codes
 
-## Architecture
+| Code | Meaning |
+| ---- | ------- |
+| `0` | Analysis finished; the gate did not trip |
+| `1` | Analysis finished; `--fail-above` tripped |
+| `2` | Usage, I/O, metadata, or collect error. Any unparseable source file is a collect error. |
 
-Language-agnostic work lives in `crap-core`: LCOV parse, join, score, and
-the table. A frontend implements `Language` (`resolve_targets` and
-`collect_functions`) and calls `crap_core::run`. Today that frontend is
-`crap-rs`. A later `crap-go` or `crap-ts` crate would depend on
-`crap-core`, implement the same trait, and ship its own binary.
+## Crates
 
-Coverage input stays **LCOV**. Other tools should convert first
-(`gocov`, `c8 --reporter=lcov`) rather than adding a second parser.
+| Crate | Role |
+| ----- | ---- |
+| [`crap-core`](crates/crap-core) | Language-agnostic LCOV parse, path join, score, risk, and report |
+| [`crap-rs`](crates/crap-rs) | Rust discovery, complexity, and the `crap-rs` CLI |
 
-A later `crap` meta-binary could dispatch on `--lang`; it is not part of
-this workspace yet.
+`crap-rs` implements `Language` and calls `crap_core::run`. A later
+language crate would do the same. That crate is not in this workspace.
+
+Module maps and pipeline: [`.agents/docs/ARCHITECTURE.md`](.agents/docs/ARCHITECTURE.md).
+
+## Metric rules
+
+| Topic | Cyclomatic | Cognitive |
+| ----- | ---------- | --------- |
+| Base | 1 + each decision point | Nesting-weighted increments |
+| `match` | Each arm adds 1, including `_` | One increment for the whole `match` |
+| `let … else` | +1 | Scored like `if` / `else` |
+| Match guard | +1 | Flat +1 |
+| `?` | +1 (error / early-return branch) | Free |
+| Closures | Count toward the enclosing function | Same |
+| Nested `fn` | Separate row; join excludes the inner span from the outer coverage | Same |
+| Recursion | Not a decision point | Direct recursion does not add |
+| `else` / `else if` | Part of the `if` | Flat +1 |
+| Boolean operators | Each short-circuit `and` / `or` is a decision | A run of the same operator counts once |
+| Labeled `break` / `continue` | Not extra | +1 |
+| `async` / `try` blocks | Do not add; inner decisions still count | Same |
+
+Decisions inside unexpanded or opaque macros may be missed.
 
 ## Limits
 
 - Line coverage is not proof that tests assert anything useful.
 - Some complex functions are legitimate. The score does not measure
   coupling or cohesion.
-- Decisions inside unexpanded or opaque macros may be missed.
-- Cognitive does not add for direct recursion.
-- Closures count toward the enclosing function.
-- Async and `try` blocks do not add; inner decisions still count.
-- Cyclomatic: each match arm adds 1, including `_` and other catch-alls;
-  `let … else` and each match guard add 1; `?` adds 1 (error /
-  early-return branch).
-- Cognitive: nesting-weighted increments; a `match` is one increment
-  (not per arm); `let … else` is scored like `if` / `else`; each match
-  guard is flat +1; `else` / `else if` are flat +1; a run of the same
-  boolean operator counts once; labeled `break` / `continue` add 1; `?`
-  is free.
-- Nested function coverage excludes the inner span. Absolute and
-  relative spellings of the same path suffix merge for join and
-  nested-exclude grouping.
 - Trait default methods are omitted (llvm-cov often has no line hits).
-- Feature-gated items are skipped unless those features are enabled
-  (pass the same `--features` flags used for `cargo llvm-cov`).
-- Unknown `#[cfg]` predicates (for example `weird`) skip the item.
-  Skipped items are not gated, so they cannot trip `--fail-above`
-  when llvm-cov never compiled them.
+- Unknown `#[cfg]` predicates skip the item. Skipped items are not gated.
 - `#[cfg]` uses the host (`target_os`, `target_arch`, `target_family`,
   `target_pointer_width`, `unix` / `windows`). Cross-compile LCOV can
   disagree; there is no `--target` flag.
@@ -160,6 +173,26 @@ this workspace yet.
   under the walk root; cycles are skipped.
 - `$CARGO` is used only when it names an existing file (Cargo’s usual
   override); otherwise `crap-rs` runs `cargo` from `PATH`.
+
+## Develop
+
+Lean pipeline (fmt, Clippy, deny, audit, test, rustdoc):
+
+```bash
+./scripts/check.sh
+```
+
+Full local vs CI (also 100% lines and CRAP `--threshold strict`):
+[`.agents/skills/verify/SKILL.md`](.agents/skills/verify/SKILL.md), or
+`/verify`.
+
+## Agents and docs
+
+| Doc | Purpose |
+| --- | ------- |
+| [`AGENTS.md`](AGENTS.md) | Contributor guidance, skills, and commands |
+| [`.agents/docs/ARCHITECTURE.md`](.agents/docs/ARCHITECTURE.md) | Crate boundaries and analysis pipeline |
+| [DeepWiki](https://deepwiki.com/deangrant/crap-analyzer) | Indexed project wiki |
 
 ## License
 
