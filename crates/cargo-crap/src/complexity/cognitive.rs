@@ -1,0 +1,295 @@
+//! Cognitive complexity: nesting-weighted control flow.
+
+use super::parse_macro_body;
+use syn::visit::{self, Visit};
+use syn::{BinOp, Expr, ExprBinary};
+
+/// Returns cognitive complexity for `body` (minimum 0).
+pub(super) fn count(body: &syn::Block) -> usize {
+    let mut counter = CognitiveCounter {
+        count: 0,
+        nesting: 0,
+    };
+    counter.visit_block(body);
+    counter.count
+}
+
+struct CognitiveCounter {
+    count: usize,
+    nesting: usize,
+}
+
+impl CognitiveCounter {
+    const fn add_nested(&mut self) {
+        self.count += 1 + self.nesting;
+    }
+
+    const fn enter(&mut self) {
+        self.nesting += 1;
+    }
+
+    const fn leave(&mut self) {
+        self.nesting = self.nesting.saturating_sub(1);
+    }
+
+    fn score_if(&mut self, node: &syn::ExprIf, else_if: bool) {
+        if else_if {
+            self.count += 1;
+        } else {
+            self.add_nested();
+        }
+        self.visit_expr(&node.cond);
+        self.enter();
+        self.visit_block(&node.then_branch);
+        self.leave();
+        self.score_else(node);
+    }
+
+    fn score_else(&mut self, node: &syn::ExprIf) {
+        let Some((_, else_expr)) = &node.else_branch else {
+            return;
+        };
+        if let Expr::If(inner) = else_expr.as_ref() {
+            self.score_if(inner, true);
+            return;
+        }
+        self.count += 1;
+        self.enter();
+        self.visit_expr(else_expr);
+        self.leave();
+    }
+
+    fn score_loop_like(&mut self, walk: impl FnOnce(&mut Self)) {
+        self.add_nested();
+        self.enter();
+        walk(self);
+        self.leave();
+    }
+}
+
+impl<'ast> Visit<'ast> for CognitiveCounter {
+    fn visit_expr_if(&mut self, node: &'ast syn::ExprIf) {
+        self.score_if(node, false);
+    }
+
+    fn visit_expr_for_loop(&mut self, node: &'ast syn::ExprForLoop) {
+        self.score_loop_like(|this| visit::visit_expr_for_loop(this, node));
+    }
+
+    fn visit_expr_while(&mut self, node: &'ast syn::ExprWhile) {
+        self.score_loop_like(|this| visit::visit_expr_while(this, node));
+    }
+
+    fn visit_expr_loop(&mut self, node: &'ast syn::ExprLoop) {
+        self.score_loop_like(|this| visit::visit_expr_loop(this, node));
+    }
+
+    fn visit_expr_match(&mut self, node: &'ast syn::ExprMatch) {
+        self.visit_expr(&node.expr);
+        self.enter();
+        for arm in &node.arms {
+            self.count += self.nesting;
+            visit::visit_arm(self, arm);
+        }
+        self.leave();
+    }
+
+    fn visit_expr_closure(&mut self, node: &'ast syn::ExprClosure) {
+        self.enter();
+        visit::visit_expr_closure(self, node);
+        self.leave();
+    }
+
+    fn visit_expr_binary(&mut self, node: &'ast ExprBinary) {
+        if logical_kind(node.op).is_some() {
+            score_bool_chain(self, node);
+            return;
+        }
+        visit::visit_expr_binary(self, node);
+    }
+
+    fn visit_expr_break(&mut self, node: &'ast syn::ExprBreak) {
+        if node.label.is_some() {
+            self.count += 1;
+        }
+        visit::visit_expr_break(self, node);
+    }
+
+    fn visit_expr_continue(&mut self, node: &'ast syn::ExprContinue) {
+        if node.label.is_some() {
+            self.count += 1;
+        }
+        visit::visit_expr_continue(self, node);
+    }
+
+    fn visit_macro(&mut self, node: &'ast syn::Macro) {
+        self.visit_macro_tokens(&node.tokens);
+    }
+
+    fn visit_item(&mut self, _node: &'ast syn::Item) {}
+}
+
+impl CognitiveCounter {
+    fn visit_macro_tokens(&mut self, tokens: &proc_macro2::TokenStream) {
+        let Some((expr, stmts)) = parse_macro_body(tokens) else {
+            return;
+        };
+        if let Some(expr) = &expr {
+            self.visit_expr(expr);
+            return;
+        }
+        for stmt in &stmts {
+            self.visit_stmt(stmt);
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Logical {
+    And,
+    Or,
+}
+
+const fn logical_kind(op: BinOp) -> Option<Logical> {
+    match op {
+        BinOp::And(_) => Some(Logical::And),
+        BinOp::Or(_) => Some(Logical::Or),
+        _ => None,
+    }
+}
+
+fn score_bool_chain(counter: &mut CognitiveCounter, node: &ExprBinary) {
+    let Some(kind) = logical_kind(node.op) else {
+        return;
+    };
+    counter.count += 1;
+    walk_bool_side(counter, &node.left, kind);
+    walk_bool_side(counter, &node.right, kind);
+}
+
+fn walk_bool_side(counter: &mut CognitiveCounter, expr: &Expr, parent: Logical) {
+    let Expr::Binary(bin) = expr else {
+        counter.visit_expr(expr);
+        return;
+    };
+    let Some(kind) = logical_kind(bin.op) else {
+        counter.visit_expr(expr);
+        return;
+    };
+    if kind != parent {
+        counter.count += 1;
+    }
+    walk_bool_side(counter, &bin.left, kind);
+    walk_bool_side(counter, &bin.right, kind);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::{Metric, analyze_source};
+    use std::path::Path;
+
+    fn snippet(src: &str) -> usize {
+        let parsed = analyze_source(Path::new("t.rs"), src, Metric::Cognitive);
+        assert!(parsed.is_ok(), "{parsed:?}");
+        parsed.unwrap_or_default().first().map_or(0, |f| f.complexity)
+    }
+
+    #[test]
+    fn straight_line_is_zero() {
+        assert_eq!(snippet("fn trivial() { let x = 1; }"), 0);
+    }
+
+    #[test]
+    fn top_level_if_is_one() {
+        assert_eq!(snippet("fn f(x: i32) { if x > 0 { x; } }"), 1);
+    }
+
+    #[test]
+    fn nested_if_adds_nesting_penalty() {
+        let src = "fn f(x: i32) { if x > 0 { if x > 1 { x; } } }";
+        assert_eq!(snippet(src), 3);
+    }
+
+    #[test]
+    fn else_if_is_flat() {
+        let src = "fn f(x: i32) { if x > 0 { x; } else if x < 0 { x; } else { 0; } }";
+        assert_eq!(snippet(src), 3);
+    }
+
+    #[test]
+    fn same_bool_sequence_counts_once() {
+        assert_eq!(
+            snippet("fn f(a: bool, b: bool, c: bool) { let _ = a && b && c; }"),
+            1
+        );
+    }
+
+    #[test]
+    fn bool_operator_switch_adds_one() {
+        assert_eq!(
+            snippet("fn f(a: bool, b: bool, c: bool) { let _ = a && b || c; }"),
+            2
+        );
+    }
+
+    #[test]
+    fn closure_raises_nesting() {
+        let src = "fn f() { let _ = || { if true {} }; }";
+        assert_eq!(snippet(src), 2);
+    }
+
+    #[test]
+    fn labeled_break_adds_one() {
+        assert_eq!(snippet("fn f() { 'a: loop { break 'a; } }"), 2);
+    }
+
+    #[test]
+    fn unlabeled_break_is_free() {
+        assert_eq!(snippet("fn f() { loop { break; } }"), 1);
+    }
+
+    #[test]
+    fn question_mark_does_not_add() {
+        assert_eq!(snippet("fn f() -> Result<(), ()> { Ok(())?; Ok(()) }"), 0);
+    }
+
+    #[test]
+    fn match_arms_score_at_current_nesting() {
+        let src = "fn f(x: i32) { match x { 0 => {}, 1 => {}, _ => {} } }";
+        assert_eq!(snippet(src), 3);
+    }
+
+    #[test]
+    fn nested_fn_is_scored_separately() {
+        let parsed = analyze_source(
+            Path::new("t.rs"),
+            "fn outer() { fn inner() { if true {} } }",
+            Metric::Cognitive,
+        );
+        assert!(parsed.is_ok());
+        let fns = parsed.unwrap_or_default();
+        assert_eq!(fns.len(), 2);
+        assert_eq!(fns[0].complexity, 0);
+        assert_eq!(fns[1].complexity, 1);
+    }
+
+    #[test]
+    fn parseable_macro_tokens_add_decisions() {
+        assert_eq!(snippet("fn f() { m!(if true {}); }"), 1);
+    }
+
+    #[test]
+    fn statement_macro_tokens_add_decisions() {
+        assert_eq!(snippet("fn f() { m!(let x = 1; if true { x; }); }"), 1);
+    }
+
+    #[test]
+    fn opaque_macro_tokens_do_not_add() {
+        assert_eq!(snippet("fn f() { opaque!(@@@); }"), 0);
+    }
+
+    #[test]
+    fn labeled_continue_adds_one() {
+        assert_eq!(snippet("fn f() { 'a: loop { continue 'a; } }"), 2);
+    }
+}

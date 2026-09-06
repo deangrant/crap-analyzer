@@ -29,8 +29,8 @@ pub struct CrapEntry {
     pub function: String,
     /// One-based start line.
     pub line: usize,
-    /// Cyclomatic complexity.
-    pub cyclomatic: usize,
+    /// Complexity under the selected metric.
+    pub complexity: usize,
     /// Coverage percent in `[0, 100]`.
     pub coverage: f64,
     /// Combined change-risk score.
@@ -61,12 +61,12 @@ pub fn join<S: BuildHasher>(
         let Some(coverage_pct) = coverage_for(&index, &item.function, missing) else {
             continue;
         };
-        let cc = item.function.cyclomatic as f64;
+        let cc = item.function.complexity as f64;
         entries.push(CrapEntry {
             file: item.function.file.clone(),
             function: item.function.name.clone(),
             line: item.function.start_line,
-            cyclomatic: item.function.cyclomatic,
+            complexity: item.function.complexity,
             coverage: coverage_pct,
             crap: crap(cc, coverage_pct),
             crate_name: item.crate_name.clone(),
@@ -200,7 +200,7 @@ mod tests {
                 name: name.into(),
                 start_line: start,
                 end_line: end,
-                cyclomatic: 1,
+                complexity: 1,
             },
             crate_name: None,
         }

@@ -1,4 +1,4 @@
-//! Change-risk score from cyclomatic complexity and coverage.
+//! Change-risk score from complexity and coverage.
 
 /// Usual gate: scores strictly above this are treated as risky.
 pub const DEFAULT_THRESHOLD: f64 = 30.0;

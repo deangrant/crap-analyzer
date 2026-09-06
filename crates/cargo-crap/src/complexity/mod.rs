@@ -1,10 +1,41 @@
-//! Cyclomatic complexity and source spans for Rust functions.
+//! Complexity metrics and source spans for Rust functions.
+
+mod cognitive;
+mod cyclomatic;
 
 use crate::error::{Error, Result};
+use clap::ValueEnum;
 use std::path::{Path, PathBuf};
 use syn::parse::Parser;
 use syn::visit::{self, Visit};
-use syn::{BinOp, ImplItemFn, ItemFn, ItemImpl, ItemTrait, TraitItemFn};
+use syn::{ImplItemFn, ItemFn, ItemImpl, ItemTrait, TraitItemFn};
+
+/// Which complexity metric to apply to each function body.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum Metric {
+    /// Cyclomatic complexity (one plus each decision point).
+    Cyclomatic,
+    /// Cognitive complexity (nesting-weighted control flow).
+    Cognitive,
+}
+
+impl Metric {
+    /// Default CRAP gate when `--threshold` is omitted.
+    #[must_use]
+    pub const fn default_threshold(self) -> f64 {
+        match self {
+            Self::Cyclomatic => 30.0,
+            Self::Cognitive => 15.0,
+        }
+    }
+
+    fn count(self, body: &syn::Block) -> usize {
+        match self {
+            Self::Cyclomatic => cyclomatic::count(body),
+            Self::Cognitive => cognitive::count(body),
+        }
+    }
+}
 
 /// One function's complexity and inclusive line span.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,8 +48,8 @@ pub struct FunctionComplexity {
     pub start_line: usize,
     /// One-based last line of the function body.
     pub end_line: usize,
-    /// Cyclomatic complexity, minimum 1.
-    pub cyclomatic: usize,
+    /// Selected metric value (cyclomatic minimum 1; cognitive may be 0).
+    pub complexity: usize,
 }
 
 /// Reads `path` and returns every non-test function.
@@ -27,9 +58,9 @@ pub struct FunctionComplexity {
 ///
 /// Returns [`Error::Io`] if the file cannot be read, or [`Error::Parse`]
 /// if `syn` rejects the source.
-pub fn analyze_file(path: &Path) -> Result<Vec<FunctionComplexity>> {
+pub fn analyze_file(path: &Path, metric: Metric) -> Result<Vec<FunctionComplexity>> {
     let source = std::fs::read_to_string(path).map_err(|source| Error::io(path, source))?;
-    analyze_source(path, &source)
+    analyze_source(path, &source, metric)
 }
 
 /// Parses `source` as if it lived at `path`.
@@ -37,11 +68,16 @@ pub fn analyze_file(path: &Path) -> Result<Vec<FunctionComplexity>> {
 /// # Errors
 ///
 /// Returns [`Error::Parse`] when the text is not valid Rust.
-fn analyze_source(path: &Path, source: &str) -> Result<Vec<FunctionComplexity>> {
+pub fn analyze_source(
+    path: &Path,
+    source: &str,
+    metric: Metric,
+) -> Result<Vec<FunctionComplexity>> {
     let syntax = syn::parse_file(source)
         .map_err(|err| Error::Parse(format!("{}: {err}", path.display())))?;
     let mut visitor = FunctionVisitor {
         file: path,
+        metric,
         out: Vec::new(),
         impl_type: None,
         trait_name: None,
@@ -96,8 +132,30 @@ fn qualified_name(prefix: Option<&str>, method: &str) -> String {
     prefix.map_or_else(|| method.to_owned(), |ty| format!("{ty}::{method}"))
 }
 
+/// Best-effort parse of macro tokens as an expression or statement list.
+pub fn parse_macro_body(
+    tokens: &proc_macro2::TokenStream,
+) -> Option<(Option<syn::Expr>, Vec<syn::Stmt>)> {
+    if let Ok(expr) = syn::parse2::<syn::Expr>(tokens.clone()) {
+        return Some((Some(expr), Vec::new()));
+    }
+    parse_stmt_seq(tokens.clone()).ok().map(|stmts| (None, stmts))
+}
+
+fn parse_stmt_seq(tokens: proc_macro2::TokenStream) -> syn::Result<Vec<syn::Stmt>> {
+    (|input: syn::parse::ParseStream<'_>| {
+        let mut stmts = Vec::new();
+        while !input.is_empty() {
+            stmts.push(input.parse()?);
+        }
+        Ok(stmts)
+    })
+    .parse2(tokens)
+}
+
 struct FunctionVisitor<'a> {
     file: &'a Path,
+    metric: Metric,
     out: Vec<FunctionComplexity>,
     impl_type: Option<String>,
     trait_name: Option<String>,
@@ -110,7 +168,7 @@ impl FunctionVisitor<'_> {
             name,
             start_line,
             end_line,
-            cyclomatic: count_cyclomatic(body),
+            complexity: self.metric.count(body),
         });
     }
 }
@@ -184,134 +242,34 @@ impl<'ast> Visit<'ast> for FunctionVisitor<'_> {
     }
 }
 
-fn count_cyclomatic(body: &syn::Block) -> usize {
-    let mut counter = CcCounter { count: 1 };
-    counter.visit_block(body);
-    counter.count
-}
-
-struct CcCounter {
-    count: usize,
-}
-
-impl<'ast> Visit<'ast> for CcCounter {
-    fn visit_expr_if(&mut self, node: &'ast syn::ExprIf) {
-        self.count += 1;
-        visit::visit_expr_if(self, node);
-    }
-
-    fn visit_expr_for_loop(&mut self, node: &'ast syn::ExprForLoop) {
-        self.count += 1;
-        visit::visit_expr_for_loop(self, node);
-    }
-
-    fn visit_expr_while(&mut self, node: &'ast syn::ExprWhile) {
-        self.count += 1;
-        visit::visit_expr_while(self, node);
-    }
-
-    fn visit_expr_loop(&mut self, node: &'ast syn::ExprLoop) {
-        self.count += 1;
-        visit::visit_expr_loop(self, node);
-    }
-
-    fn visit_arm(&mut self, node: &'ast syn::Arm) {
-        self.count += 1;
-        visit::visit_arm(self, node);
-    }
-
-    fn visit_expr_binary(&mut self, node: &'ast syn::ExprBinary) {
-        if matches!(node.op, BinOp::And(_) | BinOp::Or(_)) {
-            self.count += 1;
-        }
-        visit::visit_expr_binary(self, node);
-    }
-
-    fn visit_expr_try(&mut self, node: &'ast syn::ExprTry) {
-        self.count += 1;
-        visit::visit_expr_try(self, node);
-    }
-
-    fn visit_macro(&mut self, node: &'ast syn::Macro) {
-        self.visit_macro_tokens(&node.tokens);
-    }
-
-    fn visit_item(&mut self, _node: &'ast syn::Item) {}
-}
-
-impl CcCounter {
-    fn visit_macro_tokens(&mut self, tokens: &proc_macro2::TokenStream) {
-        if let Ok(expr) = syn::parse2::<syn::Expr>(tokens.clone()) {
-            self.visit_expr(&expr);
-            return;
-        }
-        let Ok(stmts) = parse_stmt_seq(tokens.clone()) else {
-            return;
-        };
-        for stmt in &stmts {
-            self.visit_stmt(stmt);
-        }
-    }
-}
-
-fn parse_stmt_seq(tokens: proc_macro2::TokenStream) -> syn::Result<Vec<syn::Stmt>> {
-    (|input: syn::parse::ParseStream<'_>| {
-        let mut stmts = Vec::new();
-        while !input.is_empty() {
-            stmts.push(input.parse()?);
-        }
-        Ok(stmts)
-    })
-    .parse2(tokens)
-}
-
 #[cfg(test)]
+#[expect(
+    clippy::float_cmp,
+    reason = "metric default thresholds are exact literals"
+)]
 mod tests {
     use super::*;
-    use std::path::Path;
 
-    fn snippet(src: &str) -> Vec<FunctionComplexity> {
-        let parsed = analyze_source(Path::new("t.rs"), src);
+    fn snippet(src: &str, metric: Metric) -> Vec<FunctionComplexity> {
+        let parsed = analyze_source(Path::new("t.rs"), src, metric);
         assert!(parsed.is_ok(), "{parsed:?}");
         parsed.unwrap_or_default()
     }
 
-    #[test]
-    fn straight_line_is_one() {
-        let fns = snippet("fn trivial() { let x = 1; }");
-        assert_eq!(fns.len(), 1);
-        assert_eq!(fns[0].cyclomatic, 1);
-        assert_eq!(fns[0].name, "trivial");
-    }
-
-    #[test]
-    fn if_adds_one() {
-        let fns = snippet("fn f(x: i32) { if x > 0 { x; } }");
-        assert_eq!(fns[0].cyclomatic, 2);
-    }
-
-    #[test]
-    fn and_adds_one() {
-        let fns = snippet("fn f(a: bool, b: bool) { let _ = a && b; }");
-        assert_eq!(fns[0].cyclomatic, 2);
-    }
-
-    #[test]
-    fn three_match_arms_add_three() {
-        let src = "fn f(x: i32) { match x { 0 => {}, 1 => {}, _ => {} } }";
-        assert_eq!(snippet(src)[0].cyclomatic, 4);
+    fn cyclo(src: &str) -> Vec<FunctionComplexity> {
+        snippet(src, Metric::Cyclomatic)
     }
 
     #[test]
     fn test_functions_are_skipped() {
-        let fns = snippet("#[test] fn t() { if true {} } fn keep() {}");
+        let fns = cyclo("#[test] fn t() { if true {} } fn keep() {}");
         assert_eq!(fns.len(), 1);
         assert_eq!(fns[0].name, "keep");
     }
 
     #[test]
     fn cfg_test_helper_is_skipped() {
-        let fns = snippet("#[cfg(test)] fn helper() { if true {} } fn keep() {}");
+        let fns = cyclo("#[cfg(test)] fn helper() { if true {} } fn keep() {}");
         assert_eq!(fns.len(), 1);
         assert_eq!(fns[0].name, "keep");
     }
@@ -319,20 +277,20 @@ mod tests {
     #[test]
     fn cfg_test_impl_is_skipped() {
         let src = "struct Foo; #[cfg(test)] impl Foo { fn bar(&self) { if true {} } }";
-        assert!(snippet(src).is_empty());
+        assert!(cyclo(src).is_empty());
     }
 
     #[test]
     fn cfg_all_test_is_skipped() {
         let src = "#[cfg(all(test, feature = \"x\"))] fn helper() { if true {} } fn keep() {}";
-        let fns = snippet(src);
+        let fns = cyclo(src);
         assert_eq!(fns.len(), 1);
         assert_eq!(fns[0].name, "keep");
     }
 
     #[test]
     fn cfg_any_test_or_unix_is_kept() {
-        let fns = snippet("#[cfg(any(test, unix))] fn f() { if true {} }");
+        let fns = cyclo("#[cfg(any(test, unix))] fn f() { if true {} }");
         assert_eq!(fns.len(), 1);
         assert_eq!(fns[0].name, "f");
     }
@@ -340,7 +298,7 @@ mod tests {
     #[test]
     fn cfg_test_mod_is_skipped() {
         let src = "#[cfg(test)] mod tests { fn helper() { if true {} } } fn keep() {}";
-        let fns = snippet(src);
+        let fns = cyclo(src);
         assert_eq!(fns.len(), 1);
         assert_eq!(fns[0].name, "keep");
     }
@@ -348,58 +306,27 @@ mod tests {
     #[test]
     fn impl_methods_are_prefixed() {
         let src = "struct Foo; impl Foo { fn bar(&self) { if true {} } }";
-        let fns = snippet(src);
+        let fns = cyclo(src);
         assert_eq!(fns[0].name, "Foo::bar");
-        assert_eq!(fns[0].cyclomatic, 2);
-    }
-
-    #[test]
-    fn loop_adds_one() {
-        let fns = snippet("fn f() { loop { break; } }");
-        assert_eq!(fns[0].cyclomatic, 2);
-    }
-
-    #[test]
-    fn bitwise_and_does_not_add() {
-        let fns = snippet("fn f(a: i32, b: i32) { let _ = a & b; }");
-        assert_eq!(fns[0].cyclomatic, 1);
-    }
-
-    #[test]
-    fn closure_decisions_fold_into_enclosing_fn() {
-        let fns = snippet("fn f() { let _ = || { if true {} }; }");
-        assert_eq!(fns.len(), 1);
-        assert_eq!(fns[0].cyclomatic, 2);
-    }
-
-    #[test]
-    fn nested_fn_is_scored_separately() {
-        let fns = snippet("fn outer() { fn inner() { if true {} } }");
-        assert_eq!(fns.len(), 2);
-        assert_eq!(fns[0].name, "outer");
-        assert_eq!(fns[0].cyclomatic, 1);
-        assert_eq!(fns[1].name, "inner");
-        assert_eq!(fns[1].cyclomatic, 2);
+        assert_eq!(fns[0].complexity, 2);
     }
 
     #[test]
     fn trait_default_is_scored() {
-        let fns = snippet("trait T { fn m(&self) { if true {} } }");
+        let fns = cyclo("trait T { fn m(&self) { if true {} } }");
         assert_eq!(fns.len(), 1);
         assert_eq!(fns[0].name, "T::m");
-        assert_eq!(fns[0].cyclomatic, 2);
+        assert_eq!(fns[0].complexity, 2);
     }
 
     #[test]
-    fn parseable_macro_tokens_add_decisions() {
-        let fns = snippet("fn f() { m!(if true {}); }");
-        assert_eq!(fns[0].cyclomatic, 2);
-    }
-
-    #[test]
-    fn statement_macro_tokens_add_decisions() {
-        let fns = snippet("fn f() { m!(let x = 1; if true { x; }); }");
-        assert_eq!(fns[0].cyclomatic, 2);
+    fn nested_fn_is_scored_separately() {
+        let fns = cyclo("fn outer() { fn inner() { if true {} } }");
+        assert_eq!(fns.len(), 2);
+        assert_eq!(fns[0].name, "outer");
+        assert_eq!(fns[0].complexity, 1);
+        assert_eq!(fns[1].name, "inner");
+        assert_eq!(fns[1].complexity, 2);
     }
 
     #[test]
@@ -409,8 +336,8 @@ mod tests {
     }
 
     #[test]
-    fn opaque_macro_tokens_do_not_add() {
-        let fns = snippet("fn f() { opaque!(@@@); }");
-        assert_eq!(fns[0].cyclomatic, 1);
+    fn default_thresholds_differ_by_metric() {
+        assert_eq!(Metric::Cyclomatic.default_threshold(), 30.0);
+        assert_eq!(Metric::Cognitive.default_threshold(), 15.0);
     }
 }

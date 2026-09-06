@@ -11,6 +11,7 @@ pub(crate) mod walk;
 pub(crate) mod workspace;
 
 use crate::cli::Args;
+use crate::complexity::Metric;
 use crate::error::{Error, Result};
 use crate::merge::{CrapEntry, LocatedFn};
 use crate::score::exceeds_threshold;
@@ -37,10 +38,10 @@ pub struct RunResult {
 pub fn run(args: &Args) -> Result<RunResult> {
     let coverage = coverage::parse_lcov(&args.lcov)?;
     let targets = analysis_targets(args)?;
-    let (functions, warnings) = collect_functions(&targets)?;
+    let (functions, warnings) = collect_functions(&targets, args.metric)?;
     let entries = merge::join(&functions, &coverage, args.missing);
     let gate_failed = args.fail_above
-        && entries.iter().any(|entry| exceeds_threshold(entry.crap, args.threshold));
+        && entries.iter().any(|entry| exceeds_threshold(entry.crap, args.threshold()));
     Ok(RunResult {
         entries,
         warnings,
@@ -52,9 +53,9 @@ pub fn run(args: &Args) -> Result<RunResult> {
 #[must_use]
 pub fn render(args: &Args, result: &RunResult) -> String {
     if args.summary {
-        report::render_summary(&result.entries, args.threshold, uses_packages(args))
+        report::render_summary(&result.entries, args.threshold(), uses_packages(args))
     } else {
-        report::render_table(&result.entries, args.threshold, report::color_enabled())
+        report::render_table(&result.entries, args.threshold(), report::color_enabled())
     }
 }
 
@@ -95,7 +96,7 @@ fn targets_from_packages(packages: &[Package]) -> Vec<Target> {
         .collect()
 }
 
-fn collect_functions(targets: &[Target]) -> Result<(Vec<LocatedFn>, Vec<String>)> {
+fn collect_functions(targets: &[Target], metric: Metric) -> Result<(Vec<LocatedFn>, Vec<String>)> {
     let mut functions = Vec::new();
     let mut warnings = Vec::new();
     let mut succeeded = 0_usize;
@@ -106,6 +107,7 @@ fn collect_functions(targets: &[Target]) -> Result<(Vec<LocatedFn>, Vec<String>)
             if take_file(
                 &file,
                 target.crate_name.as_deref(),
+                metric,
                 &mut functions,
                 &mut warnings,
             ) {
@@ -126,10 +128,11 @@ fn collect_functions(targets: &[Target]) -> Result<(Vec<LocatedFn>, Vec<String>)
 fn take_file(
     file: &Path,
     crate_name: Option<&str>,
+    metric: Metric,
     functions: &mut Vec<LocatedFn>,
     warnings: &mut Vec<String>,
 ) -> bool {
-    match complexity::analyze_file(file) {
+    match complexity::analyze_file(file, metric) {
         Ok(found) => {
             for function in found {
                 functions.push(LocatedFn {

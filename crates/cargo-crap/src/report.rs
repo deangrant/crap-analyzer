@@ -135,7 +135,7 @@ impl Widths {
         };
         for entry in entries {
             w.crap = w.crap.max(format!("{:.1}", entry.crap).len());
-            w.cc = w.cc.max(entry.cyclomatic.to_string().len());
+            w.cc = w.cc.max(entry.complexity.to_string().len());
             w.cov = w.cov.max(format!("{:.1}", entry.coverage).len());
             w.func = w.func.max(entry.function.len());
         }
@@ -147,7 +147,7 @@ impl Widths {
             "  {:<4}  {:>w_crap$}  {:>w_cc$}  {:>w_cov$}  {:<w_fn$}  LOCATION",
             "",
             "CRAP",
-            "CC",
+            "COMP",
             "COV%",
             "FUNCTION",
             w_crap = self.crap,
@@ -166,7 +166,7 @@ impl Widths {
         format!(
             "  {mark}  {crap:>w_crap$.1}  {cc:>w_cc$}  {cov:>w_cov$.1}  {func:<w_fn$}  {loc}",
             crap = entry.crap,
-            cc = entry.cyclomatic,
+            cc = entry.complexity,
             cov = entry.coverage,
             func = entry.function,
             loc = location(entry),
@@ -188,7 +188,7 @@ mod tests {
             file: PathBuf::from("src/lib.rs"),
             function: name.into(),
             line: 1,
-            cyclomatic: cc,
+            complexity: cc,
             coverage: cov,
             crap,
             crate_name: Some("demo".into()),

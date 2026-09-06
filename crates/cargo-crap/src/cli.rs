@@ -1,8 +1,8 @@
 //! Command-line flags and cargo-style help text.
 
+use crate::complexity::Metric;
 use crate::error::{Error, Result};
 use crate::merge::MissingPolicy;
-use crate::score::DEFAULT_THRESHOLD;
 use clap::Parser;
 use std::env;
 use std::path::PathBuf;
@@ -32,9 +32,12 @@ pub struct Args {
     /// Walk root, or Cargo workspace root when `--workspace` / `-p` is set.
     #[arg(long, default_value = ".")]
     pub(crate) path: PathBuf,
+    /// Complexity metric.
+    #[arg(long, default_value = "cyclomatic")]
+    pub(crate) metric: Metric,
     /// Score above which a function is flagged.
-    #[arg(long, default_value_t = DEFAULT_THRESHOLD, value_parser = parse_threshold)]
-    pub(crate) threshold: f64,
+    #[arg(long, value_parser = parse_threshold)]
+    pub(crate) threshold: Option<f64>,
     /// Analyze every workspace member.
     #[arg(long, conflicts_with = "packages")]
     pub(crate) workspace: bool,
@@ -50,6 +53,14 @@ pub struct Args {
     /// Policy for functions with no coverage data.
     #[arg(long, default_value = "pessimistic")]
     pub(crate) missing: MissingPolicy,
+}
+
+impl Args {
+    /// Effective gate: explicit `--threshold`, else the metric default.
+    #[must_use]
+    pub(crate) fn threshold(&self) -> f64 {
+        self.threshold.unwrap_or_else(|| self.metric.default_threshold())
+    }
 }
 
 /// Parses process arguments, stripping a leading `crap` cargo subcommand.
@@ -96,7 +107,7 @@ pub fn help_text() -> String {
     format!(
         "\
 {name} {version}
-Score Rust functions by combining cyclomatic complexity and test coverage.
+Score Rust functions by combining complexity and test coverage.
 
 This is a change-risk signal for a function, not a quality score, a
 programmer rating, or a management KPI. A high score means the function
@@ -111,8 +122,9 @@ OPTIONS:
                             cargo llvm-cov --lcov --output-path lcov.info
     --path <dir>            Walk root [default: .]; Cargo workspace root
                             when --workspace or -p is set
-    --threshold <n>         Flag scores strictly above this [default: 30]
-                            Lower values are valid for stricter gates
+    --metric <name>         cyclomatic (default) or cognitive
+    --threshold <n>         Flag scores strictly above this
+                            [default: 30 cyclomatic, 15 cognitive]
     --workspace             Analyze every Cargo workspace member
     -p, --package <name>    Analyze only this member (repeatable)
     --summary               Counts and worst offender; no table
@@ -130,13 +142,16 @@ SCORE:
     0% coverage   => CC^2 + CC.
     CC 31 or more cannot fall to 30 or below at any coverage.
 
-    Coverage needed to stay at or under 30 (usual line):
+    Coverage needed to stay at or under 30 (cyclomatic):
       CC 1-5    0%     CC 16-20   ~71%
       CC 6-10   ~42%   CC 21-25   ~80%
       CC 11-15  ~57%   CC 26-30   100%
       CC 31+    refactor; coverage cannot help
 
-    Each match arm adds 1 to CC, including `_` and other catch-alls.
+    Cyclomatic: each match arm adds 1, including `_` / catch-alls.
+    Cognitive: nesting-weighted; else/else-if are flat +1; same-operator
+    boolean runs count once; labeled break/continue +1; `?` is free.
+    Cognitive does not add for direct recursion.
 
     A low score is not a reason to skip tests on simple functions.
     If a function is flagged: add automated tests when coverage is
@@ -164,6 +179,10 @@ pub fn version_text() -> String {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::float_cmp,
+    reason = "CLI thresholds are parsed literals; exact equality is the contract"
+)]
 mod tests {
     use super::*;
     use std::path::Path;
@@ -216,6 +235,42 @@ mod tests {
         assert!(matches!(
             action,
             Ok(Action::Run(ref args)) if args.missing == MissingPolicy::Skip
+        ));
+    }
+
+    #[test]
+    fn default_metric_is_cyclomatic_with_threshold_thirty() {
+        let action = parse_args(argv(&["--lcov", "x"]));
+        assert!(matches!(
+            action,
+            Ok(Action::Run(ref args))
+                if args.metric == Metric::Cyclomatic && args.threshold() == 30.0
+        ));
+    }
+
+    #[test]
+    fn cognitive_default_threshold_is_fifteen() {
+        let action = parse_args(argv(&["--lcov", "x", "--metric", "cognitive"]));
+        assert!(matches!(
+            action,
+            Ok(Action::Run(ref args))
+                if args.metric == Metric::Cognitive && args.threshold() == 15.0
+        ));
+    }
+
+    #[test]
+    fn explicit_threshold_wins() {
+        let action = parse_args(argv(&[
+            "--lcov",
+            "x",
+            "--metric",
+            "cognitive",
+            "--threshold",
+            "8",
+        ]));
+        assert!(matches!(
+            action,
+            Ok(Action::Run(ref args)) if args.threshold() == 8.0
         ));
     }
 }

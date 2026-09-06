@@ -1,24 +1,26 @@
 # cargo-crap
 
-A Cargo subcommand that scores each Rust function by combining cyclomatic
-complexity with automated test coverage. The score is a **change-risk
-signal**: it is high when a function is both hard to follow and lightly
-exercised by tests. It is not a quality grade, a programmer rating, or a
-management KPI.
+A Cargo subcommand that scores each Rust function by combining complexity
+with automated test coverage. The score is a **change-risk signal**: it
+is high when a function is both hard to follow and lightly exercised by
+tests. It is not a quality grade, a programmer rating, or a management KPI.
 
 ```text
 CRAP(m) = CC² × (1 − cov/100)³ + CC
 ```
 
-`CC` is McCabe complexity (1 + decision points). `cov` is the percent of
-instrumented lines in that function that tests hit. At 100% coverage the
-score equals complexity — risk is acknowledged, not erased. At 0% coverage
-the score is `CC² + CC`. A function with complexity 31 or more cannot
-score 30 or below at any coverage; simplify it.
+`CC` is the selected complexity metric. The default is McCabe cyclomatic
+complexity (1 + decision points). `--metric cognitive` uses nesting-weighted
+cognitive complexity instead. `cov` is the percent of instrumented lines
+in that function that tests hit. At 100% coverage the score equals
+complexity — risk is acknowledged, not erased. At 0% coverage the score
+is `CC² + CC`. A cyclomatic value of 31 or more cannot score 30 or below
+at any coverage; simplify it.
 
-The usual gate is **30**. Use `--threshold` for a stricter line. A score
-at or below the threshold does not mean simple functions should go
-untested; the usual line just highlights the riskiest ones.
+The usual cyclomatic gate is **30**; the cognitive default is **15**.
+Use `--threshold` to set either. A score at or below the threshold does
+not mean simple functions should go untested; the usual line just
+highlights the riskiest ones.
 
 ## Install
 
@@ -53,7 +55,7 @@ If a function is flagged: add automated tests when coverage is below
 90%; extract or simplify when coverage is 90% or more and complexity
 still keeps the score over the threshold.
 
-## Coverage needed to stay at or under 30
+## Coverage needed to stay at or under 30 (cyclomatic)
 
 | Cyclomatic complexity | Coverage |
 | --- | --- |
@@ -69,7 +71,8 @@ still keeps the score over the threshold.
 
 - `--lcov <file>` — LCOV from `cargo llvm-cov` (required)
 - `--path <dir>` — walk this tree (default `.`); Cargo workspace root with `--workspace` / `-p`
-- `--threshold <n>` — flag scores strictly above this (default `30`)
+- `--metric` — `cyclomatic` (default) or `cognitive`
+- `--threshold <n>` — flag scores strictly above this (default `30` cyclomatic, `15` cognitive)
 - `--workspace` — every Cargo workspace member
 - `-p, --package <name>` — one member; repeatable; conflicts with `--workspace`
 - `--summary` — counts and worst offender; no table
@@ -85,8 +88,11 @@ Exit codes: `0` finished and clean, `1` finished and the gate tripped,
 Line coverage is not proof that tests assert anything useful. Some
 complex functions are legitimate. The score does not measure coupling or
 cohesion. Closures count toward the enclosing function; decisions inside
-unexpanded or opaque macros may be missed. Each match arm adds 1 to CC,
-including `_` and other catch-alls.
+unexpanded or opaque macros may be missed. Cyclomatic: each match arm
+adds 1, including `_` and other catch-alls. Cognitive: nesting-weighted
+increments; `else` / `else if` are flat +1; a run of the same boolean
+operator counts once; labeled `break` / `continue` add 1; `?` is free;
+direct recursion is not counted.
 
 ## License
 
