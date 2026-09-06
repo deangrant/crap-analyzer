@@ -48,6 +48,20 @@ fn relative_lcov_suffix_matches_absolute_source() {
 }
 
 #[test]
+fn forward_relative_sf_beats_longer_reverse_false_friend() {
+    let functions = [func("proj/src/foo.rs", "f", 1, 1)];
+    let mut coverage = cov("src/foo.rs", &[(1, 1)]);
+    coverage.insert(
+        PathBuf::from("/unrelated/proj/src/foo.rs"),
+        FileCoverage {
+            lines: std::iter::once((1, 0)).collect(),
+        },
+    );
+    let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
+    assert_f64_bits_eq(entries[0].coverage, 100.0);
+}
+
+#[test]
 fn longest_suffix_wins() {
     let functions = [func("/proj/src/lib.rs", "f", 1, 1)];
     let mut coverage = cov("src/lib.rs", &[(1, 1)]);

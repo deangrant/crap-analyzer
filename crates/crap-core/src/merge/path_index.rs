@@ -109,9 +109,9 @@ fn unique_crate_hit<'a>(
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct MatchRank {
+    src_ends_with_key: bool,
     len: usize,
     exact: bool,
-    src_ends_with_key: bool,
 }
 
 fn match_rank(src: &[String], key: &[String]) -> Option<MatchRank> {
@@ -119,9 +119,9 @@ fn match_rank(src: &[String], key: &[String]) -> Option<MatchRank> {
         return None;
     }
     Some(MatchRank {
+        src_ends_with_key: src.ends_with(key),
         len: key.len().min(src.len()),
         exact: src == key,
-        src_ends_with_key: src.ends_with(key),
     })
 }
 
