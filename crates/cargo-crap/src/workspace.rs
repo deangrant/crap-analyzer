@@ -142,7 +142,7 @@ mod tests {
             }"#,
         );
         assert!(json.is_ok());
-        let value = json.unwrap_or(Value::Null);
+        let value = json.unwrap_or_default();
         let pkgs = packages_from_metadata(&value);
         assert!(pkgs.is_ok());
         let pkgs = pkgs.unwrap_or_default();

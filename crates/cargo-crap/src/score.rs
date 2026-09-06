@@ -1,8 +1,5 @@
 //! Change-risk score from complexity and coverage.
 
-/// Usual gate: scores strictly above this are treated as risky.
-pub const DEFAULT_THRESHOLD: f64 = 30.0;
-
 /// Combines complexity and coverage percent into one score.
 ///
 /// The formula is `comp² × (1 − cov/100)³ + comp`. Coverage outside
@@ -34,6 +31,7 @@ pub fn exceeds_threshold(score: f64, threshold: f64) -> bool {
 )]
 mod tests {
     use super::*;
+    use crate::complexity::Metric;
 
     #[test]
     fn trivial_fully_covered_scores_one() {
@@ -65,8 +63,9 @@ mod tests {
 
     #[test]
     fn complexity_thirty_one_stays_over_default_when_fully_covered() {
-        assert!(crap(31.0, 100.0) > DEFAULT_THRESHOLD);
-        assert!(exceeds_threshold(crap(31.0, 100.0), DEFAULT_THRESHOLD));
+        let threshold = Metric::Cyclomatic.default_threshold();
+        assert!(crap(31.0, 100.0) > threshold);
+        assert!(exceeds_threshold(crap(31.0, 100.0), threshold));
     }
 
     #[test]

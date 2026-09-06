@@ -1,13 +1,15 @@
 //! Join function spans with LCOV line hits and score them.
 
+mod path_index;
+
 use crate::complexity::FunctionComplexity;
 use crate::coverage::FileCoverage;
 use crate::score::crap;
 use clap::ValueEnum;
+use path_index::PathIndex;
 use std::collections::HashMap;
-use std::ffi::OsStr;
 use std::hash::BuildHasher;
-use std::path::{Component, Path, PathBuf};
+use std::path::PathBuf;
 
 /// How to treat a function with no matching coverage data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -96,99 +98,6 @@ fn coverage_for(
     })
 }
 
-struct PathIndex {
-    files: Vec<(Vec<String>, FileCoverage)>,
-}
-
-impl PathIndex {
-    fn from_coverage<S: BuildHasher>(coverage: &HashMap<PathBuf, FileCoverage, S>) -> Self {
-        let mut merged: HashMap<Vec<String>, FileCoverage> = HashMap::new();
-        for (path, file) in coverage {
-            let key = components(path);
-            merged.entry(key).or_default().merge_from(file);
-        }
-        Self {
-            files: merged.into_iter().collect(),
-        }
-    }
-
-    fn lookup(&self, source: &Path) -> Option<&FileCoverage> {
-        let src = components(source);
-        let mut best_rank: Option<MatchRank> = None;
-        let mut best_file: Option<&FileCoverage> = None;
-        let mut tied = false;
-        for (key, file) in &self.files {
-            let Some(rank) = match_rank(&src, key) else {
-                continue;
-            };
-            match best_rank {
-                Some(best) if rank < best => {}
-                Some(best) if rank == best => tied = true,
-                _ => {
-                    best_rank = Some(rank);
-                    best_file = Some(file);
-                    tied = false;
-                }
-            }
-        }
-        if tied {
-            return None;
-        }
-        best_file
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct MatchRank {
-    len: usize,
-    exact: bool,
-    src_ends_with_key: bool,
-}
-
-fn match_rank(src: &[String], key: &[String]) -> Option<MatchRank> {
-    if !is_suffix_pair(src, key) {
-        return None;
-    }
-    Some(MatchRank {
-        len: key.len().min(src.len()),
-        exact: src == key,
-        src_ends_with_key: src.ends_with(key),
-    })
-}
-
-fn components(path: &Path) -> Vec<String> {
-    let mut stack = Vec::new();
-    for comp in path.components() {
-        match comp {
-            Component::Normal(part) => stack.push(os_to_string(part)),
-            Component::ParentDir => push_parent(&mut stack),
-            #[cfg(windows)]
-            Component::Prefix(prefix) => stack.push(os_to_string(prefix.as_os_str())),
-            #[cfg(windows)]
-            Component::RootDir | Component::CurDir => {}
-            #[cfg(not(windows))]
-            Component::RootDir | Component::CurDir | Component::Prefix(_) => {}
-        }
-    }
-    stack
-}
-
-fn push_parent(stack: &mut Vec<String>) {
-    if stack.last().is_some_and(|top| top != "..") {
-        stack.pop();
-    } else {
-        stack.push("..".into());
-    }
-}
-
-fn os_to_string(part: &OsStr) -> String {
-    part.to_string_lossy().replace('\\', "/")
-}
-
-fn is_suffix_pair(a: &[String], b: &[String]) -> bool {
-    a.ends_with(b) || b.ends_with(a)
-}
-
 #[cfg(test)]
 #[expect(
     clippy::float_cmp,
@@ -196,6 +105,7 @@ fn is_suffix_pair(a: &[String], b: &[String]) -> bool {
 )]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     fn func(file: &str, name: &str, start: usize, end: usize) -> LocatedFn {
         LocatedFn {

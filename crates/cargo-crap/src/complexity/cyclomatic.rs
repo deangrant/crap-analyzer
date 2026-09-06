@@ -1,8 +1,10 @@
 //! Cyclomatic complexity: one plus each decision point.
 
 use super::parse_macro_body;
-use syn::BinOp;
-use syn::visit::{self, Visit};
+use syn::{
+    BinOp,
+    visit::{self, Visit},
+};
 
 /// Returns cyclomatic complexity for `body` (minimum 1).
 pub(super) fn count(body: &syn::Block) -> usize {
