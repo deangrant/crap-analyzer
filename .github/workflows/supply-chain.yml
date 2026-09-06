@@ -17,6 +17,7 @@ permissions:
 
 jobs:
   deny:
+    name: cargo deny check
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -43,6 +44,7 @@ jobs:
           command: check
 
   audit:
+    name: cargo audit
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

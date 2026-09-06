@@ -299,6 +299,17 @@ mod tests {
         }
     }
 
+    fn run_args(action: Result<Action, String>) -> Option<Args> {
+        match action {
+            Ok(Action::Run(args)) => Some(args),
+            Ok(Action::Help | Action::Version) | Err(_) => None,
+        }
+    }
+
+    fn fallback_args() -> Args {
+        Args::parse_from(["crap-rs", "--lcov", "x"])
+    }
+
     #[test]
     fn threshold_presets() {
         let presets = [("strict", 8.0), ("lenient", 25.0)];
@@ -306,6 +317,7 @@ mod tests {
             let got = parsed_threshold(flag);
             assert!(got.is_some_and(|value| value.total_cmp(&expected) == Ordering::Equal));
         }
+        assert!(parsed_threshold("abc").is_none());
     }
 
     #[test]
@@ -384,9 +396,7 @@ mod tests {
             "--summary",
             "--fail-above",
         ]));
-        let Ok(Action::Run(args)) = action else {
-            return;
-        };
+        let args = run_args(action).unwrap_or_else(fallback_args);
         let (lang, request) = args.parts();
         assert!(
             lang.workspace
@@ -395,5 +405,9 @@ mod tests {
                 && request.fail_above
                 && request.lcov == Path::new("x.info")
         );
+        let skipped = run_args(Ok(Action::Help)).unwrap_or_else(fallback_args);
+        assert!(!skipped.workspace);
+        assert!(run_args(Ok(Action::Version)).is_none());
+        assert!(run_args(Err("nope".into())).is_none());
     }
 }

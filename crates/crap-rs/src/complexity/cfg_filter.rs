@@ -218,12 +218,13 @@ mod tests {
     #[test]
     fn cfg_any_test_or_unix_is_kept() {
         let fns = cyclo("#[cfg(any(test, unix))] fn f() { if true {} }");
-        if cfg!(unix) {
+        #[cfg(unix)]
+        {
             assert_eq!(fns.len(), 1);
             assert_eq!(fns[0].name, "f");
-        } else {
-            assert!(fns.is_empty());
         }
+        #[cfg(not(unix))]
+        assert!(fns.is_empty());
     }
 
     #[test]
@@ -298,9 +299,10 @@ mod tests {
     #[test]
     fn cfg_target_os_linux_is_host_gated() {
         let fns = cyclo("#[cfg(target_os = \"linux\")] fn linux() {} fn keep() {}");
-        if super::HOST_OS == "linux" {
-            assert_eq!(fns.len(), 2);
-        } else {
+        #[cfg(target_os = "linux")]
+        assert_eq!(fns.len(), 2);
+        #[cfg(not(target_os = "linux"))]
+        {
             assert_eq!(fns.len(), 1);
             assert_eq!(fns[0].name, "keep");
         }
@@ -316,9 +318,10 @@ mod tests {
     #[test]
     fn cfg_windows_is_host_gated() {
         let fns = cyclo("#[cfg(windows)] fn w() {} fn keep() {}");
-        if cfg!(windows) {
-            assert_eq!(fns.len(), 2);
-        } else {
+        #[cfg(windows)]
+        assert_eq!(fns.len(), 2);
+        #[cfg(not(windows))]
+        {
             assert_eq!(fns.len(), 1);
             assert_eq!(fns[0].name, "keep");
         }

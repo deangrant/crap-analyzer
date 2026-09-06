@@ -161,6 +161,27 @@ fn collect_rust_file_skips_non_rust_and_keeps_missing() {
 }
 
 #[test]
+fn take_typed_entry_propagates_file_type_error() {
+    let root = Path::new("/proj");
+    let mut visited = HashSet::new();
+    let mut out = Vec::new();
+    let mut walk = Walk {
+        root,
+        root_canon: None,
+        nested_skip: &[],
+        visited: &mut visited,
+        out: &mut out,
+    };
+    let result = take_typed_entry(
+        Path::new("/proj/x.rs"),
+        Err(std::io::Error::other("boom")),
+        None,
+        &mut walk,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
 fn walk_entries_propagates_read_dir_error() {
     let err = std::io::Error::other("boom");
     let root = Path::new("/proj");
@@ -192,6 +213,21 @@ mod unix {
         let files = require_ok(rust_files(&root, &[]));
         let _ = fs::remove_dir_all(&root);
         assert!(files.iter().any(|path| path.ends_with("lib.rs")));
+    }
+
+    #[test]
+    fn symlink_to_socket_is_ignored() {
+        let root = temp_root();
+        require_ok(fs::write(root.join("lib.rs"), "fn f() {}\n"));
+        let sock_path = root.join("sock");
+        let listener = std::os::unix::net::UnixListener::bind(&sock_path);
+        assert!(listener.is_ok(), "{listener:?}");
+        require_ok(symlink(&sock_path, root.join("alias.rs")));
+        let files = require_ok(rust_files(&root, &[]));
+        drop(listener);
+        let _ = fs::remove_dir_all(&root);
+        assert!(files.iter().any(|path| path.ends_with("lib.rs")));
+        assert!(!files.iter().any(|path| path.ends_with("alias.rs")));
     }
 
     #[test]

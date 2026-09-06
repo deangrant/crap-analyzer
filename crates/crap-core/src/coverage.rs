@@ -178,6 +178,11 @@ mod tests {
     }
 
     #[test]
+    fn reject_is_false_when_da_records_exist() {
+        assert!(!reject("SF:src/foo.rs\nDA:10,1\nend_of_record\n"));
+    }
+
+    #[test]
     fn reads_hit_counts_for_one_file() {
         let map = parse("TN:\nSF:src/foo.rs\nDA:10,3\nDA:11,0\nend_of_record\n");
         let cov = &map[Path::new("src/foo.rs")];
@@ -282,6 +287,12 @@ mod tests {
     }
 
     #[test]
+    fn parse_lcov_rejects_a_missing_file() {
+        let parsed = parse_lcov(Path::new("/no/such/crap-core.lcov"));
+        assert!(parsed.is_err(), "{parsed:?}");
+    }
+
+    #[test]
     fn parse_lcov_rejects_empty_file() {
         let path = std::env::temp_dir().join(format!(
             "crap-core-empty-lcov-{}-{}",
@@ -295,11 +306,32 @@ mod tests {
         let parsed = parse_lcov(&path);
         let _ = std::fs::remove_file(&path);
         assert!(parsed.is_err(), "{parsed:?}");
-        let message = parsed.as_ref().err().map_or(String::new(), ToString::to_string);
+        let message = parsed.err().map(|err| err.to_string()).unwrap_or_default();
         assert!(
             message.contains("DA") || message.contains("line-hit"),
             "{message}"
         );
+    }
+
+    #[test]
+    fn parse_lcov_rejects_invalid_utf8() {
+        let path = std::env::temp_dir().join(format!(
+            "crap-core-utf8-lcov-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ));
+        let written = std::fs::write(&path, b"SF:src/foo.rs\n\xff\nDA:1,1\n");
+        assert!(written.is_ok(), "{written:?}");
+        let parsed = parse_lcov(&path);
+        let _ = std::fs::remove_file(&path);
+        assert!(parsed.is_err(), "{parsed:?}");
+    }
+
+    #[test]
+    fn malformed_da_hits_are_rejected() {
+        assert!(reject("SF:src/foo.rs\nDA:10,x\nend_of_record\n"));
     }
 
     #[test]
@@ -309,7 +341,7 @@ mod tests {
             "SF:src/lib.rs\nDA:10,1\nend_of_record\n",
         ));
         assert!(parsed.is_ok(), "{parsed:?}");
-        let (map, valid_da) = parsed.unwrap_or_else(|_| (HashMap::new(), 0));
+        let (map, valid_da) = parsed.ok().unwrap_or_default();
         assert_eq!(valid_da, 1);
         assert!(!map.contains_key(Path::new("generated.rs")));
         assert_eq!(map[Path::new("src/lib.rs")].lines[&10], 1);

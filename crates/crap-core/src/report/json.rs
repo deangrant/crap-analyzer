@@ -39,7 +39,11 @@ pub fn render_json(
             functions: entries.iter().map(|e| function_doc(e, threshold)).collect(),
         },
     };
-    serde_json::to_string_pretty(&doc).map_err(|err| Error::collect(format!("json report: {err}")))
+    stringify_json(&doc)
+}
+
+fn stringify_json<T: Serialize>(value: &T) -> Result<String> {
+    serde_json::to_string_pretty(value).map_err(|err| Error::collect(format!("json report: {err}")))
 }
 
 #[derive(Serialize)]
@@ -323,5 +327,13 @@ mod tests {
     fn language_is_taken_from_the_caller() {
         let value = json_lang(&[], 15.0, Metric::Cyclomatic, false, "demo");
         assert_eq!(value["language"], "demo");
+    }
+
+    #[test]
+    fn stringify_json_rejects_compound_map_keys() {
+        let mut map = std::collections::BTreeMap::new();
+        map.insert((1_u32, 2_u32), 3_u32);
+        let text = stringify_json(&map);
+        assert!(text.is_err(), "{text:?}");
     }
 }

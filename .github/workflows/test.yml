@@ -15,6 +15,7 @@ permissions:
 
 jobs:
   test:
+    name: Workspace tests locked
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

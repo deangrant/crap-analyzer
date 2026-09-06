@@ -112,7 +112,7 @@ Also match rustfmt defaults CI already uses:
 ## Style Preferences
 
 - **Clippy thresholds** ([`clippy.toml`](../../../clippy.toml)): functions at
-  most 100 lines (`too-many-lines-threshold`); cognitive complexity 15; type
+  most 100 lines (`too-many-lines-threshold`); cognitive complexity 8; type
   complexity 200. Stay under these instead of silencing the lints.
 - Prefer early returns over deep nesting; use `let-else` and `if let` to reduce
   nesting.

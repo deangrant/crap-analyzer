@@ -15,12 +15,38 @@ Structured conventions for AI agents and humans working in this
 
 ## Pipeline
 
+Local entrypoint that mirrors CI (`fmt --check`, Clippy, deny, audit, test,
+rustdoc). Use `--locked` when `Cargo.lock` is present (CI always does for
+test; Clippy uses it when the lockfile exists):
+
 ```bash
-cargo fmt --all
-cargo clippy --workspace --all-targets --all-features -- -D warnings
+./scripts/check.sh
+```
+
+Equivalent commands:
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo deny check
 cargo audit
-cargo test --workspace
+cargo test --workspace --all-targets --all-features --locked
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --locked
+```
+
+CI also runs line coverage (100%) and a CRAP dogfood gate (`--fail-above --threshold strict`). Needs `cargo-llvm-cov` and `llvm-tools-preview`:
+
+```bash
+cargo llvm-cov --workspace --all-features --locked \
+  --lcov --output-path lcov.info --fail-under-lines 100
+cargo run -p crap-rs --locked -- \
+  --lcov lcov.info --path . --workspace --fail-above --threshold strict
+```
+
+Lean pre-push (fmt + Clippy only). Install once per clone:
+
+```bash
+git config core.hooksPath scripts/githooks
 ```
 
 ## Anti-slop
@@ -49,3 +75,4 @@ that area.
 
 - Config: [`.cursor/hooks.json`](.cursor/hooks.json)
 - `afterFileEdit` → [`.agents/hooks/rustfmt.sh`](.agents/hooks/rustfmt.sh) formats edited `*.rs` with `rustfmt` (fail-open)
+- Git pre-push: [`scripts/githooks/pre-push`](scripts/githooks/pre-push) (`git config core.hooksPath scripts/githooks`)

@@ -73,15 +73,23 @@ fn take_entry(
     walk: &mut Walk<'_>,
 ) -> Result<()> {
     let entry = entry.map_err(|source| Error::io(dir, source))?;
-    let path = entry.path();
-    let file_type = entry.file_type().map_err(|source| Error::io(&path, source))?;
+    take_typed_entry(&entry.path(), entry.file_type(), package_root, walk)
+}
+
+fn take_typed_entry(
+    path: &Path,
+    file_type: std::io::Result<fs::FileType>,
+    package_root: Option<&Path>,
+    walk: &mut Walk<'_>,
+) -> Result<()> {
+    let file_type = file_type.map_err(|source| Error::io(path, source))?;
     if file_type.is_symlink() {
-        return take_symlink(&path, package_root, walk);
+        return take_symlink(path, package_root, walk);
     }
     if file_type.is_dir() {
-        return visit_subdir(&path, package_root, walk);
+        return visit_subdir(path, package_root, walk);
     }
-    collect_rust_file(path, walk);
+    collect_rust_file(path.to_path_buf(), walk);
     Ok(())
 }
 

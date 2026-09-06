@@ -157,6 +157,47 @@ fn missing_workspace_members_is_metadata_error() {
 }
 
 #[test]
+fn workspace_from_metadata_rejects_bad_packages() {
+    let json = serde_json::json!({
+        "workspace_root": "/tmp",
+        "workspace_members": ["pkg missing 1"],
+        "packages": []
+    });
+    assert!(workspace_from_metadata(&json).is_err());
+}
+
+#[test]
+fn cargo_metadata_spawn_failure_is_resolve_error() {
+    let err = run_cargo_metadata(Path::new("/no/such/crap-rs-cargo"), Path::new("."));
+    assert!(err.is_err());
+    let message = err.err().map(|e| e.to_string()).unwrap_or_default();
+    assert!(message.contains("cargo metadata"), "{message}");
+}
+
+#[test]
+fn cargo_metadata_non_utf8_stdout_is_resolve_error() {
+    let dir = std::env::temp_dir().join(format!(
+        "crap-rs-lib-fake-cargo-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos())
+    ));
+    let created = std::fs::create_dir_all(&dir);
+    assert!(created.is_ok(), "{created:?}");
+    let cargo = dir.join("fake-cargo");
+    let written = std::fs::write(&cargo, "#!/bin/sh\n/usr/bin/printf '\\xff'\nexit 0\n");
+    assert!(written.is_ok(), "{written:?}");
+    let mode = std::process::Command::new("chmod").arg("+x").arg(&cargo).status();
+    assert!(mode.is_ok(), "{mode:?}");
+    let err = run_cargo_metadata(&cargo, Path::new("."));
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(err.is_err());
+    let message = err.err().map(|e| e.to_string()).unwrap_or_default();
+    assert!(message.contains("UTF-8"), "{message}");
+}
+
+#[test]
 fn missing_workspace_root_is_metadata_error() {
     let json = serde_json::json!({
         "workspace_members": ["pkg a 1"],

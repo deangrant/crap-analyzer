@@ -179,6 +179,16 @@ mod tests {
     }
 
     #[test]
+    fn analyze_file_rejects_a_missing_path() {
+        let result = crate::complexity::analyze_file(
+            Path::new("/no/such/crap-rs-analyze.rs"),
+            Metric::Cyclomatic,
+            &[],
+        );
+        assert!(result.is_err(), "{result:?}");
+    }
+
+    #[test]
     fn impl_methods_are_prefixed() {
         let src = "struct Foo; impl Foo { fn bar(&self) { if true {} } }";
         let fns = cyclo(src);
@@ -285,5 +295,33 @@ mod tests {
         let fns = cyclo("impl dyn 'static + Send { fn m() {} }");
         assert_eq!(fns.len(), 1);
         assert_eq!(fns[0].name, "dyn Send::m");
+    }
+
+    #[test]
+    fn empty_type_path_falls_back_to_impl() {
+        let ty = syn::Type::Path(syn::TypePath {
+            attrs: Vec::new(),
+            qself: None,
+            path: syn::Path {
+                leading_colon: None,
+                segments: syn::punctuated::Punctuated::new(),
+            },
+        });
+        assert_eq!(super::type_name(&ty), "<impl>");
+    }
+
+    #[test]
+    fn dyn_lifetime_only_falls_back_to_impl() {
+        let mut bounds = syn::punctuated::Punctuated::new();
+        bounds.push(syn::TypeParamBound::Lifetime(syn::Lifetime::new(
+            "'static",
+            proc_macro2::Span::call_site(),
+        )));
+        let ty = syn::Type::TraitObject(syn::TypeTraitObject {
+            attrs: Vec::new(),
+            dyn_token: Some(syn::token::Dyn::default()),
+            bounds,
+        });
+        assert_eq!(super::type_name(&ty), "<impl>");
     }
 }

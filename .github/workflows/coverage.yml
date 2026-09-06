@@ -1,0 +1,60 @@
+name: coverage
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: coverage-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  llvm-cov:
+    name: Line coverage 100% and CRAP strict
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
+        with:
+          toolchain: 1.94.0
+          components: llvm-tools-preview
+
+      - name: Detect workspace packages
+        id: pkgs
+        run: |
+          count=$(.github/scripts/package-count.sh)
+          echo "count=${count}" >> "$GITHUB_OUTPUT"
+          if [ "${count}" = "0" ]; then
+            echo "No workspace packages; skipping coverage."
+          fi
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        if: steps.pkgs.outputs.count != '0'
+
+      - uses: taiki-e/install-action@84f5ac3124727fb3d284d4d22ee9ab3654fd09a6
+        if: steps.pkgs.outputs.count != '0'
+        with:
+          tool: cargo-llvm-cov@0.8.7
+
+      - name: Line coverage must be 100%
+        if: steps.pkgs.outputs.count != '0'
+        run: |
+          cargo llvm-cov --workspace --all-features --locked \
+            --lcov --output-path lcov.info \
+            --fail-under-lines 100
+
+      - name: CRAP gate (strict / 8)
+        if: steps.pkgs.outputs.count != '0'
+        run: |
+          cargo run -p crap-rs --locked -- \
+            --lcov lcov.info --path . --workspace \
+            --fail-above --threshold strict

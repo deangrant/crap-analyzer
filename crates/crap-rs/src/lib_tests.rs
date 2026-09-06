@@ -222,3 +222,56 @@ fn broken_manifest_is_a_resolve_error() {
     let _ = std::fs::remove_dir_all(&dir);
     assert!(targets.is_err(), "{targets:?}");
 }
+
+#[test]
+fn package_flag_selects_named_members() {
+    let lang = RustLanguage {
+        workspace: false,
+        packages: vec!["crap-rs".into()],
+        features: FeatureSelection::default(),
+    };
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|p| p.parent())
+        .map_or_else(|| PathBuf::from("."), PathBuf::from);
+    let request = ScanRequest {
+        path: workspace,
+        lcov: PathBuf::from("lcov.info"),
+        metric: Metric::Cyclomatic,
+        threshold: None,
+        summary: false,
+        fail_above: false,
+        missing: crap_core::MissingPolicy::Pessimistic,
+        format: ReportFormat::Text,
+    };
+    let targets = lang.resolve_targets(&request);
+    assert!(targets.is_ok(), "{targets:?}");
+    let targets = targets.unwrap_or_default();
+    assert_eq!(targets.len(), 1);
+    assert_eq!(targets[0].crate_name.as_deref(), Some("crap-rs"));
+}
+
+#[test]
+fn collect_functions_fails_when_any_file_is_unparseable() {
+    let dir = std::env::temp_dir().join(format!(
+        "crap-rs-collect-mixed-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos())
+    ));
+    let created = std::fs::create_dir_all(&dir);
+    assert!(created.is_ok(), "{created:?}");
+    let ok = std::fs::write(dir.join("ok.rs"), "fn keep() {}\n");
+    let bad = std::fs::write(dir.join("broken.rs"), "fn not rust {{{");
+    assert!(ok.is_ok() && bad.is_ok(), "{ok:?} {bad:?}");
+    let targets = [Target {
+        root: dir.clone(),
+        crate_name: None,
+        skip: Vec::new(),
+        enabled_features: Vec::new(),
+    }];
+    let result = collect_functions(&targets, Metric::Cyclomatic);
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(result.is_err(), "{result:?}");
+}

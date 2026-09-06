@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Lean pre-push: rustfmt check and Clippy (same flags as CI).
+set -euo pipefail
+
+root="$(cd "$(dirname "$0")/../.." && pwd)"
+cd "$root"
+
+count="$(.github/scripts/package-count.sh)"
+if [ "${count}" = "0" ]; then
+    echo "No workspace packages; skipping pre-push checks."
+    exit 0
+fi
+
+locked=()
+if [ -f Cargo.lock ]; then
+    locked+=(--locked)
+fi
+
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features "${locked[@]}" -- -D warnings

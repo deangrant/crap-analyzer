@@ -147,7 +147,10 @@ fn cargo_bin() -> PathBuf {
 }
 
 fn run_metadata(root: &Path) -> Result<Value> {
-    let cargo = cargo_bin();
+    run_cargo_metadata(&cargo_bin(), root)
+}
+
+fn run_cargo_metadata(cargo: &Path, root: &Path) -> Result<Value> {
     let output = Command::new(cargo)
         .args(["metadata", "--format-version", "1", "--no-deps"])
         .arg("--manifest-path")
