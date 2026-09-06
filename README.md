@@ -49,14 +49,15 @@ CI gate (exit 1 after the report if anything is over the threshold):
 cargo crap --lcov lcov.info --fail-above --threshold 30
 ```
 
-If a function is flagged: add automated tests when coverage is low;
-extract or simplify when complexity stays high even when covered.
+If a function is flagged: add automated tests when coverage is below
+90%; extract or simplify when coverage is 90% or more and complexity
+still keeps the score over the threshold.
 
 ## Coverage needed to stay at or under 30
 
 | Cyclomatic complexity | Coverage |
 | --- | --- |
-| 0–5 | 0% |
+| 1–5 | 0% |
 | 6–10 | ~42% |
 | 11–15 | ~57% |
 | 16–20 | ~71% |
@@ -84,7 +85,8 @@ Exit codes: `0` finished and clean, `1` finished and the gate tripped,
 Line coverage is not proof that tests assert anything useful. Some
 complex functions are legitimate. The score does not measure coupling or
 cohesion. Closures count toward the enclosing function; decisions inside
-unexpanded or opaque macros may be missed.
+unexpanded or opaque macros may be missed. Each match arm adds 1 to CC,
+including `_` and other catch-alls.
 
 ## License
 

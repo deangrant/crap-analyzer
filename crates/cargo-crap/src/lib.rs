@@ -4,7 +4,6 @@ pub mod cli;
 pub(crate) mod complexity;
 pub(crate) mod coverage;
 pub mod error;
-mod json;
 pub(crate) mod merge;
 pub(crate) mod report;
 pub mod score;

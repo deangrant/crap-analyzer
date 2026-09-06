@@ -3,6 +3,7 @@
 use crate::error::{Error, Result};
 use crate::merge::MissingPolicy;
 use crate::score::DEFAULT_THRESHOLD;
+use clap::Parser;
 use std::env;
 use std::path::PathBuf;
 
@@ -18,39 +19,37 @@ pub enum Action {
 }
 
 /// Options for one analysis run.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Parser)]
+#[command(
+    name = "cargo-crap",
+    disable_help_flag = true,
+    disable_version_flag = true
+)]
 pub struct Args {
     /// LCOV coverage file.
+    #[arg(long, required = true)]
     pub(crate) lcov: PathBuf,
     /// Walk root, or Cargo workspace root when `--workspace` / `-p` is set.
+    #[arg(long, default_value = ".")]
     pub(crate) path: PathBuf,
     /// Score above which a function is flagged.
+    #[arg(long, default_value_t = DEFAULT_THRESHOLD, value_parser = parse_threshold)]
     pub(crate) threshold: f64,
     /// Analyze every workspace member.
+    #[arg(long, conflicts_with = "packages")]
     pub(crate) workspace: bool,
     /// Selected package names (`-p`).
+    #[arg(short = 'p', long = "package")]
     pub(crate) packages: Vec<String>,
     /// Print counts only.
+    #[arg(long)]
     pub(crate) summary: bool,
     /// Exit 1 when any function exceeds `threshold`.
+    #[arg(long)]
     pub(crate) fail_above: bool,
     /// Policy for functions with no coverage data.
+    #[arg(long, default_value = "pessimistic")]
     pub(crate) missing: MissingPolicy,
-}
-
-impl Default for Args {
-    fn default() -> Self {
-        Self {
-            lcov: PathBuf::new(),
-            path: PathBuf::from("."),
-            threshold: DEFAULT_THRESHOLD,
-            workspace: false,
-            packages: Vec::new(),
-            summary: false,
-            fail_above: false,
-            missing: MissingPolicy::Pessimistic,
-        }
-    }
 }
 
 /// Parses process arguments, stripping a leading `crap` cargo subcommand.
@@ -72,67 +71,23 @@ fn parse_args(mut raw: Vec<String>) -> Result<Action> {
     if raw.get(1).is_some_and(|a| a == "crap") {
         raw.remove(1);
     }
-    let mut args = Args::default();
-    let mut rest = raw.into_iter().skip(1);
-    while let Some(arg) = rest.next() {
-        match arg.as_str() {
-            "-h" | "--help" => return Ok(Action::Help),
-            "-V" | "--version" => return Ok(Action::Version),
-            "--summary" => args.summary = true,
-            "--fail-above" => args.fail_above = true,
-            "--workspace" => args.workspace = true,
-            "-p" | "--package" => {
-                args.packages.push(require_value(&arg, rest.next())?);
-            }
-            "--lcov" => args.lcov = PathBuf::from(require_value(&arg, rest.next())?),
-            "--path" => args.path = PathBuf::from(require_value(&arg, rest.next())?),
-            "--threshold" => args.threshold = parse_threshold(&require_value(&arg, rest.next())?)?,
-            "--missing" => args.missing = parse_missing(&require_value(&arg, rest.next())?)?,
-            other if other.starts_with('-') => {
-                return Err(Error::usage(format!("unknown flag `{other}`")));
-            }
-            other => {
-                return Err(Error::usage(format!("unexpected argument `{other}`")));
-            }
-        }
+    if raw.iter().skip(1).any(|arg| arg == "-h" || arg == "--help") {
+        return Ok(Action::Help);
     }
-    validate(&args)?;
-    Ok(Action::Run(args))
+    if raw.iter().skip(1).any(|arg| arg == "-V" || arg == "--version") {
+        return Ok(Action::Version);
+    }
+    Args::try_parse_from(raw)
+        .map(Action::Run)
+        .map_err(|err| Error::usage(err.to_string()))
 }
 
-fn require_value(flag: &str, value: Option<String>) -> Result<String> {
-    value.ok_or_else(|| Error::usage(format!("{flag} requires a value")))
-}
-
-fn parse_threshold(text: &str) -> Result<f64> {
-    let value: f64 = text
-        .parse()
-        .map_err(|_| Error::usage(format!("invalid --threshold `{text}`")))?;
+fn parse_threshold(text: &str) -> std::result::Result<f64, String> {
+    let value: f64 = text.parse().map_err(|_| format!("invalid --threshold `{text}`"))?;
     if !value.is_finite() || value < 0.0 {
-        return Err(Error::usage("--threshold must be a non-negative number"));
+        return Err("--threshold must be a non-negative number".into());
     }
     Ok(value)
-}
-
-fn parse_missing(text: &str) -> Result<MissingPolicy> {
-    match text {
-        "pessimistic" => Ok(MissingPolicy::Pessimistic),
-        "optimistic" => Ok(MissingPolicy::Optimistic),
-        "skip" => Ok(MissingPolicy::Skip),
-        other => Err(Error::usage(format!(
-            "invalid --missing `{other}` (pessimistic|optimistic|skip)"
-        ))),
-    }
-}
-
-fn validate(args: &Args) -> Result<()> {
-    if args.lcov.as_os_str().is_empty() {
-        return Err(Error::usage("missing required --lcov <file>"));
-    }
-    if args.workspace && !args.packages.is_empty() {
-        return Err(Error::usage("--workspace conflicts with --package / -p"));
-    }
-    Ok(())
 }
 
 /// Cargo-style help text.
@@ -176,14 +131,17 @@ SCORE:
     CC 31 or more cannot fall to 30 or below at any coverage.
 
     Coverage needed to stay at or under 30 (usual line):
-      CC 0-5    0%     CC 16-20   ~71%
+      CC 1-5    0%     CC 16-20   ~71%
       CC 6-10   ~42%   CC 21-25   ~80%
       CC 11-15  ~57%   CC 26-30   100%
       CC 31+    refactor; coverage cannot help
 
+    Each match arm adds 1 to CC, including `_` and other catch-alls.
+
     A low score is not a reason to skip tests on simple functions.
-    If a function is flagged: add automated tests when coverage is low;
-    extract or simplify when complexity stays high even when covered.
+    If a function is flagged: add automated tests when coverage is
+    below 90%; extract or simplify when coverage is 90% or more and
+    complexity still keeps the score over the threshold.
 
     Coverage here is instrumented-line hits from the LCOV file. It does
     not prove assertions are meaningful. Coupling and cohesion are out

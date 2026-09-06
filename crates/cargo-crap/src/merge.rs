@@ -3,13 +3,14 @@
 use crate::complexity::FunctionComplexity;
 use crate::coverage::FileCoverage;
 use crate::score::crap;
+use clap::ValueEnum;
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::hash::BuildHasher;
 use std::path::{Component, Path, PathBuf};
 
 /// How to treat a function with no matching coverage data.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum MissingPolicy {
     /// Score as 0% covered.
     Pessimistic,

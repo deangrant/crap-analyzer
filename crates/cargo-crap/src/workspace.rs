@@ -1,7 +1,7 @@
 //! Discover Cargo workspace members via `cargo metadata`.
 
 use crate::error::{Error, Result};
-use crate::json::Json;
+use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -56,7 +56,7 @@ fn manifest_path(root: &Path) -> PathBuf {
     root.join("Cargo.toml")
 }
 
-fn run_metadata(root: &Path) -> Result<Json> {
+fn run_metadata(root: &Path) -> Result<Value> {
     let cargo = std::env::var_os("CARGO").map_or_else(|| PathBuf::from("cargo"), PathBuf::from);
     let output = Command::new(cargo)
         .args(["metadata", "--format-version", "1", "--no-deps"])
@@ -70,26 +70,26 @@ fn run_metadata(root: &Path) -> Result<Json> {
     }
     let text = String::from_utf8(output.stdout)
         .map_err(|_| Error::Metadata("metadata was not UTF-8".into()))?;
-    Json::parse(&text).map_err(Error::Metadata)
+    serde_json::from_str(&text).map_err(|err| Error::Metadata(err.to_string()))
 }
 
-fn packages_from_metadata(json: &Json) -> Result<Vec<Package>> {
+fn packages_from_metadata(json: &Value) -> Result<Vec<Package>> {
     let members = string_ids(json, "workspace_members")?;
-    let Some(array) = json.get("packages").and_then(Json::as_array) else {
+    let Some(array) = json.get("packages").and_then(Value::as_array) else {
         return Err(Error::Metadata("missing packages array".into()));
     };
     let mut out = Vec::new();
     for item in array {
-        let Some(id) = item.get("id").and_then(Json::as_str) else {
+        let Some(id) = item.get("id").and_then(Value::as_str) else {
             continue;
         };
         if !members.iter().any(|m| m == id) {
             continue;
         }
-        let Some(name) = item.get("name").and_then(Json::as_str) else {
+        let Some(name) = item.get("name").and_then(Value::as_str) else {
             continue;
         };
-        let Some(manifest) = item.get("manifest_path").and_then(Json::as_str) else {
+        let Some(manifest) = item.get("manifest_path").and_then(Value::as_str) else {
             continue;
         };
         let root = Path::new(manifest)
@@ -104,8 +104,8 @@ fn packages_from_metadata(json: &Json) -> Result<Vec<Package>> {
     Ok(out)
 }
 
-fn string_ids(json: &Json, key: &str) -> Result<Vec<String>> {
-    let Some(array) = json.get(key).and_then(Json::as_array) else {
+fn string_ids(json: &Value, key: &str) -> Result<Vec<String>> {
+    let Some(array) = json.get(key).and_then(Value::as_array) else {
         return Err(Error::Metadata(format!("missing {key} array")));
     };
     let mut ids = Vec::new();
@@ -124,7 +124,7 @@ mod tests {
 
     #[test]
     fn reads_members_from_metadata_json() {
-        let json = Json::parse(
+        let json = serde_json::from_str(
             r#"{
               "workspace_members": ["pkg a 1"],
               "packages": [
@@ -142,7 +142,7 @@ mod tests {
             }"#,
         );
         assert!(json.is_ok());
-        let value = json.unwrap_or(Json::Null);
+        let value = json.unwrap_or(Value::Null);
         let pkgs = packages_from_metadata(&value);
         assert!(pkgs.is_ok());
         let pkgs = pkgs.unwrap_or_default();

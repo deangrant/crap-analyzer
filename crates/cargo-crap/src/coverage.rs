@@ -67,7 +67,7 @@ fn apply_record(
         return;
     }
     if let Some(path) = raw.strip_prefix("SF:") {
-        let path = PathBuf::from(path);
+        let path = PathBuf::from(path.replace('\\', "/"));
         files.entry(path.clone()).or_default();
         *current = Some(path);
         return;
@@ -136,6 +136,12 @@ mod tests {
             "SF:src/b.rs\nDA:2,4\nend_of_record\n",
         ));
         assert!(!map[Path::new("src/a.rs")].lines.contains_key(&99));
+    }
+
+    #[test]
+    fn backslash_sf_paths_are_normalized() {
+        let map = parse("SF:src\\foo.rs\nDA:10,1\nend_of_record\n");
+        assert_eq!(map[Path::new("src/foo.rs")].lines[&10], 1);
     }
 
     #[test]
