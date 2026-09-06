@@ -86,12 +86,11 @@ impl<'ast> Visit<'ast> for CognitiveCounter {
 
     fn visit_expr_match(&mut self, node: &'ast syn::ExprMatch) {
         self.visit_expr(&node.expr);
-        self.enter();
-        for arm in &node.arms {
-            self.count += self.nesting;
-            visit::visit_arm(self, arm);
-        }
-        self.leave();
+        self.score_loop_like(|this| {
+            for arm in &node.arms {
+                visit::visit_arm(this, arm);
+            }
+        });
     }
 
     fn visit_expr_closure(&mut self, node: &'ast syn::ExprClosure) {
@@ -255,9 +254,28 @@ mod tests {
     }
 
     #[test]
-    fn match_arms_score_at_current_nesting() {
+    fn match_is_one_increment() {
         let src = "fn f(x: i32) { match x { 0 => {}, 1 => {}, _ => {} } }";
+        assert_eq!(snippet(src), 1);
+    }
+
+    #[test]
+    fn nested_match_adds_nesting_penalty() {
+        let src = "fn f(x: i32) { if x > 0 { match x { 0 => {}, 1 => {}, _ => {} } } }";
         assert_eq!(snippet(src), 3);
+    }
+
+    #[test]
+    fn wide_flat_match_is_still_one() {
+        let src = "fn f(x: i32) {
+            match x {
+                0 => {}, 1 => {}, 2 => {}, 3 => {}, 4 => {},
+                5 => {}, 6 => {}, 7 => {}, 8 => {}, 9 => {},
+                10 => {}, 11 => {}, 12 => {}, 13 => {}, 14 => {},
+                15 => {}, 16 => {}, 17 => {}, 18 => {}, _ => {},
+            }
+        }";
+        assert_eq!(snippet(src), 1);
     }
 
     #[test]

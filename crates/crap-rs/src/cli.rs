@@ -158,9 +158,10 @@ SCORE:
       CC 31+    refactor; coverage cannot help
 
     Cyclomatic: each match arm adds 1, including `_` / catch-alls.
-    Cognitive: nesting-weighted; else/else-if are flat +1; same-operator
-    boolean runs count once; labeled break/continue +1; `?` is free.
-    Cognitive does not add for direct recursion.
+    Cognitive: nesting-weighted; match is one increment (not per arm);
+    else/else-if are flat +1; same-operator boolean runs count once;
+    labeled break/continue +1; `?` is free. Cognitive does not add
+    for direct recursion.
 
     A low score is not a reason to skip tests on simple functions.
     If a function is flagged: add automated tests when coverage is

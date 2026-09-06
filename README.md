@@ -107,9 +107,9 @@ complex functions are legitimate. The score does not measure coupling or
 cohesion. Closures count toward the enclosing function; decisions inside
 unexpanded or opaque macros may be missed. Cyclomatic: each match arm
 adds 1, including `_` and other catch-alls. Cognitive: nesting-weighted
-increments; `else` / `else if` are flat +1; a run of the same boolean
-operator counts once; labeled `break` / `continue` add 1; `?` is free;
-direct recursion is not counted.
+increments; a `match` is one increment (not per arm); `else` / `else if`
+are flat +1; a run of the same boolean operator counts once; labeled
+`break` / `continue` add 1; `?` is free; direct recursion is not counted.
 
 ## License
 
