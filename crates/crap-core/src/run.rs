@@ -2,9 +2,8 @@
 
 use crate::coverage;
 use crate::error::Result;
-use crate::language::{Language, ReportFormat, ScanRequest};
+use crate::language::{Language, ScanRequest};
 use crate::merge::{CrapEntry, join};
-use crate::report;
 use crate::score::exceeds_threshold;
 
 /// Finished analysis ready to print.
@@ -39,37 +38,14 @@ pub fn run<L: Language>(lang: &L, request: &ScanRequest) -> Result<RunResult> {
     })
 }
 
-/// Formats the report for `result` using `request.format`.
-#[must_use]
-pub fn render(request: &ScanRequest, result: &RunResult) -> String {
-    let threshold = request.effective_threshold();
-    match request.format {
-        ReportFormat::Json => report::render_json(
-            &result.entries,
-            threshold,
-            request.metric,
-            result.gate_failed,
-        ),
-        ReportFormat::Text if request.summary => {
-            report::render_summary(&result.entries, threshold, uses_packages(result))
-        }
-        ReportFormat::Text => {
-            report::render_table(&result.entries, threshold, report::color_enabled())
-        }
-    }
-}
-
-fn uses_packages(result: &RunResult) -> bool {
-    result.entries.iter().any(|entry| entry.crate_name.is_some())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::error::Error;
-    use crate::language::Target;
+    use crate::language::{ReportFormat, Target};
     use crate::merge::{FunctionComplexity, LocatedFn, MissingPolicy};
     use crate::metric::Metric;
+    use crate::report::render;
     use std::path::{Path, PathBuf};
 
     struct FakeLang {
@@ -168,7 +144,9 @@ mod tests {
         assert!(result.gate_failed);
         assert_eq!(result.warnings.len(), 1);
         assert_eq!(result.entries.len(), 1);
-        let table = render(&req, &result);
+        let table = render(&req, &result, "rust", false);
+        assert!(table.is_ok(), "{table:?}");
+        let table = table.unwrap_or_default();
         assert!(table.contains("FAIL"));
         assert!(table.contains("dense"));
     }
@@ -179,7 +157,7 @@ mod tests {
             entries: vec![CrapEntry {
                 file: PathBuf::from("src/lib.rs"),
                 function: "okfn".into(),
-                line: 1,
+                start_line: 1,
                 end_line: 1,
                 complexity: 1,
                 coverage: 100.0,
@@ -190,7 +168,9 @@ mod tests {
             gate_failed: false,
         };
         let req = request(Path::new("lcov.info"), true, false, Some(30.0));
-        let summary = render(&req, &result);
+        let summary = render(&req, &result, "rust", false);
+        assert!(summary.is_ok(), "{summary:?}");
+        let summary = summary.unwrap_or_default();
         assert!(summary.contains("1 functions, 0 exceed threshold"));
         assert!(!summary.contains("demo:"));
     }
@@ -201,7 +181,7 @@ mod tests {
             entries: vec![CrapEntry {
                 file: PathBuf::from("src/lib.rs"),
                 function: "okfn".into(),
-                line: 1,
+                start_line: 1,
                 end_line: 1,
                 complexity: 1,
                 coverage: 100.0,
@@ -212,7 +192,9 @@ mod tests {
             gate_failed: false,
         };
         let req = request(Path::new("lcov.info"), true, false, Some(30.0));
-        let summary = render(&req, &result);
+        let summary = render(&req, &result, "rust", false);
+        assert!(summary.is_ok(), "{summary:?}");
+        let summary = summary.unwrap_or_default();
         assert!(summary.contains("demo: 1 functions, 0 over"));
         assert!(!summary.contains("FUNCTION"));
     }
@@ -223,7 +205,7 @@ mod tests {
             entries: vec![CrapEntry {
                 file: PathBuf::from("src/lib.rs"),
                 function: "okfn".into(),
-                line: 1,
+                start_line: 1,
                 end_line: 4,
                 complexity: 1,
                 coverage: 100.0,
@@ -235,7 +217,9 @@ mod tests {
         };
         let mut req = request(Path::new("lcov.info"), true, false, Some(15.0));
         req.format = ReportFormat::Json;
-        let json = render(&req, &result);
+        let json = render(&req, &result, "rust", false);
+        assert!(json.is_ok(), "{json:?}");
+        let json = json.unwrap_or_default();
         assert!(json.contains("\"schema_version\""));
         assert!(json.contains("\"functions\""));
         assert!(!json.contains("exceed threshold"));

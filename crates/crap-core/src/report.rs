@@ -2,13 +2,49 @@
 
 mod json;
 
+use crate::error::Result;
+use crate::language::{ReportFormat, ScanRequest};
 use crate::merge::CrapEntry;
+use crate::run::RunResult;
 use crate::score::{classify_risk, exceeds_threshold};
 use std::env;
-use std::io::IsTerminal;
 use std::path::Path;
 
+#[doc(inline)]
 pub use json::render_json;
+
+/// Formats the report for `result` using `request.format`.
+///
+/// # Errors
+///
+/// Returns [`crate::Error::Collect`] if JSON serialization fails.
+pub fn render(
+    request: &ScanRequest,
+    result: &RunResult,
+    language: &str,
+    color: bool,
+) -> Result<String> {
+    let threshold = request.effective_threshold();
+    match request.format {
+        ReportFormat::Json => render_json(
+            &result.entries,
+            threshold,
+            request.metric,
+            result.gate_failed,
+            language,
+        ),
+        ReportFormat::Text if request.summary => Ok(render_summary(
+            &result.entries,
+            threshold,
+            uses_packages(result),
+        )),
+        ReportFormat::Text => Ok(render_table(&result.entries, threshold, color)),
+    }
+}
+
+fn uses_packages(result: &RunResult) -> bool {
+    result.entries.iter().any(|entry| entry.crate_name.is_some())
+}
 
 const RED: &str = "\x1b[31m";
 const RESET: &str = "\x1b[0m";
@@ -37,12 +73,6 @@ pub fn render_summary(entries: &[CrapEntry], threshold: f64, per_crate: bool) ->
     }
     lines.push(aggregate_line(entries, threshold));
     lines.join("\n")
-}
-
-/// True when stdout is a TTY and `NO_COLOR` is unset.
-#[must_use]
-pub fn color_enabled() -> bool {
-    env::var_os("NO_COLOR").is_none() && std::io::stdout().is_terminal()
 }
 
 fn footer(entries: &[CrapEntry], threshold: f64) -> String {
@@ -104,7 +134,7 @@ where
 }
 
 fn location(entry: &CrapEntry) -> String {
-    format!("{}:{}", display_path(&entry.file), entry.line)
+    format!("{}:{}", display_path(&entry.file), entry.start_line)
 }
 
 pub(crate) fn display_path(path: &Path) -> String {
@@ -199,7 +229,7 @@ mod tests {
         CrapEntry {
             file: PathBuf::from("src/lib.rs"),
             function: name.into(),
-            line: 1,
+            start_line: 1,
             end_line: 1,
             complexity: cc,
             coverage: cov,

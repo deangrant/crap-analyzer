@@ -78,6 +78,26 @@ fn count_metric(metric: Metric, body: &syn::Block) -> usize {
     }
 }
 
+/// Parsed tokens from a function-like macro.
+enum ParsedMacro<'a> {
+    /// The tokens formed one expression.
+    Expr(&'a syn::Expr),
+    /// The tokens formed a statement list.
+    Stmts(&'a [syn::Stmt]),
+}
+
+/// Walks a parsed macro body with `visit`.
+fn visit_parsed_macro(tokens: &proc_macro2::TokenStream, visit: impl FnOnce(ParsedMacro<'_>)) {
+    let Some((expr, stmts)) = parse_macro_body(tokens) else {
+        return;
+    };
+    if let Some(expr) = &expr {
+        visit(ParsedMacro::Expr(expr));
+        return;
+    }
+    visit(ParsedMacro::Stmts(&stmts));
+}
+
 /// Best-effort parse of macro tokens as an expression or statement list.
 fn parse_macro_body(
     tokens: &proc_macro2::TokenStream,

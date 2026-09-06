@@ -1,6 +1,6 @@
 //! Cyclomatic complexity: one plus each decision point.
 
-use super::parse_macro_body;
+use super::{ParsedMacro, visit_parsed_macro};
 use syn::{
     BinOp,
     visit::{self, Visit},
@@ -74,16 +74,14 @@ impl<'ast> Visit<'ast> for CcCounter {
 
 impl CcCounter {
     fn visit_macro_tokens(&mut self, tokens: &proc_macro2::TokenStream) {
-        let Some((expr, stmts)) = parse_macro_body(tokens) else {
-            return;
-        };
-        if let Some(expr) = &expr {
-            self.visit_expr(expr);
-            return;
-        }
-        for stmt in &stmts {
-            self.visit_stmt(stmt);
-        }
+        visit_parsed_macro(tokens, |part| match part {
+            ParsedMacro::Expr(expr) => self.visit_expr(expr),
+            ParsedMacro::Stmts(stmts) => {
+                for stmt in stmts {
+                    self.visit_stmt(stmt);
+                }
+            }
+        });
     }
 }
 

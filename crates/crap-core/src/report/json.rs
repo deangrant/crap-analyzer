@@ -1,24 +1,29 @@
 //! Versioned JSON envelope for automation.
 
 use super::display_path;
+use crate::error::{Error, Result};
 use crate::merge::CrapEntry;
 use crate::metric::Metric;
 use crate::score::{Risk, classify_risk, exceeds_threshold};
 use serde::Serialize;
 
 /// Builds a schema-versioned JSON document for `entries`.
-#[must_use]
+///
+/// # Errors
+///
+/// Returns [`Error::Collect`] if the document cannot be serialized.
 pub fn render_json(
     entries: &[CrapEntry],
     threshold: f64,
     metric: Metric,
     gate_failed: bool,
-) -> String {
+    language: &str,
+) -> Result<String> {
     let exceeding = entries.iter().filter(|e| exceeds_threshold(e.crap, threshold)).count();
     let scores: Vec<f64> = entries.iter().map(|e| e.crap).collect();
     let doc = ReportDoc {
         schema_version: 1,
-        language: "rust",
+        language,
         metric: metric.to_string(),
         threshold,
         result: ResultDoc {
@@ -34,13 +39,13 @@ pub fn render_json(
             functions: entries.iter().map(|e| function_doc(e, threshold)).collect(),
         },
     };
-    serde_json::to_string_pretty(&doc).unwrap_or_else(|_| "{}".into())
+    serde_json::to_string_pretty(&doc).map_err(|err| Error::collect(format!("json report: {err}")))
 }
 
 #[derive(Serialize)]
-struct ReportDoc {
+struct ReportDoc<'a> {
     schema_version: u32,
-    language: &'static str,
+    language: &'a str,
     metric: String,
     threshold: f64,
     result: ResultDoc,
@@ -104,7 +109,7 @@ fn function_doc(entry: &CrapEntry, threshold: f64) -> FunctionDoc {
             function: entry.function.clone(),
             crate_name: entry.crate_name.clone(),
             span: SpanDoc {
-                start_line: entry.line,
+                start_line: entry.start_line,
                 end_line: entry.end_line,
             },
         },
@@ -172,7 +177,7 @@ mod tests {
         CrapEntry {
             file: PathBuf::from("src/lib.rs"),
             function: name.into(),
-            line: 10,
+            start_line: 10,
             end_line,
             complexity: cc,
             coverage: cov,
@@ -187,6 +192,22 @@ mod tests {
         parsed.unwrap_or(Value::Null)
     }
 
+    fn json(entries: &[CrapEntry], threshold: f64, metric: Metric, gate_failed: bool) -> Value {
+        json_lang(entries, threshold, metric, gate_failed, "rust")
+    }
+
+    fn json_lang(
+        entries: &[CrapEntry],
+        threshold: f64,
+        metric: Metric,
+        gate_failed: bool,
+        language: &str,
+    ) -> Value {
+        let text = render_json(entries, threshold, metric, gate_failed, language);
+        assert!(text.is_ok(), "{text:?}");
+        parse(&text.unwrap_or_default())
+    }
+
     fn mixed_entries() -> [CrapEntry; 2] {
         [
             entry("okfn", 1.0, 1, 100.0, Some("demo"), 12),
@@ -196,12 +217,7 @@ mod tests {
 
     #[test]
     fn envelope_header_and_summary() {
-        let value = parse(&render_json(
-            &mixed_entries(),
-            15.0,
-            Metric::Cyclomatic,
-            false,
-        ));
+        let value = json(&mixed_entries(), 15.0, Metric::Cyclomatic, false);
         assert_eq!(value["schema_version"], 1);
         assert_eq!(value["language"], "rust");
         assert_eq!(value["metric"], "cyclomatic");
@@ -218,12 +234,7 @@ mod tests {
 
     #[test]
     fn envelope_function_axes_are_independent() {
-        let value = parse(&render_json(
-            &mixed_entries(),
-            15.0,
-            Metric::Cyclomatic,
-            false,
-        ));
+        let value = json(&mixed_entries(), 15.0, Metric::Cyclomatic, false);
         let funcs = &value["result"]["functions"];
         assert_eq!(funcs[1]["exceeds"], true);
         assert_eq!(funcs[1]["risk"], "high");
@@ -235,14 +246,14 @@ mod tests {
     #[test]
     fn missing_crate_is_null() {
         let entries = [entry("anon", 1.0, 1, 100.0, None, 11)];
-        let value = parse(&render_json(&entries, 15.0, Metric::Cognitive, false));
+        let value = json(&entries, 15.0, Metric::Cognitive, false);
         assert_eq!(value["metric"], "cognitive");
         assert!(value["result"]["functions"][0]["identity"]["crate"].is_null());
     }
 
     #[test]
     fn empty_run_zeros_summary() {
-        let value = parse(&render_json(&[], 15.0, Metric::Cyclomatic, false));
+        let value = json(&[], 15.0, Metric::Cyclomatic, false);
         assert_eq!(value["result"]["passed"], true);
         assert_eq!(value["result"]["summary"]["functions"], 0);
         assert_eq!(value["result"]["summary"]["exceeding"], 0);
@@ -255,7 +266,7 @@ mod tests {
     #[test]
     fn acceptable_risk_is_counted() {
         let entries = [entry("mid", 10.0, 5, 80.0, Some("demo"), 20)];
-        let value = parse(&render_json(&entries, 15.0, Metric::Cyclomatic, false));
+        let value = json(&entries, 15.0, Metric::Cyclomatic, false);
         assert_eq!(value["result"]["summary"]["risk"]["acceptable"], 1);
         assert_eq!(value["result"]["functions"][0]["risk"], "acceptable");
         assert_eq!(value["result"]["functions"][0]["exceeds"], false);
@@ -264,7 +275,7 @@ mod tests {
     #[test]
     fn moderate_does_not_imply_exceeds() {
         let entries = [entry("mid", 20.0, 10, 50.0, Some("demo"), 20)];
-        let value = parse(&render_json(&entries, 25.0, Metric::Cyclomatic, false));
+        let value = json(&entries, 25.0, Metric::Cyclomatic, false);
         assert_eq!(value["result"]["passed"], true);
         assert_eq!(value["result"]["functions"][0]["exceeds"], false);
         assert_eq!(value["result"]["functions"][0]["risk"], "moderate");
@@ -278,8 +289,14 @@ mod tests {
             entry("c", 6.0, 1, 100.0, None, 1),
             entry("d", 8.0, 1, 100.0, None, 1),
         ];
-        let value = parse(&render_json(&entries, 15.0, Metric::Cyclomatic, true));
+        let value = json(&entries, 15.0, Metric::Cyclomatic, true);
         assert_eq!(value["result"]["summary"]["median_crap"], 5.0);
         assert_eq!(value["result"]["gate_failed"], true);
+    }
+
+    #[test]
+    fn language_is_taken_from_the_caller() {
+        let value = json_lang(&[], 15.0, Metric::Cyclomatic, false, "demo");
+        assert_eq!(value["language"], "demo");
     }
 }

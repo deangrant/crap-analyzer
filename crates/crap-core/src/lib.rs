@@ -19,6 +19,8 @@ pub use merge::{CrapEntry, FunctionComplexity, LocatedFn, MissingPolicy};
 #[doc(inline)]
 pub use metric::Metric;
 #[doc(inline)]
-pub use run::{RunResult, render, run};
+pub use report::render;
+#[doc(inline)]
+pub use run::{RunResult, run};
 #[doc(inline)]
 pub use score::Risk;

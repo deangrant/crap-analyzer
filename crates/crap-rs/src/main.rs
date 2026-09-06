@@ -2,6 +2,7 @@
 
 use crap_core::{Error, RunResult, ScanRequest, render, run};
 use crap_rs::cli::{self, Action};
+use std::io::IsTerminal;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
@@ -31,12 +32,30 @@ fn finish_run(request: &ScanRequest, result: &RunResult) -> ExitCode {
     for warning in &result.warnings {
         emit_stderr(warning);
     }
-    emit_stdout(&render(request, result));
-    if result.gate_failed {
+    exit_from_render(
+        render(request, result, "rust", color_enabled()),
+        result.gate_failed,
+    )
+}
+
+fn exit_from_render(rendered: Result<String, Error>, gate_failed: bool) -> ExitCode {
+    match rendered {
+        Ok(text) => finish_ok(&text, gate_failed),
+        Err(err) => print_core_err(&err),
+    }
+}
+
+fn finish_ok(text: &str, gate_failed: bool) -> ExitCode {
+    emit_stdout(text);
+    if gate_failed {
         ExitCode::from(1)
     } else {
         ExitCode::SUCCESS
     }
+}
+
+fn color_enabled() -> bool {
+    std::env::var_os("NO_COLOR").is_none() && std::io::stdout().is_terminal()
 }
 
 fn print_ok(text: &str) -> ExitCode {
@@ -68,4 +87,21 @@ fn emit_stdout(text: &str) {
 )]
 fn emit_stderr(text: &str) {
     eprintln!("{text}");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn render_error_exits_two() {
+        let err = Error::collect("json report: boom");
+        assert_eq!(exit_from_render(Err(err), false), ExitCode::from(2));
+    }
+
+    #[test]
+    fn render_ok_respects_the_gate() {
+        assert_eq!(exit_from_render(Ok("ok".into()), false), ExitCode::SUCCESS);
+        assert_eq!(exit_from_render(Ok("ok".into()), true), ExitCode::from(1));
+    }
 }
