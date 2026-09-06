@@ -90,6 +90,21 @@ fn close_features_walks_the_default_graph() {
 }
 
 #[test]
+fn close_features_handles_cycles_and_unknown_seeds() {
+    let mut map = BTreeMap::new();
+    map.insert("a".into(), vec!["b".into()]);
+    map.insert("b".into(), vec!["a".into()]);
+    assert_eq!(
+        close_features(&map, &["a".into()]),
+        vec!["a".to_owned(), "b".to_owned()]
+    );
+    assert_eq!(
+        close_features(&map, &["orphan".into()]),
+        vec!["orphan".to_owned()]
+    );
+}
+
+#[test]
 fn nested_roots_are_children_only() {
     let all = vec![
         empty_pkg("root", "/ws"),
@@ -211,6 +226,28 @@ fn packages_for_path_selects_the_member_root() {
     let selected = selected.unwrap_or_default();
     assert_eq!(selected.len(), 1);
     assert_eq!(selected[0].name, "crap-rs");
+}
+
+#[test]
+fn packages_for_path_rejects_a_non_member_dir() {
+    let workspace = Workspace {
+        root: PathBuf::from("/no/such/crap-rs-ws"),
+        packages: vec![empty_pkg("a", "/no/such/crap-rs-ws/a")],
+    };
+    let selected = packages_in_workspace(Path::new("/no/such/crap-rs-ws/src"), workspace);
+    assert!(selected.is_err(), "{selected:?}");
+    let err = selected.err().map(|e| e.to_string()).unwrap_or_default();
+    assert!(
+        err.contains("not the workspace root or a package root"),
+        "{err}"
+    );
+}
+
+#[test]
+fn same_path_compares_verbatim_when_canonicalize_fails() {
+    let missing = Path::new("/no/such/crap-rs-same-path");
+    assert!(same_path(missing, missing));
+    assert!(!same_path(missing, Path::new("/no/such/crap-rs-other")));
 }
 
 #[test]

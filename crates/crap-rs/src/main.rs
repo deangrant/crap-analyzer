@@ -104,4 +104,23 @@ mod tests {
         assert_eq!(exit_from_render(Ok("ok".into()), false), ExitCode::SUCCESS);
         assert_eq!(exit_from_render(Ok("ok".into()), true), ExitCode::from(1));
     }
+
+    #[test]
+    fn finish_run_emits_warnings() {
+        let request = ScanRequest {
+            path: std::path::PathBuf::from("."),
+            lcov: std::path::PathBuf::from("lcov.info"),
+            metric: crap_core::Metric::Cyclomatic,
+            threshold: None,
+            summary: true,
+            fail_above: false,
+            missing: crap_core::MissingPolicy::Pessimistic,
+            format: crap_core::ReportFormat::Text,
+        };
+        let result = RunResult {
+            warnings: vec!["skipping x".into()],
+            ..RunResult::default()
+        };
+        assert_eq!(finish_run(&request, &result), ExitCode::SUCCESS);
+    }
 }

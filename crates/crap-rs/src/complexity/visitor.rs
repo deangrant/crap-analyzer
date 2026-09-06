@@ -265,4 +265,25 @@ mod tests {
             assert_eq!(fns[0].name, name, "{src}");
         }
     }
+
+    #[test]
+    fn bare_fn_impl_falls_back_to_impl() {
+        let fns = cyclo("impl fn() { fn m() {} }");
+        assert_eq!(fns.len(), 1);
+        assert_eq!(fns[0].name, "<impl>::m");
+    }
+
+    #[test]
+    fn mut_reference_impl_method_is_prefixed() {
+        let fns = cyclo("impl &mut str { fn m() {} }");
+        assert_eq!(fns.len(), 1);
+        assert_eq!(fns[0].name, "&mut str::m");
+    }
+
+    #[test]
+    fn dyn_lifetime_then_trait_uses_the_trait() {
+        let fns = cyclo("impl dyn 'static + Send { fn m() {} }");
+        assert_eq!(fns.len(), 1);
+        assert_eq!(fns[0].name, "dyn Send::m");
+    }
 }

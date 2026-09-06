@@ -53,7 +53,10 @@ pub fn load(root: &Path) -> Result<Workspace> {
 /// Returns [`Error::Resolve`] if Cargo fails, JSON is incomplete, or `path` is
 /// neither the workspace root nor a member package root.
 pub fn packages_for_path(path: &Path) -> Result<Vec<Package>> {
-    let workspace = load(path)?;
+    packages_in_workspace(path, load(path)?)
+}
+
+fn packages_in_workspace(path: &Path, workspace: Workspace) -> Result<Vec<Package>> {
     if same_path(path, &workspace.root) {
         return Ok(workspace.packages);
     }

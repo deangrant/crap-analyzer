@@ -266,4 +266,26 @@ mod unix {
         let _ = fs::remove_dir_all(&root);
         assert_eq!(after, before);
     }
+
+    #[test]
+    fn visit_subdir_skips_outside_root_canon() {
+        let root = temp_root();
+        let outside = temp_root();
+        require_ok(fs::write(outside.join("secret.rs"), "fn leak() {}\n"));
+        let root_canon = require_ok(fs::canonicalize(&root));
+        let mut visited = HashSet::new();
+        let mut out = Vec::new();
+        let mut walk = Walk {
+            root: &root,
+            root_canon: Some(root_canon.as_path()),
+            nested_skip: &[],
+            visited: &mut visited,
+            out: &mut out,
+        };
+        require_ok(visit_subdir(&outside, None, &mut walk));
+        let empty = walk.out.is_empty();
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&outside);
+        assert!(empty);
+    }
 }
