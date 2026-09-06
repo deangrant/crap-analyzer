@@ -13,10 +13,12 @@ mod run;
 #[doc(inline)]
 pub use error::{Error, Result};
 #[doc(inline)]
-pub use language::{Language, ScanRequest, Target};
+pub use language::{Language, ReportFormat, ScanRequest, Target};
 #[doc(inline)]
 pub use merge::{CrapEntry, FunctionComplexity, LocatedFn, MissingPolicy};
 #[doc(inline)]
 pub use metric::Metric;
 #[doc(inline)]
 pub use run::{RunResult, render, run};
+#[doc(inline)]
+pub use score::Risk;

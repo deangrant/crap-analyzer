@@ -3,7 +3,9 @@
 use crate::error::Result;
 use crate::merge::{LocatedFn, MissingPolicy};
 use crate::metric::Metric;
+use std::fmt;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 /// Options for one analysis run, shared by every language frontend.
 #[derive(Debug, Clone, PartialEq)]
@@ -22,6 +24,38 @@ pub struct ScanRequest {
     pub fail_above: bool,
     /// Policy for functions with no coverage data.
     pub missing: MissingPolicy,
+    /// Text table or JSON envelope.
+    pub format: ReportFormat,
+}
+
+/// How the finished report is written to stdout.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReportFormat {
+    /// Human table or `--summary` counts.
+    Text,
+    /// Versioned JSON envelope.
+    Json,
+}
+
+impl FromStr for ReportFormat {
+    type Err = String;
+
+    fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
+        match value {
+            "text" => Ok(Self::Text),
+            "json" => Ok(Self::Json),
+            _ => Err(format!("invalid --format `{value}`")),
+        }
+    }
+}
+
+impl fmt::Display for ReportFormat {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Text => "text",
+            Self::Json => "json",
+        })
+    }
 }
 
 impl ScanRequest {
@@ -85,8 +119,9 @@ mod tests {
             summary: false,
             fail_above: false,
             missing: MissingPolicy::Pessimistic,
+            format: ReportFormat::Text,
         };
-        assert_eq!(request.effective_threshold(), 30.0);
+        assert_eq!(request.effective_threshold(), 15.0);
     }
 
     #[test]
@@ -99,7 +134,23 @@ mod tests {
             summary: false,
             fail_above: false,
             missing: MissingPolicy::Pessimistic,
+            format: ReportFormat::Text,
         };
         assert_eq!(request.effective_threshold(), 8.0);
+    }
+
+    #[test]
+    fn parses_and_displays_report_format() {
+        assert_eq!(
+            "text".parse::<ReportFormat>().ok(),
+            Some(ReportFormat::Text)
+        );
+        assert_eq!(
+            "json".parse::<ReportFormat>().ok(),
+            Some(ReportFormat::Json)
+        );
+        assert!("nope".parse::<ReportFormat>().is_err());
+        assert_eq!(ReportFormat::Text.to_string(), "text");
+        assert_eq!(ReportFormat::Json.to_string(), "json");
     }
 }

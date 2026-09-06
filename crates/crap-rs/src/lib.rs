@@ -162,6 +162,7 @@ fn parse_warning(path: &Path, err: &Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crap_core::ReportFormat;
     use std::path::PathBuf;
 
     #[test]
@@ -179,6 +180,7 @@ mod tests {
             summary: false,
             fail_above: false,
             missing: crap_core::MissingPolicy::Pessimistic,
+            format: ReportFormat::Text,
         };
         let targets = lang.resolve_targets(&request);
         assert!(targets.is_ok(), "{targets:?}");
@@ -230,6 +232,7 @@ mod tests {
             summary: false,
             fail_above: false,
             missing: crap_core::MissingPolicy::Pessimistic,
+            format: ReportFormat::Text,
         };
         let targets = lang.resolve_targets(&request).unwrap_or_default();
         assert_eq!(targets[0].enabled_features, vec!["serde".to_owned()]);
@@ -261,6 +264,7 @@ mod tests {
             summary: false,
             fail_above: false,
             missing: crap_core::MissingPolicy::Pessimistic,
+            format: ReportFormat::Text,
         };
         let targets = lang.resolve_targets(&request);
         assert!(targets.is_ok(), "{targets:?}");

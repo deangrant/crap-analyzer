@@ -17,10 +17,20 @@ complexity — risk is acknowledged, not erased. At 0% coverage the score
 is `CC² + CC`. A cyclomatic value of 31 or more cannot score 30 or below
 at any coverage; simplify it.
 
-The usual cyclomatic gate is **30**; the cognitive default is **15**.
-Use `--threshold` to set either. A score at or below the threshold does
-not mean simple functions should go untested; the usual line just
-highlights the riskiest ones.
+The default **gate** is **15** for both metrics. Named presets sit on
+the band boundaries: `--threshold strict` is 8 and `--threshold lenient`
+is 25. Use `--threshold <n>` for any other non-negative number. A score
+at or below the gate does not mean simple functions should go untested;
+the line just highlights the ones that exceed the active threshold.
+
+**Bands and the gate are two axes.** Risk bands (Low ≤ 8, Acceptable ≤
+15, Moderate ≤ 25, High > 25) classify the score via a fixed
+`classify_risk` mapping. They never change. The gate is a separate
+pass/fail line: a function exceeds when its score is strictly above the
+active threshold. The shared 8 / 15 / 25 numbers are a calibration
+convention, not empirically derived values. A function can sit in
+Moderate (score 20) and still pass a lenient gate (threshold 25). Never
+read “risk level: Moderate” as “exceeds threshold,” or vice versa.
 
 ## Crates
 
@@ -51,6 +61,7 @@ crap-rs -p crap-rs --lcov lcov.info --summary
 CI gate (exit 1 after the report if anything is over the threshold):
 
 ```bash
+crap-rs --lcov lcov.info --fail-above
 crap-rs --lcov lcov.info --fail-above --threshold 30
 ```
 
@@ -59,6 +70,9 @@ If a function is flagged: add automated tests when coverage is below
 still keeps the score over the threshold.
 
 ## Coverage needed to stay at or under 30 (cyclomatic)
+
+This table is an example at a **gate of 30**, not the default. The default
+gate is 15; `strict` is 8 and `lenient` is 25.
 
 | Cyclomatic complexity | Coverage |
 | --- | --- |
@@ -80,11 +94,15 @@ The formula is the source of truth.
 - `--path <dir>` — walk this tree (default `.`). A `Cargo.toml` workspace
   is analyzed per member (same isolation as `--workspace`)
 - `--metric` — `cyclomatic` (default) or `cognitive`
-- `--threshold <n>` — flag scores strictly above this (default `30` cyclomatic, `15` cognitive)
+- `--threshold` — flag scores strictly above this. Number, `strict` (8),
+  or `lenient` (25). Default `15` for both metrics. Independent of the
+  risk band.
+- `--format` — `text` (default table) or `json` (versioned envelope)
 - `--workspace` — every Cargo workspace member
 - `-p, --package <name>` — one member; repeatable; conflicts with `--workspace`
-- `--summary` — counts and worst offender; no table
-- `--fail-above` — exit 1 when any function exceeds the threshold
+- `--summary` — counts and worst offender; text only; no table
+- `--fail-above` — exit 1 when any function exceeds the threshold (not
+  the risk band)
 - `--missing` — no LCOV data, an empty span, or an unresolved path tie:
   `pessimistic` (default, 0%), `optimistic` (100%), or `skip`. A package
   name (`--workspace` / `-p`) breaks equal `src/lib.rs` suffix ties

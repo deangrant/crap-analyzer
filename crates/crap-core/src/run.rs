@@ -2,7 +2,7 @@
 
 use crate::coverage;
 use crate::error::Result;
-use crate::language::{Language, ScanRequest};
+use crate::language::{Language, ReportFormat, ScanRequest};
 use crate::merge::{CrapEntry, join};
 use crate::report;
 use crate::score::exceeds_threshold;
@@ -39,14 +39,23 @@ pub fn run<L: Language>(lang: &L, request: &ScanRequest) -> Result<RunResult> {
     })
 }
 
-/// Formats the human report for `result`.
+/// Formats the report for `result` using `request.format`.
 #[must_use]
 pub fn render(request: &ScanRequest, result: &RunResult) -> String {
     let threshold = request.effective_threshold();
-    if request.summary {
-        report::render_summary(&result.entries, threshold, uses_packages(result))
-    } else {
-        report::render_table(&result.entries, threshold, report::color_enabled())
+    match request.format {
+        ReportFormat::Json => report::render_json(
+            &result.entries,
+            threshold,
+            request.metric,
+            result.gate_failed,
+        ),
+        ReportFormat::Text if request.summary => {
+            report::render_summary(&result.entries, threshold, uses_packages(result))
+        }
+        ReportFormat::Text => {
+            report::render_table(&result.entries, threshold, report::color_enabled())
+        }
     }
 }
 
@@ -105,6 +114,7 @@ mod tests {
             summary,
             fail_above,
             missing: MissingPolicy::Pessimistic,
+            format: ReportFormat::Text,
         }
     }
 
@@ -170,6 +180,7 @@ mod tests {
                 file: PathBuf::from("src/lib.rs"),
                 function: "okfn".into(),
                 line: 1,
+                end_line: 1,
                 complexity: 1,
                 coverage: 100.0,
                 crap: 1.0,
@@ -191,6 +202,7 @@ mod tests {
                 file: PathBuf::from("src/lib.rs"),
                 function: "okfn".into(),
                 line: 1,
+                end_line: 1,
                 complexity: 1,
                 coverage: 100.0,
                 crap: 1.0,
@@ -203,6 +215,30 @@ mod tests {
         let summary = render(&req, &result);
         assert!(summary.contains("demo: 1 functions, 0 over"));
         assert!(!summary.contains("FUNCTION"));
+    }
+
+    #[test]
+    fn render_json_ignores_summary() {
+        let result = RunResult {
+            entries: vec![CrapEntry {
+                file: PathBuf::from("src/lib.rs"),
+                function: "okfn".into(),
+                line: 1,
+                end_line: 4,
+                complexity: 1,
+                coverage: 100.0,
+                crap: 1.0,
+                crate_name: None,
+            }],
+            warnings: Vec::new(),
+            gate_failed: false,
+        };
+        let mut req = request(Path::new("lcov.info"), true, false, Some(15.0));
+        req.format = ReportFormat::Json;
+        let json = render(&req, &result);
+        assert!(json.contains("\"schema_version\""));
+        assert!(json.contains("\"functions\""));
+        assert!(!json.contains("exceed threshold"));
     }
 
     #[test]

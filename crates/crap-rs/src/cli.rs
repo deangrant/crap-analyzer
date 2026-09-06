@@ -2,7 +2,7 @@
 
 use crate::RustLanguage;
 use clap::Parser;
-use crap_core::{Metric, MissingPolicy, ScanRequest};
+use crap_core::{Metric, MissingPolicy, ReportFormat, ScanRequest};
 use std::env;
 use std::path::PathBuf;
 
@@ -34,7 +34,7 @@ pub struct Args {
     /// Complexity metric.
     #[arg(long, default_value = "cyclomatic")]
     pub(crate) metric: Metric,
-    /// Score above which a function is flagged.
+    /// Score above which a function is flagged (`strict` = 8, `lenient` = 25).
     #[arg(long, value_parser = parse_threshold)]
     pub(crate) threshold: Option<f64>,
     /// Analyze every workspace member.
@@ -52,6 +52,9 @@ pub struct Args {
     /// Policy for functions with no coverage data.
     #[arg(long, default_value = "pessimistic")]
     pub(crate) missing: MissingPolicy,
+    /// Output format.
+    #[arg(long, default_value = "text")]
+    pub(crate) format: ReportFormat,
     /// Cargo feature flags used for `#[cfg]` evaluation.
     #[command(flatten)]
     pub(crate) features: FeatureArgs,
@@ -93,6 +96,7 @@ impl Args {
                 summary: self.summary,
                 fail_above: self.fail_above,
                 missing: self.missing,
+                format: self.format,
             },
         )
     }
@@ -124,9 +128,14 @@ fn parse_args(raw: Vec<String>) -> std::result::Result<Action, String> {
 }
 
 fn parse_threshold(text: &str) -> std::result::Result<f64, String> {
+    match text {
+        "strict" => return Ok(8.0),
+        "lenient" => return Ok(25.0),
+        _ => {}
+    }
     let value: f64 = text.parse().map_err(|_| format!("invalid --threshold `{text}`"))?;
     if !value.is_finite() || value < 0.0 {
-        return Err("--threshold must be a non-negative number".into());
+        return Err("--threshold must be a non-negative number or strict|lenient".into());
     }
     Ok(value)
 }
@@ -143,6 +152,9 @@ This is a change-risk signal for a function, not a quality score, a
 programmer rating, or a management KPI. A high score means the function
 is complex, lightly tested by automated tests, or both.
 
+Risk bands (low / acceptable / moderate / high) classify the score.
+They never change. The pass/fail gate is --threshold, not the band.
+
 USAGE:
     crap-rs [OPTIONS]
 
@@ -155,10 +167,11 @@ OPTIONS:
                             (same isolation as --workspace)
     --metric <name>         cyclomatic (default) or cognitive
     --threshold <n>         Flag scores strictly above this
-                            [default: 30 cyclomatic, 15 cognitive]
+                            [default: 15; strict=8, lenient=25]
+    --format <name>         text (default) or json
     --workspace             Analyze every Cargo workspace member
     -p, --package <name>    Analyze only this member (repeatable)
-    --summary               Counts and worst offender; no table
+    --summary               Counts and worst offender; text only
     --fail-above            Exit 1 if any function exceeds --threshold
     --missing <policy>      No LCOV data, empty span, or an unresolved
                             path tie: pessimistic (0%, default),
@@ -247,13 +260,14 @@ mod tests {
     }
 
     #[test]
-    fn default_metric_is_cyclomatic_with_threshold_thirty() {
+    fn default_metric_is_cyclomatic_with_threshold_fifteen() {
         let action = parse_args(argv(&["--lcov", "x"]));
         assert!(matches!(
             action,
             Ok(Action::Run(ref args))
                 if args.metric == Metric::Cyclomatic
-                    && args.parts().1.effective_threshold() == 30.0
+                    && args.format == ReportFormat::Text
+                    && args.parts().1.effective_threshold() == 15.0
         ));
     }
 
@@ -266,6 +280,34 @@ mod tests {
                 if args.metric == Metric::Cognitive
                     && args.parts().1.effective_threshold() == 15.0
         ));
+    }
+
+    #[test]
+    fn threshold_presets() {
+        let strict = parse_args(argv(&["--lcov", "x", "--threshold", "strict"]));
+        assert!(matches!(
+            strict,
+            Ok(Action::Run(ref args)) if args.parts().1.effective_threshold() == 8.0
+        ));
+        let lenient = parse_args(argv(&["--lcov", "x", "--threshold", "lenient"]));
+        assert!(matches!(
+            lenient,
+            Ok(Action::Run(ref args)) if args.parts().1.effective_threshold() == 25.0
+        ));
+    }
+
+    #[test]
+    fn parses_format() {
+        let action = parse_args(argv(&["--lcov", "x", "--format", "json"]));
+        assert!(matches!(
+            action,
+            Ok(Action::Run(ref args)) if args.format == ReportFormat::Json
+        ));
+    }
+
+    #[test]
+    fn invalid_format_is_usage() {
+        assert!(parse_args(argv(&["--lcov", "x", "--format", "nope"])).is_err());
     }
 
     #[test]

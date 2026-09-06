@@ -1,5 +1,8 @@
 //! Change-risk score from complexity and coverage.
 
+use std::fmt;
+use std::str::FromStr;
+
 /// Combines complexity and coverage percent into one score.
 ///
 /// The formula is `comp² × (1 − cov/100)³ + comp`. Coverage outside
@@ -19,9 +22,65 @@ pub fn crap(complexity: f64, coverage_pct: f64) -> f64 {
 }
 
 /// Returns whether `score` is strictly above `threshold`.
+///
+/// This is the pass/fail gate. It is independent of [`classify_risk`].
 #[must_use]
 pub fn exceeds_threshold(score: f64, threshold: f64) -> bool {
     score > threshold
+}
+
+/// Fixed score band. Independent of the threshold gate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Risk {
+    /// Score at or below 8.
+    Low,
+    /// Score above 8 and at or below 15.
+    Acceptable,
+    /// Score above 15 and at or below 25.
+    Moderate,
+    /// Score above 25, or a non-finite score.
+    High,
+}
+
+/// Classifies `score` into a fixed band.
+///
+/// Cutoffs never change with `--threshold`. Non-finite scores are High.
+#[must_use]
+pub fn classify_risk(score: f64) -> Risk {
+    if !score.is_finite() || score > 25.0 {
+        Risk::High
+    } else if score > 15.0 {
+        Risk::Moderate
+    } else if score > 8.0 {
+        Risk::Acceptable
+    } else {
+        Risk::Low
+    }
+}
+
+impl FromStr for Risk {
+    type Err = String;
+
+    fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
+        match value {
+            "low" => Ok(Self::Low),
+            "acceptable" => Ok(Self::Acceptable),
+            "moderate" => Ok(Self::Moderate),
+            "high" => Ok(Self::High),
+            _ => Err(format!("invalid risk `{value}`")),
+        }
+    }
+}
+
+impl fmt::Display for Risk {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Low => "low",
+            Self::Acceptable => "acceptable",
+            Self::Moderate => "moderate",
+            Self::High => "high",
+        })
+    }
 }
 
 #[cfg(test)]
@@ -98,6 +157,48 @@ mod tests {
     fn threshold_is_strict() {
         assert!(!exceeds_threshold(30.0, 30.0));
         assert!(exceeds_threshold(30.0001, 30.0));
+    }
+
+    #[test]
+    fn classify_risk_edges() {
+        assert_eq!(classify_risk(0.0), Risk::Low);
+        assert_eq!(classify_risk(8.0), Risk::Low);
+        assert_eq!(classify_risk(8.001), Risk::Acceptable);
+        assert_eq!(classify_risk(15.0), Risk::Acceptable);
+        assert_eq!(classify_risk(15.001), Risk::Moderate);
+        assert_eq!(classify_risk(25.0), Risk::Moderate);
+        assert_eq!(classify_risk(25.001), Risk::High);
+    }
+
+    #[test]
+    fn non_finite_score_is_high() {
+        assert_eq!(classify_risk(f64::NAN), Risk::High);
+        assert_eq!(classify_risk(f64::INFINITY), Risk::High);
+    }
+
+    #[test]
+    fn moderate_can_pass_a_lenient_gate() {
+        assert_eq!(classify_risk(20.0), Risk::Moderate);
+        assert!(!exceeds_threshold(20.0, 25.0));
+    }
+
+    #[test]
+    fn low_can_fail_a_tight_gate() {
+        assert_eq!(classify_risk(6.0), Risk::Low);
+        assert!(exceeds_threshold(6.0, 5.0));
+    }
+
+    #[test]
+    fn parses_and_displays_risk_names() {
+        assert_eq!("low".parse::<Risk>().ok(), Some(Risk::Low));
+        assert_eq!("acceptable".parse::<Risk>().ok(), Some(Risk::Acceptable));
+        assert_eq!("moderate".parse::<Risk>().ok(), Some(Risk::Moderate));
+        assert_eq!("high".parse::<Risk>().ok(), Some(Risk::High));
+        assert!("nope".parse::<Risk>().is_err());
+        assert_eq!(Risk::Low.to_string(), "low");
+        assert_eq!(Risk::Acceptable.to_string(), "acceptable");
+        assert_eq!(Risk::Moderate.to_string(), "moderate");
+        assert_eq!(Risk::High.to_string(), "high");
     }
 
     fn min_coverage_pct(cc: f64, threshold: f64) -> Option<f64> {

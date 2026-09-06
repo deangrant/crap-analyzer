@@ -54,6 +54,8 @@ pub struct CrapEntry {
     pub function: String,
     /// One-based start line.
     pub line: usize,
+    /// One-based last line of the function body.
+    pub end_line: usize,
     /// Complexity under the selected metric.
     pub complexity: usize,
     /// Coverage percent in `[0, 100]`.
@@ -106,6 +108,7 @@ pub fn join<S: BuildHasher>(
             file: item.function.file.clone(),
             function: item.function.name.clone(),
             line: item.function.start_line,
+            end_line: item.function.end_line,
             complexity: item.function.complexity,
             coverage: coverage_pct,
             crap: crap(cc, coverage_pct),
@@ -235,6 +238,8 @@ mod tests {
         let entries = join(&functions, &HashMap::new(), MissingPolicy::Pessimistic);
         assert_eq!(entries[0].coverage, 0.0);
         assert_eq!(entries[0].crap, 2.0);
+        assert_eq!(entries[0].line, 1);
+        assert_eq!(entries[0].end_line, 1);
     }
 
     #[test]

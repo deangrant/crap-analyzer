@@ -1,10 +1,14 @@
 //! Human-readable table and summary for scored functions.
 
+mod json;
+
 use crate::merge::CrapEntry;
-use crate::score::exceeds_threshold;
+use crate::score::{classify_risk, exceeds_threshold};
 use std::env;
 use std::io::IsTerminal;
 use std::path::Path;
+
+pub use json::render_json;
 
 const RED: &str = "\x1b[31m";
 const RESET: &str = "\x1b[0m";
@@ -103,7 +107,7 @@ fn location(entry: &CrapEntry) -> String {
     format!("{}:{}", display_path(&entry.file), entry.line)
 }
 
-fn display_path(path: &Path) -> String {
+pub(crate) fn display_path(path: &Path) -> String {
     env::current_dir().ok().and_then(|cwd| path.strip_prefix(cwd).ok()).map_or_else(
         || path.display().to_string(),
         |rel| rel.display().to_string(),
@@ -123,6 +127,7 @@ struct Widths {
     cc: usize,
     cov: usize,
     func: usize,
+    risk: usize,
 }
 
 impl Widths {
@@ -132,24 +137,28 @@ impl Widths {
             cc: 2,
             cov: 4,
             func: 8,
+            risk: 4,
         };
         for entry in entries {
             w.crap = w.crap.max(format!("{:.1}", entry.crap).len());
             w.cc = w.cc.max(entry.complexity.to_string().len());
             w.cov = w.cov.max(format!("{:.1}", entry.coverage).len());
             w.func = w.func.max(entry.function.len());
+            w.risk = w.risk.max(classify_risk(entry.crap).to_string().len());
         }
         w
     }
 
     fn header(&self) -> String {
         format!(
-            "  {:<4}  {:>w_crap$}  {:>w_cc$}  {:>w_cov$}  {:<w_fn$}  LOCATION",
+            "  {:<4}  {:<w_risk$}  {:>w_crap$}  {:>w_cc$}  {:>w_cov$}  {:<w_fn$}  LOCATION",
             "",
+            "RISK",
             "CRAP",
             "COMP",
             "COV%",
             "FUNCTION",
+            w_risk = self.risk,
             w_crap = self.crap,
             w_cc = self.cc,
             w_cov = self.cov,
@@ -164,12 +173,15 @@ impl Widths {
             fail && color,
         );
         format!(
-            "  {mark}  {crap:>w_crap$.1}  {cc:>w_cc$}  {cov:>w_cov$.1}  {func:<w_fn$}  {loc}",
+            "  {mark}  {risk:<w_risk$}  {crap:>w_crap$.1}  {cc:>w_cc$}  \
+             {cov:>w_cov$.1}  {func:<w_fn$}  {loc}",
+            risk = classify_risk(entry.crap),
             crap = entry.crap,
             cc = entry.complexity,
             cov = entry.coverage,
             func = entry.function,
             loc = location(entry),
+            w_risk = self.risk,
             w_crap = self.crap,
             w_cc = self.cc,
             w_cov = self.cov,
@@ -188,6 +200,7 @@ mod tests {
             file: PathBuf::from("src/lib.rs"),
             function: name.into(),
             line: 1,
+            end_line: 1,
             complexity: cc,
             coverage: cov,
             crap,
@@ -203,6 +216,8 @@ mod tests {
         ];
         let table = render_table(&entries, 30.0, false);
         assert!(table.contains("FAIL"));
+        assert!(table.contains("RISK"));
+        assert!(table.contains("high"));
         assert!(table.contains("crappy"));
         assert!(table.contains("1/2 functions exceed threshold 30"));
         let summary = render_summary(&entries, 30.0, true);
@@ -253,6 +268,15 @@ mod tests {
     fn empty_summary_has_zero_functions() {
         let summary = render_summary(&[], 30.0, false);
         assert_eq!(summary, "0 functions, 0 exceed threshold 30.");
+    }
+
+    #[test]
+    fn moderate_row_can_pass_a_lenient_gate() {
+        let entries = [entry("mid", 20.0, 10, 50.0)];
+        let table = render_table(&entries, 25.0, false);
+        assert!(table.contains("ok"));
+        assert!(table.contains("moderate"));
+        assert!(!table.contains("FAIL"));
     }
 
     #[test]

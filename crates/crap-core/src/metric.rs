@@ -17,8 +17,7 @@ impl Metric {
     #[must_use]
     pub const fn default_threshold(self) -> f64 {
         match self {
-            Self::Cyclomatic => 30.0,
-            Self::Cognitive => 15.0,
+            Self::Cyclomatic | Self::Cognitive => 15.0,
         }
     }
 }
@@ -53,8 +52,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_thresholds_differ_by_metric() {
-        assert_eq!(Metric::Cyclomatic.default_threshold(), 30.0);
+    fn default_threshold_is_fifteen_for_both_metrics() {
+        assert_eq!(Metric::Cyclomatic.default_threshold(), 15.0);
         assert_eq!(Metric::Cognitive.default_threshold(), 15.0);
     }
 

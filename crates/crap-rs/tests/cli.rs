@@ -142,6 +142,39 @@ fn unknown_package_exits_two() {
 }
 
 #[test]
+fn json_format_emits_envelope() {
+    let root = sample_root();
+    let (code, stdout, _) = output_of(
+        bin()
+            .arg("--lcov")
+            .arg(root.join("lcov.info"))
+            .arg("--path")
+            .arg(&root)
+            .arg("--format")
+            .arg("json"),
+    );
+    assert_eq!(code, 0);
+    assert!(stdout.contains("\"schema_version\""));
+    assert!(stdout.contains("\"result\""));
+    assert!(stdout.contains("\"functions\""));
+    assert!(stdout.contains("\"risk\""));
+    assert!(!stdout.contains("FUNCTION"));
+}
+
+#[test]
+fn invalid_format_exits_two() {
+    let (code, _, stderr) = output_of(
+        bin()
+            .arg("--lcov")
+            .arg(sample_root().join("lcov.info"))
+            .arg("--format")
+            .arg("nope"),
+    );
+    assert_eq!(code, 2);
+    assert!(stderr.contains("format") || stderr.contains("invalid"));
+}
+
+#[test]
 fn leftover_crap_token_exits_two() {
     let (code, _, stderr) = output_of(bin().args(["crap", "--lcov", "x"]));
     assert_eq!(code, 2);
