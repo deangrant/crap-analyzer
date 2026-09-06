@@ -47,9 +47,6 @@ jobs:
     name: cargo audit
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      contents: read
-      checks: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -65,7 +62,16 @@ jobs:
             echo "No Cargo.lock; skipping cargo audit."
           fi
 
-      - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
         if: steps.lock.outputs.present == 'true'
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          toolchain: 1.94.0
+
+      - uses: taiki-e/install-action@84f5ac3124727fb3d284d4d22ee9ab3654fd09a6
+        if: steps.lock.outputs.present == 'true'
+        with:
+          tool: cargo-audit@0.22.2
+
+      - name: cargo audit
+        if: steps.lock.outputs.present == 'true'
+        run: cargo audit
