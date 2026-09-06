@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 /// Directories skipped at any depth.
 const SKIP_ALWAYS: &[&str] = &["target", ".git"];
 
-/// First-path-component excludes relative to an analysis root.
+/// Directory names skipped at any depth relative to an analysis root.
 const DEFAULT_EXCLUDES: &[&str] = &["tests", "benches", "examples"];
 
 /// Walks `root` for `.rs` files, skipping nested member roots.
@@ -39,27 +39,52 @@ fn visit(
     }
     let entries = fs::read_dir(dir).map_err(|source| Error::io(dir, source))?;
     for entry in entries {
-        let entry = entry.map_err(|source| Error::io(dir, source))?;
-        let path = entry.path();
-        let file_type = entry.file_type().map_err(|source| Error::io(&path, source))?;
-        if file_type.is_symlink() {
-            continue;
-        }
-        if file_type.is_dir() {
-            let Ok(canon) = fs::canonicalize(&path) else {
-                continue;
-            };
-            if !visited.insert(canon) {
-                continue;
-            }
-            visit(&path, root, nested_skip, visited, out)?;
-            continue;
-        }
-        if file_type.is_file() && is_rust_file(&path) && !excluded_rel(&path, root) {
-            out.push(path);
-        }
+        take_entry(entry, dir, root, nested_skip, visited, out)?;
     }
     Ok(())
+}
+
+fn take_entry(
+    entry: std::io::Result<fs::DirEntry>,
+    dir: &Path,
+    root: &Path,
+    nested_skip: &[PathBuf],
+    visited: &mut HashSet<PathBuf>,
+    out: &mut Vec<PathBuf>,
+) -> Result<()> {
+    let entry = entry.map_err(|source| Error::io(dir, source))?;
+    let path = entry.path();
+    let file_type = entry.file_type().map_err(|source| Error::io(&path, source))?;
+    if file_type.is_symlink() {
+        return Ok(());
+    }
+    if file_type.is_dir() {
+        return visit_subdir(&path, root, nested_skip, visited, out);
+    }
+    collect_rust_file(path, root, out);
+    Ok(())
+}
+
+fn visit_subdir(
+    path: &Path,
+    root: &Path,
+    nested_skip: &[PathBuf],
+    visited: &mut HashSet<PathBuf>,
+    out: &mut Vec<PathBuf>,
+) -> Result<()> {
+    let Ok(canon) = fs::canonicalize(path) else {
+        return Ok(());
+    };
+    if !visited.insert(canon) {
+        return Ok(());
+    }
+    visit(path, root, nested_skip, visited, out)
+}
+
+fn collect_rust_file(path: PathBuf, root: &Path, out: &mut Vec<PathBuf>) {
+    if is_rust_file(&path) && !excluded_rel(&path, root) {
+        out.push(path);
+    }
 }
 
 fn skip_dir(dir: &Path, root: &Path, nested_skip: &[PathBuf]) -> bool {
@@ -83,9 +108,7 @@ fn excluded_rel(path: &Path, root: &Path) -> bool {
         return false;
     };
     rel.components()
-        .next()
-        .and_then(|c| c.as_os_str().to_str())
-        .is_some_and(|first| DEFAULT_EXCLUDES.contains(&first))
+        .any(|c| c.as_os_str().to_str().is_some_and(|name| DEFAULT_EXCLUDES.contains(&name)))
 }
 
 #[cfg(test)]
@@ -93,11 +116,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_excludes_match_first_component() {
+    fn default_excludes_match_any_component() {
         let root = Path::new("/proj");
         assert!(excluded_rel(Path::new("/proj/tests/foo.rs"), root));
         assert!(excluded_rel(Path::new("/proj/benches/foo.rs"), root));
         assert!(excluded_rel(Path::new("/proj/examples/foo.rs"), root));
+        assert!(excluded_rel(
+            Path::new("/proj/crates/pkg/tests/foo.rs"),
+            root
+        ));
         assert!(!excluded_rel(Path::new("/proj/src/foo.rs"), root));
         assert!(!excluded_rel(Path::new("/proj/src/tests.rs"), root));
     }

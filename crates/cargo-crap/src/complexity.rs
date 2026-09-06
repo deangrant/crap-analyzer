@@ -92,6 +92,10 @@ fn impl_type_name(ty: &syn::Type) -> Option<String> {
     tp.path.segments.last().map(|seg| seg.ident.to_string())
 }
 
+fn qualified_name(prefix: Option<&str>, method: &str) -> String {
+    prefix.map_or_else(|| method.to_owned(), |ty| format!("{ty}::{method}"))
+}
+
 struct FunctionVisitor<'a> {
     file: &'a Path,
     out: Vec<FunctionComplexity>,
@@ -142,10 +146,7 @@ impl<'ast> Visit<'ast> for FunctionVisitor<'_> {
             return;
         }
         let method = node.sig.ident.to_string();
-        let name = match &self.impl_type {
-            Some(ty) => format!("{ty}::{method}"),
-            None => method,
-        };
+        let name = qualified_name(self.impl_type.as_deref(), &method);
         let start_line = node.sig.fn_token.span.start().line;
         let end_line = node.block.brace_token.span.close().end().line;
         self.push_fn(name, start_line, end_line, &node.block);
@@ -168,10 +169,7 @@ impl<'ast> Visit<'ast> for FunctionVisitor<'_> {
         }
         if let Some(body) = &node.default {
             let method = node.sig.ident.to_string();
-            let name = match &self.trait_name {
-                Some(tr) => format!("{tr}::{method}"),
-                None => method,
-            };
+            let name = qualified_name(self.trait_name.as_deref(), &method);
             let start_line = node.sig.fn_token.span.start().line;
             let end_line = body.brace_token.span.close().end().line;
             self.push_fn(name, start_line, end_line, body);
@@ -396,6 +394,18 @@ mod tests {
     fn parseable_macro_tokens_add_decisions() {
         let fns = snippet("fn f() { m!(if true {}); }");
         assert_eq!(fns[0].cyclomatic, 2);
+    }
+
+    #[test]
+    fn statement_macro_tokens_add_decisions() {
+        let fns = snippet("fn f() { m!(let x = 1; if true { x; }); }");
+        assert_eq!(fns[0].cyclomatic, 2);
+    }
+
+    #[test]
+    fn qualified_name_uses_prefix_when_present() {
+        assert_eq!(qualified_name(Some("Foo"), "bar"), "Foo::bar");
+        assert_eq!(qualified_name(None, "bar"), "bar");
     }
 
     #[test]

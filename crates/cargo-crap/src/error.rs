@@ -67,3 +67,19 @@ impl std::error::Error for Error {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::error::Error as StdError;
+
+    #[test]
+    fn source_is_set_only_for_io() {
+        let io = Error::io("x", io::Error::other("e"));
+        assert!(StdError::source(&io).is_some());
+        assert!(StdError::source(&Error::usage("bad")).is_none());
+        assert!(StdError::source(&Error::Parse("p".into())).is_none());
+        assert!(StdError::source(&Error::Metadata("m".into())).is_none());
+        assert!(StdError::source(&Error::UnknownPackage("q".into())).is_none());
+    }
+}
