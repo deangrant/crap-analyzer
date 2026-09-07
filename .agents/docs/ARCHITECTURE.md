@@ -217,7 +217,7 @@ analyzer is Rust-only; no Node toolchain and no tree-sitter.
 | Area | Path | Role |
 | ---- | ---- | ---- |
 | CLI | [`cli.rs`](../../crates/crap-ts/src/cli.rs) | Flags → `ScanRequest` + `TsLanguage` (`--coverage` default `lcov.info`) |
-| Project resolve | [`project_resolve.rs`](../../crates/crap-ts/src/project_resolve.rs) | `package.json` packages and workspace globs |
+| Project resolve | [`project_resolve/`](../../crates/crap-ts/src/project_resolve/mod.rs) | `package.json` packages and workspace globs |
 | Walk | [`walk.rs`](../../crates/crap-ts/src/walk.rs) | `.ts` / `.tsx`; skip `node_modules`, `.git`, `dist`, `build`, `coverage`, nested packages |
 | Visitor | [`complexity/visitor.rs`](../../crates/crap-ts/src/complexity/visitor.rs) | Named funcs / methods / brace-bodied arrows and body spans |
 | Cyclomatic | [`complexity/cyclomatic.rs`](../../crates/crap-ts/src/complexity/cyclomatic.rs) | Decision-point count |

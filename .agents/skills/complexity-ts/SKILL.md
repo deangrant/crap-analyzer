@@ -39,11 +39,14 @@ SOLID: [rust-style-guide](../rust-style-guide/SKILL.md) and
 ## Package walk
 
 - Resolve packages from `package.json` (`project_resolve`).
+  `package.json` is parsed with `serde_json` (full JSON string decoding).
 - Without `--workspace` / `-p`, a `package.json` root is that package only
   (workspaces are **not** expanded).
 - `--workspace` expands `workspaces` array or `workspaces.packages` globs
   (`*`, `**`, exact paths, and `!` exclusions). If `package.json` has no
   workspaces, falls back to `pnpm-workspace.yaml` `packages`.
+  YAML list entries strip matching outer quotes only; escapes inside
+  quoted paths are not decoded.
 - `-p` selects by package `name`.
 - Walk `.ts` / `.tsx`; skip `node_modules`, `.git`, `dist`, `build`,
   `coverage`, and nested `package.json` roots in `Target.skip`.
@@ -76,6 +79,9 @@ ternary `?`, `&&`, `||`, `??`. Do not count `switch` / `try` themselves.
 **Cognitive**: nesting-weighted `if` / `for` / `while` / `do` / `switch` /
 `catch`; flat `else`; a run of the same `&&` / `||` / `??` counts once.
 
-Limits: approximate by design. Structural failures fail the run; valid
-generics, decorators, and unusual TSX may still under- or over-count.
-Prefer fixing the Rust visitor over adding a Node or AST-crate dependency.
+Limits: approximate by design — accepted product Limit; text scanner, not
+`tsc`. Scores can diverge from `tsc`-based tools; treat them as a
+change-risk signal for reviewers, not an authoritative complexity audit.
+Structural failures fail the run; valid generics, decorators, and unusual
+TSX may still under- or over-count. Prefer fixing the Rust visitor over
+adding a Node or AST-crate dependency.

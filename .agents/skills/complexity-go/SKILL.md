@@ -91,7 +91,9 @@ error (exit 2), matching the CLI contract.
 `else`; a run of the same `&&` or `||` counts once. No per-`case`
 increment.
 
-Limits: approximate by design — text scanner, not `go/ast`. Structural
-failures fail the run; valid generics edge cases and unusual syntax may
-still under-count. Prefer fixing the Rust visitor over adding a Go
-runtime dependency.
+Limits: approximate by design — accepted product Limit; text scanner, not
+`go/ast`. Scores can diverge from `go/ast`-based tools; treat them as a
+change-risk signal for reviewers, not an authoritative complexity audit.
+Structural failures fail the run; valid generics edge cases and unusual
+syntax may still under-count. Prefer fixing the Rust visitor over adding
+a Go runtime dependency.

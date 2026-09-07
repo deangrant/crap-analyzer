@@ -235,19 +235,27 @@ Decisions inside unexpanded or opaque macros may be missed.
   are skipped.
 - `$CARGO` is used only when it names an existing file (Cargo’s usual
   override); otherwise `crap-rs` runs `cargo` from `PATH`.
-- `crap-go` complexity is an approximate text scanner (not `go/ast`).
-  Unclosed literals/comments or unbalanced `{}`/`()`/`[]` fail the run.
-  Valid but unusual syntax (generics edge cases) may still under-count.
-  Coverprofile shared-line statements are merged pessimistically (any
-  zero-hit block on a line leaves that line uncovered). Nested `go.mod`
-  modules are remapped and analyzed with the parent module. Host build
-  tags cover common GOOS names (`linux`, `windows`, `darwin`, BSD family,
-  …); other OS names still need `--tags`.
-- `crap-ts` complexity is an approximate text scanner (not `tsc`).
-  Unclosed literals/comments or unbalanced `{}`/`()`/`[]` fail the run.
-  Valid but unusual syntax (generics, decorators, TSX) may under- or
-  over-count. Cover `.ts` / `.tsx` paths in LCOV (source-map remapping
-  when needed). Path join uses the package directory relative to the
+- `crap-go` complexity is an approximate text scanner (not `go/ast`) —
+  an accepted product Limit. Scores can diverge from `go/ast`-based
+  tools; treat them as a change-risk signal, not an authoritative
+  complexity audit. Unclosed literals/comments or unbalanced
+  `{}`/`()`/`[]` fail the run. Valid but unusual syntax (generics edge
+  cases) may still under-count. Coverprofile shared-line statements are
+  merged pessimistically (any zero-hit block on a line leaves that line
+  uncovered). Nested `go.mod` modules are remapped and analyzed with the
+  parent module. Host build tags cover common GOOS names (`linux`,
+  `windows`, `darwin`, BSD family, …); other OS names still need
+  `--tags`.
+- `crap-ts` complexity is an approximate text scanner (not `tsc`) — an
+  accepted product Limit. Scores can diverge from `tsc`-based tools
+  (under- or over-count on unusual syntax); treat them as a change-risk
+  signal, not an authoritative complexity audit. Unclosed
+  literals/comments or unbalanced `{}`/`()`/`[]` fail the run. Valid but
+  unusual syntax (generics, decorators, TSX) may under- or over-count.
+  `package.json` names use full JSON decoding (`serde_json`);
+  `pnpm-workspace.yaml` entries strip outer quotes only (no escape
+  decode). Cover `.ts` / `.tsx` paths in LCOV (source-map remapping when
+  needed). Path join uses the package directory relative to the
   workspace (`join_key`); reports still show the npm package name.
 
 ## Develop
