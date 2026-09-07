@@ -17,7 +17,7 @@ pub use json::render_json;
 ///
 /// # Errors
 ///
-/// Returns [`crate::Error::Collect`] if JSON serialization fails.
+/// Returns [`crate::Error::Report`] if JSON serialization fails.
 pub fn render(
     request: &ScanRequest,
     result: &RunResult,

@@ -150,7 +150,7 @@ mod tests {
 
     #[test]
     fn render_error_exits_two() {
-        let err = Error::collect("json report: boom");
+        let err = Error::report("json report: boom");
         assert_eq!(exit_from_render(Err(err), false), ExitCode::from(2));
     }
 

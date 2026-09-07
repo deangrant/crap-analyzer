@@ -11,7 +11,7 @@ use serde::Serialize;
 ///
 /// # Errors
 ///
-/// Returns [`Error::Collect`] if the document cannot be serialized.
+/// Returns [`Error::Report`] if the document cannot be serialized.
 pub fn render_json(
     entries: &[CrapEntry],
     threshold: f64,
@@ -44,7 +44,7 @@ pub fn render_json(
 }
 
 fn stringify_json<T: Serialize>(value: &T) -> Result<String> {
-    serde_json::to_string_pretty(value).map_err(|err| Error::collect(format!("json report: {err}")))
+    serde_json::to_string_pretty(value).map_err(|err| Error::report(format!("json report: {err}")))
 }
 
 #[derive(Serialize)]
@@ -364,6 +364,6 @@ mod tests {
         let mut map = std::collections::BTreeMap::new();
         map.insert((1_u32, 2_u32), 3_u32);
         let text = stringify_json(&map);
-        assert!(text.is_err(), "{text:?}");
+        assert!(matches!(text, Err(Error::Report(_))), "{text:?}");
     }
 }

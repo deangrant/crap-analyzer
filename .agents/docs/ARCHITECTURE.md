@@ -137,7 +137,7 @@ Pipeline entry: [`run`](../../crates/crap-core/src/run.rs) /
 | Language port | [`language.rs`](../../crates/crap-core/src/language.rs) | `Language`, `ScanRequest` (`coverage` path), `Target`, `ReportFormat` |
 | Process | [`process.rs`](../../crates/crap-core/src/process.rs) | Shared binary exit/render I/O, `help_or_version`, `reject_summary_json` |
 | Report | [`report.rs`](../../crates/crap-core/src/report.rs), [`report/json.rs`](../../crates/crap-core/src/report/json.rs) | Text table / `--summary` / JSON envelope |
-| Errors | [`error.rs`](../../crates/crap-core/src/error.rs) | I/O, coverage, resolve, collect |
+| Errors | [`error.rs`](../../crates/crap-core/src/error.rs) | I/O, coverage, resolve, collect, report |
 
 **Risk bands** (Low / Acceptable / Moderate / High) classify the score. The
 **gate** (`--threshold`, `--fail-above`) is a separate pass/fail line. Do not
@@ -253,7 +253,7 @@ Detail: [complexity-ts](../skills/complexity-ts/SKILL.md).
 | ---- | ------- |
 | `0` | Analysis finished; the gate did not trip |
 | `1` | Analysis finished; `--fail-above` tripped |
-| `2` | Usage, I/O, metadata, or collect error. Unreadable or structurally invalid source is a collect error: one failed file aborts the whole run for Rust, Go, and TypeScript. |
+| `2` | Usage, I/O, metadata, collect, or report error. Unreadable or structurally invalid source is a collect error: one failed file aborts the whole run for Rust, Go, and TypeScript. JSON serialize failures are a report error. |
 
 Flag reference: [README.md](../../README.md).
 
