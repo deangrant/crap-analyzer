@@ -96,35 +96,15 @@ pub fn parse() -> std::result::Result<Action, String> {
 
 /// Parses an argv vector (binary name first).
 fn parse_args(raw: Vec<String>) -> std::result::Result<Action, String> {
-    if let Some(action) = help_or_version(&raw) {
-        return Ok(action);
+    if let Some(action) = crap_core::help_or_version(&raw) {
+        return Ok(match action {
+            crap_core::HelpOrVersion::Help => Action::Help,
+            crap_core::HelpOrVersion::Version => Action::Version,
+        });
     }
     let args = Args::try_parse_from(raw).map_err(|err| err.to_string())?;
-    reject_summary_json(&args)?;
+    crap_core::reject_summary_json(args.summary, args.format)?;
     Ok(Action::Run(args))
-}
-
-fn help_or_version(raw: &[String]) -> Option<Action> {
-    // Keep paired with crap-rs::cli::help_or_version.
-    if has_flag(raw, "-h", "--help") {
-        return Some(Action::Help);
-    }
-    if has_flag(raw, "-V", "--version") {
-        return Some(Action::Version);
-    }
-    None
-}
-
-fn has_flag(raw: &[String], short: &str, long: &str) -> bool {
-    raw.iter().skip(1).any(|arg| arg == short || arg == long)
-}
-
-fn reject_summary_json(args: &Args) -> std::result::Result<(), String> {
-    // Keep paired with crap-rs::cli::reject_summary_json.
-    if args.summary && args.format == ReportFormat::Json {
-        return Err("--summary conflicts with --format json".into());
-    }
-    Ok(())
 }
 
 /// Usage and scoring help text.

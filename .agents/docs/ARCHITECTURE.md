@@ -72,7 +72,7 @@ flowchart LR
 
 | Crate | Role |
 | ----- | ---- |
-| [`crates/crap-core`](../../crates/crap-core) | Language-agnostic LCOV parse, path join, score, risk, and report |
+| [`crates/crap-core`](../../crates/crap-core) | Language-agnostic LCOV parse, path join, score, risk, report, and shared CLI process helpers |
 | [`crates/crap-rs`](../../crates/crap-rs) | Rust frontend: Cargo targets, source walk, complexity, and the `crap-rs` CLI |
 | [`crates/crap-go`](../../crates/crap-go) | Go frontend: modules, coverprofile, complexity, and the `crap-go` CLI |
 | [`crates/crap-ts`](../../crates/crap-ts) | TypeScript frontend: packages, LCOV, complexity, and the `crap-ts` CLI |
@@ -84,26 +84,29 @@ flowchart LR
 parsing coverprofile locally.
 
 A later `crap` meta-binary could dispatch on `--lang`. The workspace does not
-ship it.
+ship it. Exit/render I/O and argv short-circuits (`help_or_version`,
+`--summary` vs JSON) live in
+[`crap_core::process`](../../crates/crap-core/src/process.rs); each frontend
+keeps its own clap `Args`, help text, and language-specific `run_scan`.
 
 ## High-level analysis flow
 
 A frontend run proceeds as follows:
 
 1. Parse argv into `ScanRequest` and the language struct
-   (`cli` + `main` in the frontend crate).
+   (frontend `cli` + thin `main`; shared short-circuits via `crap_core::process`).
 2. Load coverage into `HashMap<PathBuf, FileCoverage>`:
    - `crap-rs` / `crap-ts`: `parse_lcov` inside `crap_core::run`
    - `crap-go`: `parse_coverprofile`, remap import-path keys via
-     enclosing `go.mod`, then `run_with_coverage`
+     modules under the analysis root, then `run_with_coverage`
 3. `Language::resolve_targets` selects package roots and nested skip paths.
 4. `Language::collect_functions` walks sources and scores function spans.
 5. `merge::join` matches source paths to coverage, applies `--missing`, and
    excludes nested function spans from the outer coverage.
 6. Score each function and sort worst-first. `--fail-above` trips when any
    score is strictly above the threshold.
-7. `report::render` writes a text table or a JSON envelope (`"rust"`, `"go"`,
-   or `"typescript"`).
+7. `crap_core::finish_run` renders via `report::render` (language tag
+   `"rust"`, `"go"`, or `"typescript"`) and maps the gate to exit codes.
 
 ```mermaid
 flowchart TD
@@ -132,6 +135,7 @@ Pipeline entry: [`run`](../../crates/crap-core/src/run.rs) /
 | Threshold | [`threshold.rs`](../../crates/crap-core/src/threshold.rs) | Shared `--threshold` parse (`strict` / `lenient` / number) |
 | Metric | [`metric.rs`](../../crates/crap-core/src/metric.rs) | Cyclomatic or cognitive; default gate 15 |
 | Language port | [`language.rs`](../../crates/crap-core/src/language.rs) | `Language`, `ScanRequest` (`coverage` path), `Target`, `ReportFormat` |
+| Process | [`process.rs`](../../crates/crap-core/src/process.rs) | Shared binary exit/render I/O, `help_or_version`, `reject_summary_json` |
 | Report | [`report.rs`](../../crates/crap-core/src/report.rs), [`report/json.rs`](../../crates/crap-core/src/report/json.rs) | Text table / `--summary` / JSON envelope |
 | Errors | [`error.rs`](../../crates/crap-core/src/error.rs) | I/O, coverage, resolve, collect |
 
@@ -144,7 +148,7 @@ threshold exceedances (`schema_version` 3); `gate_failed` / exit 1 still need
 ## `crap-rs` module map
 
 Composition: [`main.rs`](../../crates/crap-rs/src/main.rs) parses CLI, calls
-`crap_core::run`, then `render` with language `"rust"`.
+`crap_core::run`, then `crap_core::finish_run` with language `"rust"`.
 [`RustLanguage`](../../crates/crap-rs/src/lib.rs) implements `Language`.
 
 | Area | Path | Role |
@@ -170,8 +174,9 @@ flowchart TB
 ## `crap-go` module map
 
 Composition: [`main.rs`](../../crates/crap-go/src/main.rs) parses CLI, parses
-coverprofile, remaps import-path keys via the enclosing `go.mod`, calls
-`crap_core::run_with_coverage`, then `render` with language `"go"`.
+coverprofile, remaps import-path keys via modules under the analysis root,
+calls `crap_core::run_with_coverage`, then `crap_core::finish_run` with
+language `"go"`.
 [`GoLanguage`](../../crates/crap-go/src/lib.rs) implements `Language`. The
 analyzer is Rust-only; no Go toolchain and no tree-sitter.
 
@@ -205,7 +210,7 @@ Detail: [complexity-go](../skills/complexity-go/SKILL.md).
 ## `crap-ts` module map
 
 Composition: [`main.rs`](../../crates/crap-ts/src/main.rs) parses CLI, calls
-`crap_core::run`, then `render` with language `"typescript"`.
+`crap_core::run`, then `crap_core::finish_run` with language `"typescript"`.
 [`TsLanguage`](../../crates/crap-ts/src/lib.rs) implements `Language`. The
 analyzer is Rust-only; no Node toolchain and no tree-sitter.
 

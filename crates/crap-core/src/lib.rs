@@ -5,6 +5,7 @@ pub mod error;
 pub mod language;
 pub mod merge;
 pub mod metric;
+pub mod process;
 pub mod report;
 pub mod score;
 pub mod threshold;
@@ -24,6 +25,11 @@ pub use merge::{
 };
 #[doc(inline)]
 pub use metric::Metric;
+#[doc(inline)]
+pub use process::{
+    HelpOrVersion, finish_run, help_or_version, print_core_err, print_ok, print_usage_err,
+    reject_summary_json,
+};
 #[doc(inline)]
 pub use report::render;
 #[doc(inline)]
