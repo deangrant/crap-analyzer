@@ -5,8 +5,8 @@ coverprofile / build tags.
 
 ## When to use
 
-Enable when editing complexity, merge, coverage, or `crap-go` coverprofile
-sources.
+Enable when editing complexity, merge, coverage, `crap-go` coverprofile,
+or `crap-ts` visitor / walk sources.
 
 ## Usage
 

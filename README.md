@@ -8,7 +8,8 @@ rating, or a management KPI.
 
 For Rust, produce LCOV with `cargo llvm-cov` and run `crap-rs`. For Go,
 produce a coverprofile with `go test -coverprofile` and run `crap-go`.
-Both frontends share scoring, risk bands, and the pass/fail gate in
+For TypeScript, produce LCOV with vitest, c8, jest, or nyc and run
+`crap-ts`. Frontends share scoring, risk bands, and the pass/fail gate in
 `crap-core`.
 
 ## Score
@@ -69,6 +70,8 @@ keeps the score over the threshold.
 - For Rust analysis: [`cargo-llvm-cov`](https://github.com/taiki-e/cargo-llvm-cov) to produce LCOV
 - For Go analysis: a Go toolchain only to generate `cover.out` (`go test`);
   `crap-go` itself is a Rust binary and does not invoke `go`
+- For TypeScript analysis: a JS test runner that emits LCOV; `crap-ts` is a
+  Rust binary and does not invoke Node
 
 `crap-core` parses **LCOV only** on disk. `crap-go` parses coverprofile in
 the frontend and passes `FileCoverage` into `run_with_coverage`. Do not add
@@ -79,6 +82,7 @@ a second on-disk parser in core.
 ```bash
 cargo install --path crates/crap-rs
 cargo install --path crates/crap-go
+cargo install --path crates/crap-ts
 ```
 
 ## Usage
@@ -124,22 +128,36 @@ crap-go --workspace
 as enabled. No Go helper or tree-sitter; the analyzer walks `go.mod`
 packages and a custom Rust visitor.
 
+### TypeScript (`crap-ts`)
+
+```bash
+# e.g. vitest / c8 / jest with an lcov reporter → lcov.info
+crap-ts --path . --coverage lcov.info
+crap-ts --workspace --fail-above --threshold strict
+```
+
+`--coverage` defaults to `lcov.info`. LCOV `SF:` paths must resolve to
+`.ts` / `.tsx` sources (enable source-map remapping when covering emitted
+JavaScript). `--workspace` expands npm/pnpm/yarn `workspaces` globs;
+without it, a `package.json` root is that package only. `.ts` / `.tsx`
+only; hand-rolled Rust visitor (no Node, no tree-sitter).
+
 ## Flags
 
-Shared flags work the same on both CLIs unless noted.
+Shared flags work the same on the CLIs unless noted.
 
 | Flag | Role |
 | ---- | ---- |
-| `--coverage <file>` | Coverage file. `crap-rs`: LCOV (default `lcov.info`; alias `--lcov`); must contain at least one `DA:` line-hit record. `crap-go`: coverprofile (default `cover.out`); must contain a `mode:` line and at least one data line. |
-| `--path <dir>` | Walk this tree (default `.`). Rust: a workspace root is analyzed per member; a member package root is that package only. Go: a module root (`go.mod`) is analyzed per package. |
+| `--coverage <file>` | Coverage file. `crap-rs` / `crap-ts`: LCOV (default `lcov.info`; `crap-rs` alias `--lcov`); must contain at least one `DA:` line-hit record. `crap-go`: coverprofile (default `cover.out`); must contain a `mode:` line and at least one data line. |
+| `--path <dir>` | Walk this tree (default `.`). Rust: a workspace root is analyzed per member; a member package root is that package only. Go: a module root (`go.mod`) is analyzed per package. TypeScript: a `package.json` root is that package only unless `--workspace` / `-p`. |
 | `--metric` | `cyclomatic` (default) or `cognitive` |
 | `--threshold` | Flag scores strictly above this. Number, `strict` (8), or `lenient` (25). Default `15` for both metrics. Independent of the risk band. |
 | `--format` | `text` (default table) or `json` (versioned envelope, `schema_version` 2). `result.passed` is true when no function exceeds `--threshold`; omitting `--fail-above` still reports `passed` / per-function `exceeds` from the threshold, but `result.gate_failed` stays false and the process exits 0. `result.gate_failed` / exit 1 require `--fail-above`. |
 | `--workspace` | Every workspace/module member |
-| `-p, --package <name>` | One member; repeatable; conflicts with `--workspace`. Go: import path. |
+| `-p, --package <name>` | One member; repeatable; conflicts with `--workspace`. Go: import path. TypeScript: package `name`. |
 | `--summary` | Counts and worst offender; text only; conflicts with `--format json` |
 | `--fail-above` | Exit 1 when any function exceeds the threshold (not the risk band) |
-| `--missing` | No coverage data, an empty span, or an unresolved path tie: `pessimistic` (default, 0%), `optimistic` (100%), or `skip`. A package name (`--workspace` / `-p`) breaks equal basename ties (Cargo `{name}/src|…`; Go import-path path suffix). |
+| `--missing` | No coverage data, an empty span, or an unresolved path tie: `pessimistic` (default, 0%), `optimistic` (100%), or `skip`. A package name (`--workspace` / `-p`) breaks equal basename ties (Cargo `{name}/src|…`; Go import-path path suffix; TypeScript `{name}/src`). |
 | `--features`, `--all-features`, `--no-default-features` | `crap-rs` only: same feature universe as the `cargo llvm-cov` run that produced the LCOV file |
 | `--tags <list>` | `crap-go` only: build tags treated as enabled (comma-separated) |
 
@@ -158,9 +176,11 @@ Shared flags work the same on both CLIs unless noted.
 | [`crap-core`](crates/crap-core) | Language-agnostic LCOV parse, path join, score, risk, and report |
 | [`crap-rs`](crates/crap-rs) | Rust discovery, complexity, and the `crap-rs` CLI |
 | [`crap-go`](crates/crap-go) | Go discovery, coverprofile, complexity, and the `crap-go` CLI |
+| [`crap-ts`](crates/crap-ts) | TypeScript discovery, LCOV, complexity, and the `crap-ts` CLI |
 
-`crap-rs` and `crap-go` implement `Language`. Rust calls `crap_core::run`
-(LCOV on disk). Go parses coverprofile and calls `run_with_coverage`.
+`crap-rs`, `crap-go`, and `crap-ts` implement `Language`. Rust and
+TypeScript call `crap_core::run` (LCOV on disk). Go parses coverprofile
+and calls `run_with_coverage`.
 
 Module maps and pipeline: [`.agents/docs/ARCHITECTURE.md`](.agents/docs/ARCHITECTURE.md).
 
@@ -199,6 +219,9 @@ Decisions inside unexpanded or opaque macros may be missed.
   override); otherwise `crap-rs` runs `cargo` from `PATH`.
 - `crap-go` complexity is an approximate text scanner (not `go/ast`).
   Generics edge cases and unusual syntax may under-count.
+- `crap-ts` complexity is an approximate text scanner (not `tsc`).
+  Generics, decorators, and unusual TSX may under- or over-count. Cover
+  `.ts` / `.tsx` paths in LCOV (source-map remapping when needed).
 
 ## Develop
 

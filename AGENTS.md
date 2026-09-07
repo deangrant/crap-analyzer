@@ -23,15 +23,17 @@ KPI.
 | Core | `crates/crap-core` | LCOV parse, path join, score, risk, and report |
 | Rust frontend | `crates/crap-rs` | Cargo targets, walk, complexity, and the `crap-rs` CLI |
 | Go frontend | `crates/crap-go` | Go modules, coverprofile, complexity, and the `crap-go` CLI |
+| TypeScript frontend | `crates/crap-ts` | package.json, LCOV, complexity, and the `crap-ts` CLI |
 
 **Hard invariants (never violate):**
 
 - `crap-core` parses LCOV only on disk. Frontends may load their native format into
-  `FileCoverage` via `run_with_coverage` (`crap-rs` LCOV, `crap-go` coverprofile).
+  `FileCoverage` via `run_with_coverage` (`crap-rs` / `crap-ts` LCOV via `run`,
+  `crap-go` coverprofile).
 - Frontends implement `Language`; scoring stays in `crap-core`.
 - Risk bands classify the score. They never change the `--fail-above` gate.
 - Empty spans and missing paths use `--missing`. Do not treat a missing join as 100% coverage.
-- Workspace members are `crap-core`, `crap-rs`, and `crap-go` only.
+- Workspace members are `crap-core`, `crap-rs`, `crap-go`, and `crap-ts` only.
 - No `#[allow]`. Suppressions must be `#[expect(..., reason = "...")]`.
 
 **Runtime:** Rust toolchain `1.94.0`. Lean pipeline: `./scripts/check.sh`. Full local vs
@@ -102,6 +104,7 @@ Read the matching skill **before** editing that area. Load only what the task ne
 | Scoring, bands, gate, `--missing`, dogfood flags | [`crap-scoring`](.agents/skills/crap-scoring/) |
 | Visitor, empty spans, path ranking, LCOV join | [`complexity-lcov-join`](.agents/skills/complexity-lcov-join/) |
 | Go coverprofile, visitor, build tags, module walk | [`complexity-go`](.agents/skills/complexity-go/) |
+| TypeScript LCOV, visitor, package.json walk | [`complexity-ts`](.agents/skills/complexity-ts/) |
 | Rust style, docs, naming, API conventions | [`rust-style-guide`](.agents/skills/rust-style-guide/) |
 | Traits, modules, dependency direction | [`rust-solid-design`](.agents/skills/rust-solid-design/) |
 | Local vs CI verify or a stop-hook follow-up | [`verify`](.agents/skills/verify/) |
@@ -149,6 +152,7 @@ task-specific guidance and should not be loaded unless relevant.
 - [`.agents/skills/crap-scoring/`](.agents/skills/crap-scoring/) — formula, bands vs gate, `--missing`, dogfood flags
 - [`.agents/skills/complexity-lcov-join/`](.agents/skills/complexity-lcov-join/) — visitor attribution, empty spans, path ranking
 - [`.agents/skills/complexity-go/`](.agents/skills/complexity-go/) — Go coverprofile, visitor, build tags, module walk
+- [`.agents/skills/complexity-ts/`](.agents/skills/complexity-ts/) — TypeScript LCOV, visitor, package.json walk
 
 ## Commands
 

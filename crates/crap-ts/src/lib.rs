@@ -1,0 +1,175 @@
+//! TypeScript frontend: discover packages and collect function complexity.
+
+pub mod cli;
+pub(crate) mod complexity;
+pub(crate) mod project_resolve;
+pub(crate) mod walk;
+
+use crap_core::{Error, Language, LocatedFn, Metric, Result, ScanRequest, Target};
+use project_resolve::Package;
+use std::path::Path;
+
+/// TypeScript implementation of [`Language`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TsLanguage {
+    /// Analyze every package under the workspace root.
+    pub workspace: bool,
+    /// Selected package names (`-p`).
+    pub packages: Vec<String>,
+}
+
+impl Language for TsLanguage {
+    fn resolve_targets(&self, request: &ScanRequest) -> Result<Vec<Target>> {
+        if self.uses_packages() {
+            return self.targets_from_selection(request);
+        }
+        if let Some(targets) = Self::targets_from_package_root(&request.path)? {
+            return Ok(targets);
+        }
+        Ok(vec![Self::path_target(request)])
+    }
+
+    fn collect_functions(&self, targets: &[Target], metric: Metric) -> Result<Vec<LocatedFn>> {
+        collect_functions(targets, metric)
+    }
+}
+
+impl TsLanguage {
+    const fn uses_packages(&self) -> bool {
+        self.workspace || !self.packages.is_empty()
+    }
+
+    fn targets_from_packages(packages: &[Package]) -> Vec<Target> {
+        packages
+            .iter()
+            .map(|pkg| Target {
+                root: pkg.root.clone(),
+                crate_name: Some(pkg.name.clone()),
+                skip: project_resolve::nested_package_roots(&pkg.root, packages),
+                enabled_features: Vec::new(),
+            })
+            .collect()
+    }
+
+    fn targets_from_selection(&self, request: &ScanRequest) -> Result<Vec<Target>> {
+        let packages = if self.workspace {
+            project_resolve::all_packages(&request.path)?
+        } else {
+            project_resolve::selected_packages(&self.packages, &request.path)?
+        };
+        Ok(Self::targets_from_packages(&packages))
+    }
+
+    fn targets_from_package_root(path: &Path) -> Result<Option<Vec<Target>>> {
+        if !path.join("package.json").is_file() {
+            return Ok(None);
+        }
+        let package = project_resolve::root_package(path)?;
+        Ok(Some(Self::targets_from_packages(&[package])))
+    }
+
+    fn path_target(request: &ScanRequest) -> Target {
+        Target {
+            root: request.path.clone(),
+            crate_name: None,
+            skip: Vec::new(),
+            enabled_features: Vec::new(),
+        }
+    }
+}
+
+fn collect_functions(targets: &[Target], metric: Metric) -> Result<Vec<LocatedFn>> {
+    let mut functions = Vec::new();
+    let mut details = Vec::new();
+    let (succeeded, failed) = collect_targets(targets, metric, &mut functions, &mut details)?;
+    if failed > 0 {
+        return Err(Error::collect(collect_failure(
+            "TypeScript",
+            failed,
+            succeeded,
+            &details,
+        )));
+    }
+    Ok(functions)
+}
+
+fn collect_failure(lang: &str, failed: usize, succeeded: usize, details: &[String]) -> String {
+    format!(
+        "failed to parse {failed} of {} {lang} file(s)\n{}",
+        failed + succeeded,
+        details.join("\n")
+    )
+}
+
+fn collect_targets(
+    targets: &[Target],
+    metric: Metric,
+    functions: &mut Vec<LocatedFn>,
+    details: &mut Vec<String>,
+) -> Result<(usize, usize)> {
+    let mut succeeded = 0_usize;
+    let mut failed = 0_usize;
+    for target in targets {
+        collect_target(
+            target,
+            metric,
+            functions,
+            details,
+            &mut succeeded,
+            &mut failed,
+        )?;
+    }
+    Ok((succeeded, failed))
+}
+
+fn collect_target(
+    target: &Target,
+    metric: Metric,
+    functions: &mut Vec<LocatedFn>,
+    details: &mut Vec<String>,
+    succeeded: &mut usize,
+    failed: &mut usize,
+) -> Result<()> {
+    let files = walk::ts_files(&target.root, &target.skip)?;
+    for file in files {
+        if take_file(
+            &file,
+            target.crate_name.as_deref(),
+            metric,
+            functions,
+            details,
+        ) {
+            *succeeded += 1;
+        } else {
+            *failed += 1;
+        }
+    }
+    Ok(())
+}
+
+fn take_file(
+    file: &Path,
+    crate_name: Option<&str>,
+    metric: Metric,
+    functions: &mut Vec<LocatedFn>,
+    details: &mut Vec<String>,
+) -> bool {
+    let source = match std::fs::read_to_string(file) {
+        Ok(text) => text,
+        Err(err) => {
+            details.push(format!("skipping {}: {err}", file.display()));
+            return false;
+        }
+    };
+    for function in complexity::analyze_source(file, &source, metric) {
+        functions.push(LocatedFn {
+            function,
+            crate_name: crate_name.map(str::to_owned),
+        });
+    }
+    true
+}
+
+#[cfg(test)]
+#[path = "lib_tests.rs"]
+mod tests;

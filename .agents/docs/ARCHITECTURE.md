@@ -15,7 +15,7 @@ This file covers:
 
 - Workspace crate roles
 - End-to-end analysis flow
-- `crap-core`, `crap-rs`, and `crap-go` module maps
+- `crap-core`, `crap-rs`, `crap-go`, and `crap-ts` module maps
 - Hard invariants
 - Verification and agent layout
 
@@ -27,23 +27,26 @@ This file does **not** cover:
   [complexity-lcov-join](../skills/complexity-lcov-join/SKILL.md)
 - Go coverprofile, build tags, and visitor limits — see
   [complexity-go](../skills/complexity-go/SKILL.md)
+- TypeScript LCOV, package walk, and visitor limits — see
+  [complexity-ts](../skills/complexity-ts/SKILL.md)
 - Full local vs CI steps — see [verify](../skills/verify/SKILL.md) and
   [AGENTS.md](../../AGENTS.md)
 
 ## System context
 
 You produce coverage with the language toolchain (`cargo llvm-cov` → LCOV,
-`go test -coverprofile` → coverprofile). Each frontend reads that file and
-the sources, then calls `crap-core` to join, score, and render.
+`go test -coverprofile` → coverprofile, vitest/c8/jest/nyc → LCOV). Each
+frontend reads that file and the sources, then calls `crap-core` to join,
+score, and render.
 
-- `crap-rs` uses `crap_core::run`, which parses LCOV from disk.
+- `crap-rs` and `crap-ts` use `crap_core::run`, which parses LCOV from disk.
 - `crap-go` parses coverprofile in the frontend, then calls
   `crap_core::run_with_coverage` with `FileCoverage` maps.
 
 Runtime bar:
 
 - Rust toolchain **1.94.0** ([`rust-toolchain.toml`](../../rust-toolchain.toml))
-- Virtual workspace members: `crap-core`, `crap-rs`, and `crap-go`
+- Virtual workspace members: `crap-core`, `crap-rs`, `crap-go`, and `crap-ts`
   ([`Cargo.toml`](../../Cargo.toml))
 - `crap-core` parses **LCOV only** on disk. Frontends may load a native
   format into `FileCoverage` and call `run_with_coverage`.
@@ -58,6 +61,10 @@ flowchart LR
   SourcesGo[Go_sources] --> CrapGo[crap_go]
   CoverOut --> CrapGo
   CrapGo --> Core
+  jsCov[vitest_c8_jest_nyc] --> LcovTs[lcov_info]
+  SourcesTs[TS_TSX_sources] --> CrapTs[crap_ts]
+  LcovTs --> CrapTs
+  CrapTs --> Core
   Core --> Report[text_or_json_report]
 ```
 
@@ -68,9 +75,10 @@ flowchart LR
 | [`crates/crap-core`](../../crates/crap-core) | Language-agnostic LCOV parse, path join, score, risk, and report |
 | [`crates/crap-rs`](../../crates/crap-rs) | Rust frontend: Cargo targets, source walk, complexity, and the `crap-rs` CLI |
 | [`crates/crap-go`](../../crates/crap-go) | Go frontend: modules, coverprofile, complexity, and the `crap-go` CLI |
+| [`crates/crap-ts`](../../crates/crap-ts) | TypeScript frontend: packages, LCOV, complexity, and the `crap-ts` CLI |
 
-`crap-rs` and `crap-go` depend on `crap-core`. Each implements
-[`Language`](../../crates/crap-core/src/language.rs). Rust uses
+`crap-rs`, `crap-go`, and `crap-ts` depend on `crap-core`. Each implements
+[`Language`](../../crates/crap-core/src/language.rs). Rust and TypeScript use
 [`crap_core::run`](../../crates/crap-core/src/run.rs); Go uses
 [`crap_core::run_with_coverage`](../../crates/crap-core/src/run.rs) after
 parsing coverprofile locally.
@@ -85,7 +93,7 @@ A frontend run proceeds as follows:
 1. Parse argv into `ScanRequest` and the language struct
    (`cli` + `main` in the frontend crate).
 2. Load coverage into `HashMap<PathBuf, FileCoverage>`:
-   - `crap-rs`: `parse_lcov` inside `crap_core::run`
+   - `crap-rs` / `crap-ts`: `parse_lcov` inside `crap_core::run`
    - `crap-go`: `parse_coverprofile`, remap import-path keys via
      enclosing `go.mod`, then `run_with_coverage`
 3. `Language::resolve_targets` selects package roots and nested skip paths.
@@ -94,8 +102,8 @@ A frontend run proceeds as follows:
    excludes nested function spans from the outer coverage.
 6. Score each function and sort worst-first. `--fail-above` trips when any
    score is strictly above the threshold.
-7. `report::render` writes a text table or a JSON envelope (`"rust"` or
-   `"go"`).
+7. `report::render` writes a text table or a JSON envelope (`"rust"`, `"go"`,
+   or `"typescript"`).
 
 ```mermaid
 flowchart TD
@@ -194,6 +202,35 @@ flowchart TB
 
 Detail: [complexity-go](../skills/complexity-go/SKILL.md).
 
+## `crap-ts` module map
+
+Composition: [`main.rs`](../../crates/crap-ts/src/main.rs) parses CLI, calls
+`crap_core::run`, then `render` with language `"typescript"`.
+[`TsLanguage`](../../crates/crap-ts/src/lib.rs) implements `Language`. The
+analyzer is Rust-only; no Node toolchain and no tree-sitter.
+
+| Area | Path | Role |
+| ---- | ---- | ---- |
+| CLI | [`cli.rs`](../../crates/crap-ts/src/cli.rs) | Flags → `ScanRequest` + `TsLanguage` (`--coverage` default `lcov.info`) |
+| Project resolve | [`project_resolve.rs`](../../crates/crap-ts/src/project_resolve.rs) | `package.json` packages and workspace globs |
+| Walk | [`walk.rs`](../../crates/crap-ts/src/walk.rs) | `.ts` / `.tsx`; skip `node_modules`, `.git`, `dist`, `build`, `coverage`, nested packages |
+| Visitor | [`complexity/visitor.rs`](../../crates/crap-ts/src/complexity/visitor.rs) | Named funcs / methods / brace-bodied arrows and body spans |
+| Cyclomatic | [`complexity/cyclomatic.rs`](../../crates/crap-ts/src/complexity/cyclomatic.rs) | Decision-point count |
+| Cognitive | [`complexity/cognitive.rs`](../../crates/crap-ts/src/complexity/cognitive.rs) | Nesting-weighted count |
+
+```mermaid
+flowchart TB
+  Main[main] --> Cli[cli]
+  Cli --> Lang[TsLanguage]
+  Lang --> Project[project_resolve]
+  Lang --> Walk[walk]
+  Lang --> Visitor[complexity_visitor]
+  Main --> Run[crap_core_run]
+  Lang --> Run
+```
+
+Detail: [complexity-ts](../skills/complexity-ts/SKILL.md).
+
 ## Hard invariants
 
 | Invariant | Why |
@@ -202,7 +239,7 @@ Detail: [complexity-go](../skills/complexity-go/SKILL.md).
 | Frontends implement `Language`; scoring stays in `crap-core` | A language crate must not fork the formula |
 | Risk bands never change the gate | Labels classify; `--fail-above` decides pass/fail |
 | Empty spans and missing paths use `--missing` | Do not treat a missing join as 100% coverage |
-| Workspace members are `crap-core`, `crap-rs`, and `crap-go` only | Do not add `cargo-crap` or other on-disk leftovers |
+| Workspace members are `crap-core`, `crap-rs`, `crap-go`, and `crap-ts` only | Do not add `cargo-crap` or other on-disk leftovers |
 | No `#[allow]`; use `#[expect(..., reason = "...")]` | Matches workspace lints; see [rust-style-guide](../skills/rust-style-guide/SKILL.md) |
 
 ## Exit codes

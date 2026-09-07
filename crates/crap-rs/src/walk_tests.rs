@@ -94,12 +94,17 @@ fn skip_dir_ignores_target_and_nested_members() {
 }
 
 fn temp_root() -> PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static N: AtomicU64 = AtomicU64::new(0);
+    let n = N.fetch_add(1, Ordering::Relaxed);
     let dir = std::env::temp_dir().join(format!(
-        "crap-rs-walk-pkg-{}-{}",
+        "crap-rs-walk-pkg-{}-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_nanos())
+            .map_or(0, |d| d.as_nanos()),
+        n
     ));
     let created = fs::create_dir_all(&dir);
     assert!(created.is_ok(), "{created:?}");

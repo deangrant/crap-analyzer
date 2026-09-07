@@ -1,0 +1,4 @@
+{
+  "name": "tie-root",
+  "workspaces": ["packages/*"]
+}
