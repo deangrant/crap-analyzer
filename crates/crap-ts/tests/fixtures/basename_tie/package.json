@@ -1,4 +1,4 @@
 {
   "name": "tie-root",
-  "workspaces": ["packages/*"]
+  "workspaces": ["packages/**", "!packages/nonexistent"]
 }

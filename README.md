@@ -138,8 +138,9 @@ crap-ts --workspace --fail-above --threshold strict
 
 `--coverage` defaults to `lcov.info`. LCOV `SF:` paths must resolve to
 `.ts` / `.tsx` sources (enable source-map remapping when covering emitted
-JavaScript). `--workspace` expands npm/pnpm/yarn `workspaces` globs;
-without it, a `package.json` root is that package only. `.ts` / `.tsx`
+JavaScript). `--workspace` expands npm/yarn `workspaces` globs (`*`, `**`,
+`!`) or, when those are absent, `pnpm-workspace.yaml` `packages`; without
+`--workspace`, a `package.json` root is that package only. `.ts` / `.tsx`
 only; hand-rolled Rust visitor (no Node, no tree-sitter).
 
 ## Flags

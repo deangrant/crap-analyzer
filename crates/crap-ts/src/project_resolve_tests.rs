@@ -73,6 +73,20 @@ fn nested_packages_object_workspaces() {
 }
 
 #[test]
+fn workspaces_object_with_nohoist_reads_packages() {
+    let root = unique_temp("nohoist");
+    write_file(
+        &root.join("package.json"),
+        r#"{"workspaces":{"packages":["pkgs/*"],"nohoist":["**/react"]}}"#,
+    );
+    write_file(&root.join("pkgs/one/package.json"), r#"{"name":"one"}"#);
+    let packages = require_ok(all_packages(&root));
+    assert_eq!(packages.len(), 1);
+    assert_eq!(packages[0].name, "one");
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn unknown_package_is_resolve_error() {
     let root = unique_temp("missing");
     write_file(&root.join("package.json"), r#"{"name":"only"}"#);
@@ -164,16 +178,21 @@ fn escaped_name_in_package_json() {
 }
 
 #[test]
-fn malformed_workspaces_array_is_ignored_for_single() {
+fn malformed_workspaces_array_is_resolve_error() {
     let root = unique_temp("bad-ws");
     write_file(
         &root.join("package.json"),
         r#"{"name":"solo","workspaces":[1,2]}"#,
     );
-    // Non-string array entries fail parse → treat as no patterns → single package.
-    let packages = require_ok(all_packages(&root));
-    assert_eq!(packages.len(), 1);
-    assert_eq!(packages[0].name, "solo");
+    assert!(all_packages(&root).is_err());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn invalid_package_json_is_resolve_error() {
+    let root = unique_temp("bad-json");
+    write_file(&root.join("package.json"), "{not json");
+    assert!(all_packages(&root).is_err());
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -192,16 +211,106 @@ fn workspace_pattern_without_slash() {
 }
 
 #[test]
-fn workspace_pattern_empty_parent() {
-    let root = unique_temp("empty-parent");
+fn workspace_double_star_finds_nested() {
+    let root = unique_temp("doublestar");
     write_file(
         &root.join("package.json"),
-        r#"{"name":"root","workspaces":["/child"]}"#,
+        r#"{"name":"root","workspaces":["packages/**"]}"#,
     );
-    write_file(&root.join("child/package.json"), r#"{"name":"child"}"#);
+    write_file(&root.join("packages/a/package.json"), r#"{"name":"a"}"#);
+    write_file(
+        &root.join("packages/group/b/package.json"),
+        r#"{"name":"b"}"#,
+    );
+    let packages = require_ok(all_packages(&root));
+    assert_eq!(packages.len(), 2);
+    assert_eq!(packages[0].name, "a");
+    assert_eq!(packages[1].name, "b");
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn workspace_double_star_skips_missing_prefix() {
+    let root = unique_temp("doublestar-miss");
+    write_file(
+        &root.join("package.json"),
+        r#"{"name":"root","workspaces":["ghost/**","packages/*"]}"#,
+    );
+    write_file(&root.join("packages/a/package.json"), r#"{"name":"a"}"#);
     let packages = require_ok(all_packages(&root));
     assert_eq!(packages.len(), 1);
-    assert_eq!(packages[0].name, "child");
+    assert_eq!(packages[0].name, "a");
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn workspace_double_star_skips_node_modules() {
+    let root = unique_temp("doublestar-nm");
+    write_file(
+        &root.join("package.json"),
+        r#"{"name":"root","workspaces":["packages/**"]}"#,
+    );
+    write_file(&root.join("packages/a/package.json"), r#"{"name":"a"}"#);
+    write_file(
+        &root.join("packages/node_modules/hidden/package.json"),
+        r#"{"name":"hidden"}"#,
+    );
+    let packages = require_ok(all_packages(&root));
+    assert_eq!(packages.len(), 1);
+    assert_eq!(packages[0].name, "a");
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn workspace_multi_segment_star() {
+    let root = unique_temp("multistar");
+    write_file(
+        &root.join("package.json"),
+        r#"{"name":"root","workspaces":["packages/*/libs/*"]}"#,
+    );
+    write_file(
+        &root.join("packages/app/libs/core/package.json"),
+        r#"{"name":"core"}"#,
+    );
+    write_file(&root.join("packages/app/package.json"), r#"{"name":"app"}"#);
+    let packages = require_ok(all_packages(&root));
+    assert_eq!(packages.len(), 1);
+    assert_eq!(packages[0].name, "core");
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn workspace_negation_excludes_package() {
+    let root = unique_temp("negate");
+    write_file(
+        &root.join("package.json"),
+        r#"{"name":"root","workspaces":["packages/*","!packages/skip"]}"#,
+    );
+    write_file(
+        &root.join("packages/keep/package.json"),
+        r#"{"name":"keep"}"#,
+    );
+    write_file(
+        &root.join("packages/skip/package.json"),
+        r#"{"name":"skip"}"#,
+    );
+    let packages = require_ok(all_packages(&root));
+    assert_eq!(packages.len(), 1);
+    assert_eq!(packages[0].name, "keep");
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn overlapping_globs_dedupe() {
+    let root = unique_temp("dedupe");
+    write_file(
+        &root.join("package.json"),
+        r#"{"name":"root","workspaces":["packages/*","packages/a"]}"#,
+    );
+    write_file(&root.join("packages/a/package.json"), r#"{"name":"a"}"#);
+    let packages = require_ok(all_packages(&root));
+    assert_eq!(packages.len(), 1);
+    assert_eq!(packages[0].name, "a");
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -225,7 +334,7 @@ fn star_skips_files_and_dirs_without_package_json() {
 }
 
 #[test]
-fn workspaces_object_without_array_is_ignored() {
+fn workspaces_object_without_packages_is_single() {
     let root = unique_temp("ws-obj");
     write_file(
         &root.join("package.json"),
@@ -233,6 +342,53 @@ fn workspaces_object_without_array_is_ignored() {
     );
     let packages = require_ok(all_packages(&root));
     assert_eq!(packages.len(), 1);
+    assert_eq!(packages[0].name, "solo");
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn pnpm_workspace_yaml_alone() {
+    let root = unique_temp("pnpm-alone");
+    write_file(&root.join("package.json"), r#"{"name":"root"}"#);
+    write_file(
+        &root.join("pnpm-workspace.yaml"),
+        "packages:\n  - 'packages/*'\n",
+    );
+    write_file(&root.join("packages/a/package.json"), r#"{"name":"a"}"#);
+    let packages = require_ok(all_packages(&root));
+    assert_eq!(packages.len(), 1);
+    assert_eq!(packages[0].name, "a");
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn package_json_workspaces_win_over_pnpm_yaml() {
+    let root = unique_temp("pnpm-lose");
+    write_file(
+        &root.join("package.json"),
+        r#"{"name":"root","workspaces":["from-npm/*"]}"#,
+    );
+    write_file(
+        &root.join("pnpm-workspace.yaml"),
+        "packages:\n  - 'from-pnpm/*'\n",
+    );
+    write_file(&root.join("from-npm/a/package.json"), r#"{"name":"npm-a"}"#);
+    write_file(
+        &root.join("from-pnpm/b/package.json"),
+        r#"{"name":"pnpm-b"}"#,
+    );
+    let packages = require_ok(all_packages(&root));
+    assert_eq!(packages.len(), 1);
+    assert_eq!(packages[0].name, "npm-a");
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn invalid_pnpm_workspace_yaml_is_resolve_error() {
+    let root = unique_temp("pnpm-bad");
+    write_file(&root.join("package.json"), r#"{"name":"root"}"#);
+    write_file(&root.join("pnpm-workspace.yaml"), "catalog:\n  foo: 1\n");
+    assert!(all_packages(&root).is_err());
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -272,33 +428,4 @@ fn expand_star_unreadable_dir_is_io_error() {
     let _ = fs::set_permissions(&packages, fs::Permissions::from_mode(0o755));
     let _ = fs::remove_dir_all(&root);
     assert!(result.is_err());
-}
-
-#[test]
-fn take_star_entry_propagates_io_error() {
-    let root = unique_temp("star-entry-err");
-    require_ok(fs::create_dir_all(&root));
-    let mut out = Vec::new();
-    let result = take_star_entry(&root, Err(std::io::Error::other("boom")), &mut out);
-    let _ = fs::remove_dir_all(&root);
-    assert!(result.is_err());
-}
-
-#[test]
-fn json_helpers_reject_malformed_fields() {
-    assert!(json_string_field("{\"name\": }", "name").is_none());
-    assert!(json_string_field("{\"name\" \"x\"}", "name").is_none());
-    assert!(json_string_field("{\"name\": \"abc", "name").is_none());
-    assert!(json_string_field("{\"name\": \"\\", "name").is_none());
-    assert!(json_string_array_field("{\"workspaces\": {}", "workspaces").is_none());
-}
-
-#[test]
-fn json_helpers_arrays_and_whitespace() {
-    assert!(parse_json_string_array(" not-an-array").is_none());
-    assert!(parse_json_string_array("[\"a\\nb\", \"c\"]").is_some());
-    assert!(after_json_string("nope", 0).is_none());
-    assert!(after_json_string("\"abc", 0).is_none());
-    assert_eq!(skip_ws("  x", 0), 2);
-    assert_eq!(skip_ws_and_commas(" , x", 0), 3);
 }

@@ -41,7 +41,8 @@ SOLID: [rust-style-guide](../rust-style-guide/SKILL.md) and
 - Without `--workspace` / `-p`, a `package.json` root is that package only
   (workspaces are **not** expanded).
 - `--workspace` expands `workspaces` array or `workspaces.packages` globs
-  (e.g. `packages/*`).
+  (`*`, `**`, exact paths, and `!` exclusions). If `package.json` has no
+  workspaces, falls back to `pnpm-workspace.yaml` `packages`.
 - `-p` selects by package `name`.
 - Walk `.ts` / `.tsx`; skip `node_modules`, `.git`, `dist`, `build`,
   `coverage`, and nested `package.json` roots in `Target.skip`.

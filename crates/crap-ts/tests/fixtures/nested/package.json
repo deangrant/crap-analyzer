@@ -1,4 +1,3 @@
 {
-  "name": "nested-root",
-  "workspaces": ["packages/*"]
+  "name": "nested-root"
 }
