@@ -29,7 +29,7 @@ fn path_mode_uses_the_request_root() {
     };
     let request = ScanRequest {
         path: PathBuf::from("/proj"),
-        lcov: PathBuf::from("lcov.info"),
+        coverage: PathBuf::from("lcov.info"),
         metric: Metric::Cyclomatic,
         threshold: None,
         summary: false,
@@ -103,7 +103,7 @@ fn path_mode_uses_explicit_features() {
     };
     let request = ScanRequest {
         path: PathBuf::from("/proj"),
-        lcov: PathBuf::from("lcov.info"),
+        coverage: PathBuf::from("lcov.info"),
         metric: Metric::Cyclomatic,
         threshold: None,
         summary: false,
@@ -124,16 +124,16 @@ fn collect_targets_propagates_walk_error() {
         enabled_features: Vec::new(),
     }];
     let mut functions = Vec::new();
-    let mut warnings = Vec::new();
-    let result = collect_targets(&targets, Metric::Cyclomatic, &mut functions, &mut warnings);
+    let mut details = Vec::new();
+    let result = collect_targets(&targets, Metric::Cyclomatic, &mut functions, &mut details);
     assert!(result.is_err());
 }
 
 #[test]
-fn parse_warning_includes_path() {
-    let warning = parse_warning(Path::new("broken.rs"), &Error::collect("nope"));
-    assert!(warning.contains("broken.rs"));
-    assert!(warning.contains("nope"));
+fn parse_failure_includes_path() {
+    let detail = parse_failure(Path::new("broken.rs"), &Error::collect("nope"));
+    assert!(detail.contains("broken.rs"));
+    assert!(detail.contains("nope"));
 }
 
 #[test]
@@ -149,7 +149,7 @@ fn workspace_root_isolates_members_without_workspace_flag() {
         .map_or_else(|| PathBuf::from("."), PathBuf::from);
     let request = ScanRequest {
         path: workspace,
-        lcov: PathBuf::from("lcov.info"),
+        coverage: PathBuf::from("lcov.info"),
         metric: Metric::Cyclomatic,
         threshold: None,
         summary: false,
@@ -175,7 +175,7 @@ fn member_path_selects_only_that_package() {
     let member = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let request = ScanRequest {
         path: member,
-        lcov: PathBuf::from("lcov.info"),
+        coverage: PathBuf::from("lcov.info"),
         metric: Metric::Cyclomatic,
         threshold: None,
         summary: false,
@@ -210,7 +210,7 @@ fn broken_manifest_is_a_resolve_error() {
     assert!(written.is_ok(), "{written:?}");
     let request = ScanRequest {
         path: dir.clone(),
-        lcov: PathBuf::from("lcov.info"),
+        coverage: PathBuf::from("lcov.info"),
         metric: Metric::Cyclomatic,
         threshold: None,
         summary: false,
@@ -236,7 +236,7 @@ fn package_flag_selects_named_members() {
         .map_or_else(|| PathBuf::from("."), PathBuf::from);
     let request = ScanRequest {
         path: workspace,
-        lcov: PathBuf::from("lcov.info"),
+        coverage: PathBuf::from("lcov.info"),
         metric: Metric::Cyclomatic,
         threshold: None,
         summary: false,
@@ -274,4 +274,7 @@ fn collect_functions_fails_when_any_file_is_unparseable() {
     let result = collect_functions(&targets, Metric::Cyclomatic);
     let _ = std::fs::remove_dir_all(&dir);
     assert!(result.is_err(), "{result:?}");
+    let message = format!("{result:?}");
+    assert!(message.contains("failed to parse"), "{message}");
+    assert!(message.contains("broken.rs"), "{message}");
 }

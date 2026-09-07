@@ -99,12 +99,22 @@ fn unique_crate_hit<'a>(
     crate_name: Option<&str>,
 ) -> Option<&'a FileCoverage> {
     let name = crate_name?;
-    let mut named = winners.iter().filter(|(key, _)| crate_root_hit(key, name));
+    let mut named = winners.iter().filter(|(key, _)| package_hit(key, name));
     let first = named.next()?;
     if named.next().is_some() {
         return None;
     }
     Some(first.1)
+}
+
+/// Cargo package name or Go import path vs a coverage path key.
+fn package_hit(key: &[String], name: &str) -> bool {
+    let parts: Vec<&str> = name.split('/').filter(|part| !part.is_empty()).collect();
+    match parts.as_slice() {
+        [] => false,
+        [single] => crate_root_hit(key, single),
+        multi => import_path_hit(key, multi),
+    }
 }
 
 fn crate_root_hit(key: &[String], name: &str) -> bool {
@@ -113,6 +123,20 @@ fn crate_root_hit(key: &[String], name: &str) -> bool {
 
 fn is_source_root(part: &str) -> bool {
     ["src", "tests", "benches", "examples"].contains(&part)
+}
+
+/// Full import path or any non-empty suffix (remapped filesystem keys).
+fn import_path_hit(key: &[String], parts: &[&str]) -> bool {
+    (1..=parts.len()).rev().any(|len| {
+        let suffix = &parts[parts.len() - len..];
+        contains_contiguous(key, suffix)
+    })
+}
+
+fn contains_contiguous(key: &[String], parts: &[&str]) -> bool {
+    // `parts` is non-empty: callers only pass suffixes from `1..=parts.len()`.
+    key.windows(parts.len())
+        .any(|window| window.iter().map(String::as_str).eq(parts.iter().copied()))
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -206,6 +230,39 @@ mod tests {
         ]);
         let index = PathIndex::from_coverage(&coverage);
         assert!(index.lookup(Path::new("src/lib.rs"), Some("demo")).is_none());
+    }
+
+    #[test]
+    fn import_path_breaks_remapped_filesystem_tie() {
+        let coverage = HashMap::from([
+            (PathBuf::from("/mod/pkg_a/foo.go"), file(1)),
+            (PathBuf::from("/mod/pkg_b/foo.go"), file(99)),
+        ]);
+        let index = PathIndex::from_coverage(&coverage);
+        let found = index.lookup(Path::new("foo.go"), Some("example.com/mod/pkg_a"));
+        assert_eq!(found.and_then(|cov| cov.lines.get(&1).copied()), Some(1));
+    }
+
+    #[test]
+    fn import_path_matches_unremapped_coverprofile_keys() {
+        let coverage = HashMap::from([
+            (PathBuf::from("example.com/mod/pkg_a/foo.go"), file(1)),
+            (PathBuf::from("example.com/mod/pkg_b/foo.go"), file(99)),
+        ]);
+        let index = PathIndex::from_coverage(&coverage);
+        let found = index.lookup(Path::new("foo.go"), Some("example.com/mod/pkg_a"));
+        assert_eq!(found.and_then(|cov| cov.lines.get(&1).copied()), Some(1));
+    }
+
+    #[test]
+    fn shared_import_path_last_segment_stays_ambiguous() {
+        let coverage = HashMap::from([
+            (PathBuf::from("/a/util/foo.go"), file(1)),
+            (PathBuf::from("/b/util/foo.go"), file(99)),
+        ]);
+        let index = PathIndex::from_coverage(&coverage);
+        // Last segment alone matches both; longer suffixes match neither.
+        assert!(index.lookup(Path::new("foo.go"), Some("example.com/x/util")).is_none());
     }
 
     #[test]

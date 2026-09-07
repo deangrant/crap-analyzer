@@ -22,6 +22,7 @@ fn help_describes_the_tool() {
         &stdout,
         &[
             "USAGE:",
+            "--coverage",
             "--lcov",
             "not a quality score",
             "crap-rs [OPTIONS]",
@@ -53,7 +54,7 @@ fn without_fail_above_exits_zero() {
     let root = sample_root();
     let (code, _, _) = output_of(
         bin()
-            .arg("--lcov")
+            .arg("--coverage")
             .arg(root.join("lcov.info"))
             .arg("--path")
             .arg(&root)
@@ -106,8 +107,14 @@ fn missing_lcov_exits_two() {
 }
 
 #[test]
-fn missing_required_flag_exits_two() {
-    let (code, _, stderr) = output_of(&mut bin());
+fn missing_default_coverage_exits_two() {
+    let (code, _, stderr) = output_of(
+        bin()
+            .arg("--path")
+            .arg("/no/such/crap-rs-path")
+            .arg("--coverage")
+            .arg("/no/such/lcov.info"),
+    );
     assert_eq!(code, 2);
     assert!(!stderr.is_empty());
 }
@@ -151,8 +158,37 @@ fn fixture_json_locks_sample_scores() {
     assert_crappy_high(&value);
 }
 
+#[test]
+fn fixture_json_fail_above_sets_gate_failed() {
+    let root = sample_root();
+    let (code, stdout, stderr) = output_of(
+        bin()
+            .arg("--lcov")
+            .arg(root.join("lcov.info"))
+            .arg("--path")
+            .arg(&root)
+            .arg("--format")
+            .arg("json")
+            .arg("--threshold")
+            .arg("30")
+            .arg("--fail-above"),
+    );
+    assert_eq!(code, 1, "{stdout}{stderr}");
+    let parsed = serde_json::from_str::<serde_json::Value>(&stdout);
+    assert!(parsed.is_ok(), "{parsed:?}");
+    let value = parsed.unwrap_or_default();
+    assert_eq!(value["schema_version"], 2);
+    assert_eq!(value["result"]["passed"], false);
+    assert_eq!(value["result"]["gate_failed"], true);
+    let exceeding = value["result"]["summary"]["exceeding"].as_u64().unwrap_or(0);
+    assert!(exceeding >= 1, "{exceeding}");
+}
+
 fn assert_fixture_gate(value: &serde_json::Value) {
-    assert_eq!(value["result"]["passed"], true);
+    // Without --fail-above: passed/exceeds still reflect the threshold;
+    // gate_failed stays false and the process exits 0.
+    assert_eq!(value["schema_version"], 2);
+    assert_eq!(value["result"]["passed"], false);
     assert_eq!(value["result"]["gate_failed"], false);
     let exceeding = value["result"]["summary"]["exceeding"].as_u64().unwrap_or(0);
     assert!(exceeding >= 1, "{exceeding}");

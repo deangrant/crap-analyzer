@@ -1,0 +1,3 @@
+mode: set
+example.com/nested/main.go:3.13,6.2 2 1
+example.com/nested/pkg/lib.go:3.13,6.2 2 1

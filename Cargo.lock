@@ -107,6 +107,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "crap-go"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "crap-core",
+ "serde_json",
+]
+
+[[package]]
 name = "crap-rs"
 version = "0.1.0"
 dependencies = [

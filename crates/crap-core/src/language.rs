@@ -12,8 +12,8 @@ use std::str::FromStr;
 pub struct ScanRequest {
     /// Walk root, or language workspace root when the frontend selects packages.
     pub path: PathBuf,
-    /// LCOV coverage file.
-    pub lcov: PathBuf,
+    /// Coverage file path (format is frontend-local).
+    pub coverage: PathBuf,
     /// Complexity metric.
     pub metric: Metric,
     /// Score above which a function is flagged.
@@ -71,11 +71,11 @@ impl ScanRequest {
 pub struct Target {
     /// Directory to walk for sources.
     pub root: PathBuf,
-    /// Package name when a workspace member was selected.
+    /// Language-agnostic package key (Cargo package or Go import path).
     pub crate_name: Option<String>,
     /// Nested roots the walker must not enter.
     pub skip: Vec<PathBuf>,
-    /// Feature names treated as enabled when evaluating `#[cfg]`.
+    /// Enabled switches (Cargo `#[cfg]` features or Go build tags).
     pub enabled_features: Vec<String>,
 }
 
@@ -92,13 +92,9 @@ pub trait Language {
     ///
     /// # Errors
     ///
-    /// Returns I/O or total-parse errors. Individual parse failures become
-    /// warnings unless every file fails.
-    fn collect_functions(
-        &self,
-        targets: &[Target],
-        metric: Metric,
-    ) -> Result<(Vec<LocatedFn>, Vec<String>)>;
+    /// Returns I/O or collect errors. Any source file that fails to parse or
+    /// read fails the run.
+    fn collect_functions(&self, targets: &[Target], metric: Metric) -> Result<Vec<LocatedFn>>;
 }
 
 #[cfg(test)]
@@ -110,7 +106,7 @@ mod tests {
     fn omitted_threshold_uses_metric_default() {
         let request = ScanRequest {
             path: PathBuf::from("."),
-            lcov: PathBuf::from("lcov.info"),
+            coverage: PathBuf::from("lcov.info"),
             metric: Metric::Cyclomatic,
             threshold: None,
             summary: false,
@@ -125,7 +121,7 @@ mod tests {
     fn explicit_threshold_wins() {
         let request = ScanRequest {
             path: PathBuf::from("."),
-            lcov: PathBuf::from("lcov.info"),
+            coverage: PathBuf::from("lcov.info"),
             metric: Metric::Cognitive,
             threshold: Some(8.0),
             summary: false,

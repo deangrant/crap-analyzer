@@ -36,6 +36,11 @@ These are two axes. Do not conflate them.
 A function **exceeds** when its score is **strictly above** the active
 threshold. Moderate (score 20) can still pass a lenient gate (25).
 
+JSON (`schema_version` 2): `result.passed` is `exceeding == 0` (score vs
+threshold only). `result.gate_failed` is true only when `--fail-above` is set
+and any score exceeds. Automations that care about scores should use `passed`
+/ `exceeding`; CI exit 1 still requires `--fail-above`.
+
 ## `--missing`
 
 No LCOV data, an empty instrumented span, or an unresolved path tie:
@@ -44,13 +49,14 @@ No LCOV data, an empty instrumented span, or an unresolved path tie:
 - `optimistic` — treat as 100%
 - `skip` — drop the row
 
-A package name (`--workspace` / `-p`) breaks equal `src/lib.rs` suffix ties.
+A package name (`--workspace` / `-p`) breaks equal basename suffix ties:
+Cargo `{name}/src|…`, Go import-path path suffix.
 
 ## CI / dogfood contract
 
 [`.github/workflows/coverage.yml`](../../../.github/workflows/coverage.yml):
 
 1. `cargo llvm-cov … --fail-under-lines 100`
-2. `crap-rs --lcov lcov.info --path . --workspace --fail-above --threshold strict`
+2. `crap-rs --coverage lcov.info --path . --workspace --fail-above --threshold strict`
 
 Do not weaken those flags to green a job. Remediate coverage or complexity.

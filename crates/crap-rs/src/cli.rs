@@ -2,7 +2,7 @@
 
 use crate::RustLanguage;
 use clap::Parser;
-use crap_core::{Metric, MissingPolicy, ReportFormat, ScanRequest};
+use crap_core::{Metric, MissingPolicy, ReportFormat, ScanRequest, parse_threshold};
 use std::env;
 use std::path::PathBuf;
 
@@ -25,9 +25,9 @@ pub enum Action {
     disable_version_flag = true
 )]
 pub struct Args {
-    /// LCOV coverage file.
-    #[arg(long, required = true)]
-    pub(crate) lcov: PathBuf,
+    /// Coverage file path.
+    #[arg(long = "coverage", visible_alias = "lcov", default_value = "lcov.info")]
+    pub(crate) coverage: PathBuf,
     /// Walk root. A Cargo workspace at this path is analyzed per member.
     #[arg(long, default_value = ".")]
     pub(crate) path: PathBuf,
@@ -90,7 +90,7 @@ impl Args {
             },
             ScanRequest {
                 path: self.path.clone(),
-                lcov: self.lcov.clone(),
+                coverage: self.coverage.clone(),
                 metric: self.metric,
                 threshold: self.threshold,
                 summary: self.summary,
@@ -118,36 +118,35 @@ pub fn parse() -> std::result::Result<Action, String> {
 ///
 /// Returns a usage message for invalid flags.
 fn parse_args(raw: Vec<String>) -> std::result::Result<Action, String> {
-    if raw.iter().skip(1).any(|arg| arg == "-h" || arg == "--help") {
-        return Ok(Action::Help);
+    if let Some(action) = help_or_version(&raw) {
+        return Ok(action);
     }
-    if raw.iter().skip(1).any(|arg| arg == "-V" || arg == "--version") {
-        return Ok(Action::Version);
-    }
-    Args::try_parse_from(raw).map(Action::Run).map_err(|err| err.to_string())
+    let args = Args::try_parse_from(raw).map_err(|err| err.to_string())?;
+    reject_summary_json(&args)?;
+    Ok(Action::Run(args))
 }
 
-fn parse_threshold(text: &str) -> std::result::Result<f64, String> {
-    if let Some(preset) = named_threshold(text) {
-        return Ok(preset);
+fn help_or_version(raw: &[String]) -> Option<Action> {
+    // Keep paired with crap-go::cli::help_or_version.
+    if has_flag(raw, "-h", "--help") {
+        return Some(Action::Help);
     }
-    parse_numeric_threshold(text)
+    if has_flag(raw, "-V", "--version") {
+        return Some(Action::Version);
+    }
+    None
 }
 
-fn named_threshold(text: &str) -> Option<f64> {
-    match text {
-        "strict" => Some(8.0),
-        "lenient" => Some(25.0),
-        _ => None,
-    }
+fn has_flag(raw: &[String], short: &str, long: &str) -> bool {
+    raw.iter().skip(1).any(|arg| arg == short || arg == long)
 }
 
-fn parse_numeric_threshold(text: &str) -> std::result::Result<f64, String> {
-    let value: f64 = text.parse().map_err(|_| format!("invalid --threshold `{text}`"))?;
-    if !value.is_finite() || value < 0.0 {
-        return Err("--threshold must be a non-negative number or strict|lenient".into());
+fn reject_summary_json(args: &Args) -> std::result::Result<(), String> {
+    // Keep paired with crap-go::cli::reject_summary_json.
+    if args.summary && args.format == ReportFormat::Json {
+        return Err("--summary conflicts with --format json".into());
     }
-    Ok(value)
+    Ok(())
 }
 
 /// Usage and scoring help text.
@@ -169,24 +168,26 @@ USAGE:
     crap-rs [OPTIONS]
 
 OPTIONS:
-    --lcov <file>           LCOV file (required); must contain at least
-                            one DA line-hit. Produce one with:
+    --coverage <file>       Coverage file [default: lcov.info]; must
+                            contain at least one DA line-hit. Alias:
+                            --lcov. Produce one with:
                             cargo llvm-cov --lcov --output-path lcov.info
     --path <dir>            Walk root [default: .]. A workspace root is
                             analyzed per member; a member package root
                             is that package only (no -p required)
     --metric <name>         cyclomatic (default) or cognitive
     --threshold <n>         Flag scores strictly above this
-                            [default: 15; strict=8, lenient=25]
+                            [default: 15; strict={strict}, lenient={lenient}]
     --format <name>         text (default) or json
     --workspace             Analyze every Cargo workspace member
     -p, --package <name>    Analyze only this member (repeatable)
     --summary               Counts and worst offender; text only
+                            (conflicts with --format json)
     --fail-above            Exit 1 if any function exceeds --threshold
     --missing <policy>      No LCOV data, empty span, or an unresolved
                             path tie: pessimistic (0%, default),
                             optimistic (100%), or skip. A package name
-                            breaks equal src/lib.rs suffix ties.
+                            breaks equal basename ties ({{name}}/src|…).
     --features <list>       Extra Cargo features (comma-separated);
                             pass the same set used for cargo llvm-cov
     --all-features          Enable every named package feature
@@ -203,6 +204,8 @@ EXIT CODES:
 ",
         name = env!("CARGO_PKG_NAME"),
         version = env!("CARGO_PKG_VERSION"),
+        strict = crap_core::STRICT,
+        lenient = crap_core::LENIENT,
     )
 }
 
@@ -213,201 +216,5 @@ pub fn version_text() -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::cmp::Ordering;
-    use std::path::Path;
-
-    fn argv(args: &[&str]) -> Vec<String> {
-        std::iter::once("crap-rs")
-            .chain(args.iter().copied())
-            .map(str::to_owned)
-            .collect()
-    }
-
-    fn threshold_eq(args: &Args, expected: f64) -> bool {
-        args.parts().1.effective_threshold().total_cmp(&expected) == Ordering::Equal
-    }
-
-    #[test]
-    fn parses_flags() {
-        let action = parse_args(argv(&["--lcov", "lcov.info", "--summary"]));
-        assert!(matches!(
-            action,
-            Ok(Action::Run(ref args))
-                if args.lcov == Path::new("lcov.info") && args.summary && !args.fail_above
-        ));
-    }
-
-    #[test]
-    fn help_and_version_short_circuit() {
-        assert!(matches!(parse_args(argv(&["--help"])), Ok(Action::Help)));
-        assert!(matches!(parse_args(argv(&["-V"])), Ok(Action::Version)));
-    }
-
-    #[test]
-    fn missing_lcov_is_usage() {
-        assert!(parse_args(argv(&[])).is_err());
-    }
-
-    #[test]
-    fn workspace_conflicts_with_package() {
-        let err = parse_args(argv(&["--lcov", "x.info", "--workspace", "-p", "core"]));
-        assert!(err.is_err());
-    }
-
-    #[test]
-    fn unknown_flag_is_usage() {
-        assert!(parse_args(argv(&["--lcov", "x", "--nope"])).is_err());
-    }
-
-    #[test]
-    fn parses_missing_policy() {
-        let action = parse_args(argv(&["--lcov", "x", "--missing", "skip"]));
-        assert!(matches!(
-            action,
-            Ok(Action::Run(ref args)) if args.missing == MissingPolicy::Skip
-        ));
-    }
-
-    #[test]
-    fn default_metric_is_cyclomatic_with_threshold_fifteen() {
-        let action = parse_args(argv(&["--lcov", "x"]));
-        assert!(matches!(
-            action,
-            Ok(Action::Run(ref args))
-                if args.metric == Metric::Cyclomatic
-                    && args.format == ReportFormat::Text
-                    && threshold_eq(args, 15.0)
-        ));
-    }
-
-    #[test]
-    fn cognitive_default_threshold_is_fifteen() {
-        let action = parse_args(argv(&["--lcov", "x", "--metric", "cognitive"]));
-        assert!(matches!(
-            action,
-            Ok(Action::Run(ref args))
-                if args.metric == Metric::Cognitive && threshold_eq(args, 15.0)
-        ));
-    }
-
-    fn parsed_threshold(flag: &str) -> Option<f64> {
-        match parse_args(argv(&["--lcov", "x", "--threshold", flag])) {
-            Ok(Action::Run(args)) => Some(args.parts().1.effective_threshold()),
-            _ => None,
-        }
-    }
-
-    fn run_args(action: Result<Action, String>) -> Option<Args> {
-        match action {
-            Ok(Action::Run(args)) => Some(args),
-            Ok(Action::Help | Action::Version) | Err(_) => None,
-        }
-    }
-
-    fn fallback_args() -> Args {
-        Args::parse_from(["crap-rs", "--lcov", "x"])
-    }
-
-    #[test]
-    fn threshold_presets() {
-        let presets = [("strict", 8.0), ("lenient", 25.0)];
-        for (flag, expected) in presets {
-            let got = parsed_threshold(flag);
-            assert!(got.is_some_and(|value| value.total_cmp(&expected) == Ordering::Equal));
-        }
-        assert!(parsed_threshold("abc").is_none());
-    }
-
-    #[test]
-    fn parses_format() {
-        let action = parse_args(argv(&["--lcov", "x", "--format", "json"]));
-        assert!(matches!(
-            action,
-            Ok(Action::Run(ref args)) if args.format == ReportFormat::Json
-        ));
-    }
-
-    #[test]
-    fn invalid_format_is_usage() {
-        assert!(parse_args(argv(&["--lcov", "x", "--format", "nope"])).is_err());
-    }
-
-    #[test]
-    fn explicit_threshold_wins() {
-        let action = parse_args(argv(&[
-            "--lcov",
-            "x",
-            "--metric",
-            "cognitive",
-            "--threshold",
-            "8",
-        ]));
-        assert!(matches!(
-            action,
-            Ok(Action::Run(ref args)) if threshold_eq(args, 8.0)
-        ));
-    }
-
-    #[test]
-    fn version_text_includes_crate_name_and_version() {
-        let text = version_text();
-        assert!(text.starts_with("crap-rs "));
-        assert!(text.contains(env!("CARGO_PKG_VERSION")));
-    }
-
-    #[test]
-    fn invalid_threshold_is_usage() {
-        assert!(parse_args(argv(&["--lcov", "x", "--threshold", "abc"])).is_err());
-        assert!(parse_args(argv(&["--lcov", "x", "--threshold", "-1"])).is_err());
-        assert!(parse_args(argv(&["--lcov", "x", "--threshold", "inf"])).is_err());
-    }
-
-    #[test]
-    fn parses_feature_flags() {
-        let action = parse_args(argv(&[
-            "--lcov",
-            "x",
-            "--features",
-            "serde,std",
-            "--no-default-features",
-        ]));
-        assert!(matches!(
-            action,
-            Ok(Action::Run(ref args))
-                if args.features.features == ["serde".to_owned(), "std".to_owned()]
-                    && args.features.no_default_features
-                    && !args.features.all_features
-        ));
-    }
-
-    #[test]
-    fn leftover_crap_token_is_usage() {
-        assert!(parse_args(argv(&["crap", "--lcov", "x"])).is_err());
-    }
-
-    #[test]
-    fn parts_split_rust_flags_from_the_request() {
-        let action = parse_args(argv(&[
-            "--lcov",
-            "x.info",
-            "--workspace",
-            "--summary",
-            "--fail-above",
-        ]));
-        let args = run_args(action).unwrap_or_else(fallback_args);
-        let (lang, request) = args.parts();
-        assert!(
-            lang.workspace
-                && !lang.features.all_features
-                && request.summary
-                && request.fail_above
-                && request.lcov == Path::new("x.info")
-        );
-        let skipped = run_args(Ok(Action::Help)).unwrap_or_else(fallback_args);
-        assert!(!skipped.workspace);
-        assert!(run_args(Ok(Action::Version)).is_none());
-        assert!(run_args(Err("nope".into())).is_none());
-    }
-}
+#[path = "cli_tests.rs"]
+mod tests;

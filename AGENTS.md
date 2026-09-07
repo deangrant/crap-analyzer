@@ -14,22 +14,24 @@ symlink or point there for editor integration.
 
 ## Repository at a glance
 
-crap-analyzer is a virtual Cargo workspace that scores Rust functions by combining
-complexity with LCOV line coverage. The score is a change-risk signal, not a quality
+crap-analyzer is a virtual Cargo workspace that scores functions by combining
+complexity with line coverage. The score is a change-risk signal, not a quality
 KPI.
 
 | Package | Path | Role |
 | ------- | ---- | ---- |
 | Core | `crates/crap-core` | LCOV parse, path join, score, risk, and report |
 | Rust frontend | `crates/crap-rs` | Cargo targets, walk, complexity, and the `crap-rs` CLI |
+| Go frontend | `crates/crap-go` | Go modules, coverprofile, complexity, and the `crap-go` CLI |
 
 **Hard invariants (never violate):**
 
-- Coverage input is LCOV only. Convert other formats first; do not add a second parser.
+- `crap-core` parses LCOV only on disk. Frontends may load their native format into
+  `FileCoverage` via `run_with_coverage` (`crap-rs` LCOV, `crap-go` coverprofile).
 - Frontends implement `Language`; scoring stays in `crap-core`.
 - Risk bands classify the score. They never change the `--fail-above` gate.
 - Empty spans and missing paths use `--missing`. Do not treat a missing join as 100% coverage.
-- Workspace members are `crap-core` and `crap-rs` only.
+- Workspace members are `crap-core`, `crap-rs`, and `crap-go` only.
 - No `#[allow]`. Suppressions must be `#[expect(..., reason = "...")]`.
 
 **Runtime:** Rust toolchain `1.94.0`. Lean pipeline: `./scripts/check.sh`. Full local vs
@@ -68,8 +70,8 @@ you opt them in. This file tells you **when to load** skills and docs; rules sta
 ## Common mistakes
 
 - Reading a risk band as the `--fail-above` gate — bands classify; the gate decides pass/fail.
-- Treating empty spans or missing LCOV paths as 100% coverage — apply `--missing`.
-- Adding a second coverage parser, or documenting on-disk leftovers such as `cargo-crap`.
+- Treating empty spans or missing coverage paths as 100% coverage — apply `--missing`.
+- Adding a coverprofile (or other non-LCOV) parser in `crap-core`, or documenting on-disk leftovers such as `cargo-crap`.
 - Using `#[allow]` or silencing Clippy complexity instead of shrinking the function.
 - Claiming `/verify` or CI passed without running the commands.
 
@@ -99,6 +101,7 @@ Read the matching skill **before** editing that area. Load only what the task ne
 | -------------------- | ---------- |
 | Scoring, bands, gate, `--missing`, dogfood flags | [`crap-scoring`](.agents/skills/crap-scoring/) |
 | Visitor, empty spans, path ranking, LCOV join | [`complexity-lcov-join`](.agents/skills/complexity-lcov-join/) |
+| Go coverprofile, visitor, build tags, module walk | [`complexity-go`](.agents/skills/complexity-go/) |
 | Rust style, docs, naming, API conventions | [`rust-style-guide`](.agents/skills/rust-style-guide/) |
 | Traits, modules, dependency direction | [`rust-solid-design`](.agents/skills/rust-solid-design/) |
 | Local vs CI verify or a stop-hook follow-up | [`verify`](.agents/skills/verify/) |
@@ -108,7 +111,7 @@ Cross-crate or pipeline changes: read
 
 ## Repository Documentation
 
-- [README.md](README.md) — scoring model, `crap-rs` usage, and crate layout
+- [README.md](README.md) — scoring model, `crap-rs` / `crap-go` usage, and crate layout
 - [`.agents/docs/ARCHITECTURE.md`](.agents/docs/ARCHITECTURE.md) — crate boundaries, analysis pipeline, module maps, and invariants
 - [`Cargo.toml`](Cargo.toml) — virtual workspace members and maximum `[workspace.lints]`
 - [`clippy.toml`](clippy.toml) — complexity and line thresholds
@@ -127,7 +130,7 @@ rule the task needs.
 ### File-scoped
 
 - [`.agents/rules/rust-agent-standards/`](.agents/rules/rust-agent-standards/) — style/SOLID, `#[expect]`, Clippy 8, 500-line files (`*.rs`)
-- [`.agents/rules/crap-metric-hotspots/`](.agents/rules/crap-metric-hotspots/) — match scoring, path ranking, empty spans (complexity, merge, coverage)
+- [`.agents/rules/crap-metric-hotspots/`](.agents/rules/crap-metric-hotspots/) — match scoring, path ranking, empty spans (Rust/Go complexity, merge, coverage)
 
 ### Opt-in
 
@@ -145,6 +148,7 @@ task-specific guidance and should not be loaded unless relevant.
 - [`.agents/skills/verify/`](.agents/skills/verify/) — full local vs CI (`check.sh`, llvm-cov 100%, CRAP strict)
 - [`.agents/skills/crap-scoring/`](.agents/skills/crap-scoring/) — formula, bands vs gate, `--missing`, dogfood flags
 - [`.agents/skills/complexity-lcov-join/`](.agents/skills/complexity-lcov-join/) — visitor attribution, empty spans, path ranking
+- [`.agents/skills/complexity-go/`](.agents/skills/complexity-go/) — Go coverprofile, visitor, build tags, module walk
 
 ## Commands
 

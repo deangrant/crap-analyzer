@@ -16,7 +16,7 @@ fn assert_skip<'a>(
 }
 
 #[test]
-fn convention_dirs_skip_tests_everywhere() {
+fn convention_dirs_skip_at_package_root_only() {
     let walk = Path::new("/proj");
     let pkg = Path::new("/proj/crates/foo");
     let empty: &[PathBuf] = &[];
@@ -43,7 +43,7 @@ fn convention_dirs_skip_tests_everywhere() {
             empty,
         ),
         (
-            true,
+            false,
             Path::new("/proj/crates/foo/src/tests"),
             walk,
             Some(pkg),
@@ -51,6 +51,13 @@ fn convention_dirs_skip_tests_everywhere() {
         ),
         (
             true,
+            Path::new("/proj/tests"),
+            walk,
+            Some(Path::new("/proj")),
+            empty,
+        ),
+        (
+            false,
             Path::new("/proj/crates/tests"),
             walk,
             Some(Path::new("/proj")),
@@ -107,7 +114,7 @@ fn require_ok<T: Default + std::fmt::Debug, E: std::fmt::Debug>(
 }
 
 #[test]
-fn rust_files_skips_src_tests_and_package_tests() {
+fn rust_files_skips_package_tests_keeps_src_tests() {
     let root = temp_root();
     require_ok(fs::write(
         root.join("Cargo.toml"),
@@ -126,7 +133,7 @@ fn rust_files_skips_src_tests_and_package_tests() {
     let _ = fs::remove_dir_all(&root);
     let names = ["helper.rs", "tests.rs", "integration.rs", "lib.rs"];
     let found = names.map(|name| files.iter().any(|path| path.ends_with(name)));
-    assert_eq!(found, [false, false, false, true]);
+    assert_eq!(found, [true, false, false, true]);
 }
 
 #[test]

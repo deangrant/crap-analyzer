@@ -41,7 +41,8 @@ Known failure modes from this project's history. Read before editing
 - Macros: decisions inside unexpanded or opaque macros may be missed.
 - Trait default methods: omit (llvm-cov often has no line hits).
 - `#[cfg]`: skip unless the feature/host predicate is enabled. Unknown
-  predicates skip the item.
+  predicates skip the item. `debug_assertions` follows host `cfg!`, same
+  as `unix` / `windows`.
 
 ## Empty instrumented spans
 
@@ -55,6 +56,7 @@ LCOV `SF:` paths and source paths may be absolute or relative.
 - Rank **forward** matches (`src` ends with key) **above** reverse
   suffix length. A relative `SF:src/foo.rs` must beat a longer reverse
   false friend.
-- Equal `src/lib.rs` ties: use package name when present.
+- Equal basename ties: Cargo package name matches `{name}/src|tests|benches|examples`;
+  Go import path matches a contiguous path suffix (including remapped filesystem keys).
 - Absolute and relative spellings of the same suffix merge for join and
   nested-exclude grouping.

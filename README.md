@@ -1,13 +1,15 @@
 # crap-analyzer
 
-crap-analyzer scores each Rust function by combining complexity with LCOV
-line coverage. The Change Risk Anti-Patterns (CRAP) score is a
+crap-analyzer scores each function by combining complexity with line
+coverage. The Change Risk Anti-Patterns (CRAP) score is a
 **change-risk signal**: it rises when a function is hard to follow and
 lightly exercised by tests. It is not a quality grade, a programmer
 rating, or a management KPI.
 
-You produce LCOV with `cargo llvm-cov`. The `crap-rs` CLI reads that file
-and your sources, then prints a table or a JSON report.
+For Rust, produce LCOV with `cargo llvm-cov` and run `crap-rs`. For Go,
+produce a coverprofile with `go test -coverprofile` and run `crap-go`.
+Both frontends share scoring, risk bands, and the pass/fail gate in
+`crap-core`.
 
 ## Score
 
@@ -64,37 +66,43 @@ keeps the score over the threshold.
 ## Requirements
 
 - Rust toolchain **1.94.0** ([`rust-toolchain.toml`](rust-toolchain.toml))
-- [`cargo-llvm-cov`](https://github.com/taiki-e/cargo-llvm-cov) to produce LCOV
+- For Rust analysis: [`cargo-llvm-cov`](https://github.com/taiki-e/cargo-llvm-cov) to produce LCOV
+- For Go analysis: a Go toolchain only to generate `cover.out` (`go test`);
+  `crap-go` itself is a Rust binary and does not invoke `go`
 
-Coverage input is **LCOV only**. Convert other formats first. Do not add a
-second parser.
+`crap-core` parses **LCOV only** on disk. `crap-go` parses coverprofile in
+the frontend and passes `FileCoverage` into `run_with_coverage`. Do not add
+a second on-disk parser in core.
 
 ## Install
 
 ```bash
 cargo install --path crates/crap-rs
+cargo install --path crates/crap-go
 ```
 
 ## Usage
 
+### Rust (`crap-rs`)
+
 ```bash
 cargo llvm-cov --lcov --output-path lcov.info
-crap-rs --lcov lcov.info
+crap-rs
 ```
 
 Workspace or selected packages:
 
 ```bash
 cargo llvm-cov --workspace --lcov --output-path lcov.info
-crap-rs --workspace --lcov lcov.info
-crap-rs -p crap-rs --lcov lcov.info --summary
+crap-rs --workspace
+crap-rs -p crap-rs --summary
 ```
 
 CI gate (exit 1 after the report if any function exceeds the threshold):
 
 ```bash
-crap-rs --lcov lcov.info --fail-above
-crap-rs --lcov lcov.info --fail-above --threshold 30
+crap-rs --fail-above
+crap-rs --fail-above --threshold 30
 ```
 
 This repository runs the same gate in CI at `--threshold strict`
@@ -104,21 +112,36 @@ Pass the same `--features`, `--all-features`, and `--no-default-features`
 flags you used for `cargo llvm-cov`. Feature-gated items are skipped
 unless those features are enabled.
 
+### Go (`crap-go`)
+
+```bash
+go test -coverprofile=cover.out ./...
+crap-go --workspace
+```
+
+`--coverage` defaults to `cover.out`. Scoring, bands, `--missing`, and
+`--fail-above` match `crap-rs`. Use `--tags` for custom build tags treated
+as enabled. No Go helper or tree-sitter; the analyzer walks `go.mod`
+packages and a custom Rust visitor.
+
 ## Flags
+
+Shared flags work the same on both CLIs unless noted.
 
 | Flag | Role |
 | ---- | ---- |
-| `--lcov <file>` | LCOV from `cargo llvm-cov` (required). Must contain at least one `DA:` line-hit record. |
-| `--path <dir>` | Walk this tree (default `.`). A workspace root is analyzed per member. A member package root is that package only; `-p` is not required. |
+| `--coverage <file>` | Coverage file. `crap-rs`: LCOV (default `lcov.info`; alias `--lcov`); must contain at least one `DA:` line-hit record. `crap-go`: coverprofile (default `cover.out`); must contain a `mode:` line and at least one data line. |
+| `--path <dir>` | Walk this tree (default `.`). Rust: a workspace root is analyzed per member; a member package root is that package only. Go: a module root (`go.mod`) is analyzed per package. |
 | `--metric` | `cyclomatic` (default) or `cognitive` |
 | `--threshold` | Flag scores strictly above this. Number, `strict` (8), or `lenient` (25). Default `15` for both metrics. Independent of the risk band. |
-| `--format` | `text` (default table) or `json` (versioned envelope, `schema_version` 1) |
-| `--workspace` | Every Cargo workspace member |
-| `-p, --package <name>` | One member; repeatable; conflicts with `--workspace` |
-| `--summary` | Counts and worst offender; text only; no table |
+| `--format` | `text` (default table) or `json` (versioned envelope, `schema_version` 2). `result.passed` is true when no function exceeds `--threshold`; omitting `--fail-above` still reports `passed` / per-function `exceeds` from the threshold, but `result.gate_failed` stays false and the process exits 0. `result.gate_failed` / exit 1 require `--fail-above`. |
+| `--workspace` | Every workspace/module member |
+| `-p, --package <name>` | One member; repeatable; conflicts with `--workspace`. Go: import path. |
+| `--summary` | Counts and worst offender; text only; conflicts with `--format json` |
 | `--fail-above` | Exit 1 when any function exceeds the threshold (not the risk band) |
-| `--missing` | No LCOV data, an empty span, or an unresolved path tie: `pessimistic` (default, 0%), `optimistic` (100%), or `skip`. A package name (`--workspace` / `-p`) breaks equal `src/lib.rs` suffix ties. |
-| `--features`, `--all-features`, `--no-default-features` | Same feature universe as the `cargo llvm-cov` run that produced the LCOV file |
+| `--missing` | No coverage data, an empty span, or an unresolved path tie: `pessimistic` (default, 0%), `optimistic` (100%), or `skip`. A package name (`--workspace` / `-p`) breaks equal basename ties (Cargo `{name}/src|…`; Go import-path path suffix). |
+| `--features`, `--all-features`, `--no-default-features` | `crap-rs` only: same feature universe as the `cargo llvm-cov` run that produced the LCOV file |
+| `--tags <list>` | `crap-go` only: build tags treated as enabled (comma-separated) |
 
 ## Exit codes
 
@@ -134,9 +157,10 @@ unless those features are enabled.
 | ----- | ---- |
 | [`crap-core`](crates/crap-core) | Language-agnostic LCOV parse, path join, score, risk, and report |
 | [`crap-rs`](crates/crap-rs) | Rust discovery, complexity, and the `crap-rs` CLI |
+| [`crap-go`](crates/crap-go) | Go discovery, coverprofile, complexity, and the `crap-go` CLI |
 
-`crap-rs` implements `Language` and calls `crap_core::run`. A later
-language crate would do the same. That crate is not in this workspace.
+`crap-rs` and `crap-go` implement `Language`. Rust calls `crap_core::run`
+(LCOV on disk). Go parses coverprofile and calls `run_with_coverage`.
 
 Module maps and pipeline: [`.agents/docs/ARCHITECTURE.md`](.agents/docs/ARCHITECTURE.md).
 
@@ -167,12 +191,14 @@ Decisions inside unexpanded or opaque macros may be missed.
 - Trait default methods are omitted (llvm-cov often has no line hits).
 - Unknown `#[cfg]` predicates skip the item. Skipped items are not gated.
 - `#[cfg]` uses the host (`target_os`, `target_arch`, `target_family`,
-  `target_pointer_width`, `unix` / `windows`). Cross-compile LCOV can
-  disagree; there is no `--target` flag.
+  `target_pointer_width`, `unix` / `windows`, `debug_assertions`).
+  Cross-compile LCOV can disagree; there is no `--target` flag.
 - File and directory symlinks are followed only when the target stays
   under the walk root; cycles are skipped.
 - `$CARGO` is used only when it names an existing file (Cargo’s usual
   override); otherwise `crap-rs` runs `cargo` from `PATH`.
+- `crap-go` complexity is an approximate text scanner (not `go/ast`).
+  Generics edge cases and unusual syntax may under-count.
 
 ## Develop
 

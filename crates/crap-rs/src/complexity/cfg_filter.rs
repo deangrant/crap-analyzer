@@ -63,7 +63,7 @@ impl CfgUniverse {
         match name {
             "unix" => cfg!(unix),
             "windows" => cfg!(windows),
-            "debug_assertions" => true,
+            "debug_assertions" => cfg!(debug_assertions),
             _ => false,
         }
     }
@@ -335,10 +335,27 @@ mod tests {
     }
 
     #[test]
-    fn cfg_debug_assertions_is_kept() {
-        let fns = cyclo("#[cfg(debug_assertions)] fn f() {}");
-        assert_eq!(fns.len(), 1);
-        assert_eq!(fns[0].name, "f");
+    fn cfg_debug_assertions_is_host_gated() {
+        let fns = cyclo("#[cfg(debug_assertions)] fn f() {} fn keep() {}");
+        #[cfg(debug_assertions)]
+        assert_eq!(fns.len(), 2);
+        #[cfg(not(debug_assertions))]
+        {
+            assert_eq!(fns.len(), 1);
+            assert_eq!(fns[0].name, "keep");
+        }
+    }
+
+    #[test]
+    fn cfg_not_debug_assertions_is_host_gated() {
+        let fns = cyclo("#[cfg(not(debug_assertions))] fn f() {} fn keep() {}");
+        #[cfg(not(debug_assertions))]
+        assert_eq!(fns.len(), 2);
+        #[cfg(debug_assertions)]
+        {
+            assert_eq!(fns.len(), 1);
+            assert_eq!(fns[0].name, "keep");
+        }
     }
 
     #[test]
