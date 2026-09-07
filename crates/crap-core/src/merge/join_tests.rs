@@ -107,6 +107,7 @@ fn missing_pessimistic_is_zero() {
     let entries = join(&functions, &HashMap::new(), MissingPolicy::Pessimistic);
     assert_f64_bits_eq(entries[0].coverage, 0.0);
     assert_f64_bits_eq(entries[0].crap, 2.0);
+    assert_eq!(entries[0].coverage_join, CoverageJoin::Missing);
     assert_eq!(entries[0].start_line, 1);
     assert_eq!(entries[0].end_line, 1);
 }
@@ -133,6 +134,7 @@ fn empty_span_is_pessimistic_zero() {
     let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
     assert_f64_bits_eq(entries[0].coverage, 0.0);
     assert_f64_bits_eq(entries[0].crap, 2.0);
+    assert_eq!(entries[0].coverage_join, CoverageJoin::Missing);
 }
 
 #[test]
@@ -177,6 +179,9 @@ fn equal_length_crate_suffixes_are_ambiguous() {
     );
     let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
     assert_f64_bits_eq(entries[0].coverage, 0.0);
+    assert_eq!(entries[0].coverage_join, CoverageJoin::Ambiguous);
+    assert_eq!(ambiguous_join_count(&entries), 1);
+    assert!(ambiguous_join_warning(&entries).contains("ambiguous coverage paths"));
 }
 
 #[test]
@@ -205,6 +210,7 @@ fn crate_name_breaks_equal_length_suffix_tie() {
     );
     let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
     assert_f64_bits_eq(entries[0].coverage, 100.0);
+    assert_eq!(entries[0].coverage_join, CoverageJoin::Measured);
 }
 
 #[test]
@@ -323,6 +329,7 @@ fn equal_length_crate_suffixes_optimistic() {
     let entries = join(&functions, &coverage, MissingPolicy::Optimistic);
     assert_eq!(entries.len(), 1);
     assert_f64_bits_eq(entries[0].coverage, 100.0);
+    assert_eq!(entries[0].coverage_join, CoverageJoin::Ambiguous);
 }
 
 #[test]
@@ -345,6 +352,17 @@ fn parses_and_displays_missing_policy() {
             policy.to_string().parse::<MissingPolicy>().ok(),
             Some(policy)
         );
+    }
+}
+
+#[test]
+fn coverage_join_display_matches_as_str() {
+    for join in [
+        CoverageJoin::Measured,
+        CoverageJoin::Missing,
+        CoverageJoin::Ambiguous,
+    ] {
+        assert_eq!(join.to_string(), join.as_str());
     }
 }
 

@@ -18,7 +18,10 @@ pub use error::{Error, Result};
 #[doc(inline)]
 pub use language::{Language, ReportFormat, ScanRequest, Target};
 #[doc(inline)]
-pub use merge::{CrapEntry, FunctionComplexity, LocatedFn, MissingPolicy};
+pub use merge::{
+    CoverageJoin, CrapEntry, FunctionComplexity, LocatedFn, MissingPolicy, ambiguous_join_count,
+    ambiguous_join_warning,
+};
 #[doc(inline)]
 pub use metric::Metric;
 #[doc(inline)]

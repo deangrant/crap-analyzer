@@ -152,12 +152,12 @@ Shared flags work the same on the CLIs unless noted.
 | `--path <dir>` | Walk this tree (default `.`). Rust: a workspace root is analyzed per member; a member package root is that package only. Go: a module root (`go.mod`) is analyzed per package. TypeScript: a `package.json` root is that package only unless `--workspace` / `-p`. |
 | `--metric` | `cyclomatic` (default) or `cognitive` |
 | `--threshold` | Flag scores strictly above this. Number, `strict` (8), or `lenient` (25). Default `15` for both metrics. Independent of the risk band. |
-| `--format` | `text` (default table) or `json` (versioned envelope, `schema_version` 2). `result.passed` is true when no function exceeds `--threshold`; omitting `--fail-above` still reports `passed` / per-function `exceeds` from the threshold, but `result.gate_failed` stays false and the process exits 0. `result.gate_failed` / exit 1 require `--fail-above`. |
+| `--format` | `text` (default table) or `json` (versioned envelope, `schema_version` 3). `result.passed` is true when no function exceeds `--threshold`; omitting `--fail-above` still reports `passed` / per-function `exceeds` from the threshold, but `result.gate_failed` stays false and the process exits 0. `result.gate_failed` / exit 1 require `--fail-above`. Per-function `coverage_join` is `measured`, `missing`, or `ambiguous`; unresolved path ties also appear in `result.summary.ambiguous` and a stderr / text-footer warning. |
 | `--workspace` | Every workspace/module member |
 | `-p, --package <name>` | One member; repeatable; conflicts with `--workspace`. Go: import path. TypeScript: package `name`. |
 | `--summary` | Counts and worst offender; text only; conflicts with `--format json` |
 | `--fail-above` | Exit 1 when any function exceeds the threshold (not the risk band) |
-| `--missing` | No coverage data, an empty span, or an unresolved path tie: `pessimistic` (default, 0%), `optimistic` (100%), or `skip`. A package name (`--workspace` / `-p`) breaks equal basename ties (Cargo `{name}/src|…`; Go import-path path suffix; TypeScript `{name}/src`). |
+| `--missing` | No coverage data, an empty span, or an unresolved path tie: `pessimistic` (default, 0%), `optimistic` (100%), or `skip`. Package names strengthen path ranking and break equal basename ties (Cargo/TS `{name}/src` or `lib/…` or a unique path component; Go import-path path suffix). Leftover ties stay scored via this policy but are labeled `ambiguous`. |
 | `--features`, `--all-features`, `--no-default-features` | `crap-rs` only: same feature universe as the `cargo llvm-cov` run that produced the LCOV file |
 | `--tags <list>` | `crap-go` only: build tags treated as enabled (comma-separated) |
 

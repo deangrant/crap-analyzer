@@ -1,7 +1,7 @@
 //! Normalize LCOV paths and pick the best suffix match for a source file.
 
 use crate::coverage::FileCoverage;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::hash::BuildHasher;
 use std::path::{Component, Path, PathBuf};
@@ -16,10 +16,27 @@ pub(super) struct PathIndex {
     by_name: HashMap<String, Vec<IndexedFile>>,
 }
 
+/// Outcome of matching a source path to an LCOV file.
+#[derive(Clone, Copy)]
+pub(super) enum Lookup<'a> {
+    /// Unique best coverage file.
+    Found(&'a FileCoverage),
+    /// Equal-rank keys that package name could not uniquely break.
+    Ambiguous,
+    /// No basename or suffix match.
+    Missing,
+}
+
 impl PathIndex {
     pub(super) fn from_coverage<S: BuildHasher>(
         coverage: &HashMap<PathBuf, FileCoverage, S>,
     ) -> Self {
+        // Non-generic body so llvm-cov has one empty-key skip region to cover.
+        let mut iter = coverage.iter().map(|(path, file)| (path.as_path(), file));
+        Self::from_paths(&mut iter)
+    }
+
+    fn from_paths<'a>(coverage: &mut dyn Iterator<Item = (&'a Path, &'a FileCoverage)>) -> Self {
         let mut merged: HashMap<Vec<String>, FileCoverage> = HashMap::new();
         for (path, file) in coverage {
             let key = components(path);
@@ -27,30 +44,105 @@ impl PathIndex {
         }
         let mut by_name: HashMap<String, Vec<IndexedFile>> = HashMap::new();
         for (parts, coverage) in merged {
-            if let Some(name) = parts.last().cloned() {
-                by_name.entry(name).or_default().push(IndexedFile { parts, coverage });
+            // Empty keys cannot be looked up by basename.
+            if parts.is_empty() {
+                continue;
             }
+            let name = parts[parts.len() - 1].clone();
+            by_name.entry(name).or_default().push(IndexedFile { parts, coverage });
         }
         Self { by_name }
     }
 
-    pub(super) fn lookup(&self, source: &Path, crate_name: Option<&str>) -> Option<&FileCoverage> {
+    pub(super) fn lookup(&self, source: &Path, crate_name: Option<&str>) -> Lookup<'_> {
         let src = components(source);
-        let files = self.by_name.get(src.last()?)?;
-        pick_winner(&best_matches(&src, files), crate_name)
+        let Some(name) = src.last() else {
+            return Lookup::Missing;
+        };
+        let Some(files) = self.by_name.get(name) else {
+            return Lookup::Missing;
+        };
+        resolve_winners(
+            &best_matches_for_candidates(&src, crate_name, files),
+            crate_name,
+        )
     }
 }
 
-fn best_matches<'a>(
+fn best_matches_for_candidates<'a>(
     src: &[String],
+    crate_name: Option<&str>,
     files: &'a [IndexedFile],
 ) -> Vec<(&'a Vec<String>, &'a FileCoverage)> {
     let mut best_rank = None;
     let mut winners = Vec::new();
-    for file in files {
-        consider_match(src, file, &mut best_rank, &mut winners);
+    for candidate in source_candidates(src, crate_name) {
+        merge_candidate_matches(&candidate, files, &mut best_rank, &mut winners);
     }
     winners
+}
+
+fn merge_candidate_matches<'a>(
+    candidate: &[String],
+    files: &'a [IndexedFile],
+    best_rank: &mut Option<MatchRank>,
+    winners: &mut Vec<(&'a Vec<String>, &'a FileCoverage)>,
+) {
+    let mut cand_rank = None;
+    let mut cand_winners = Vec::new();
+    for file in files {
+        consider_match(candidate, file, &mut cand_rank, &mut cand_winners);
+    }
+    let Some(rank) = cand_rank else {
+        return;
+    };
+    if best_rank.is_some_and(|best| rank < best) {
+        return;
+    }
+    if best_rank.is_some_and(|best| rank == best) {
+        winners.extend(cand_winners);
+        dedupe_winners(winners);
+        return;
+    }
+    *best_rank = Some(rank);
+    winners.clear();
+    winners.extend(cand_winners);
+}
+
+fn dedupe_winners<'a>(winners: &mut Vec<(&'a Vec<String>, &'a FileCoverage)>) {
+    let mut seen = HashSet::new();
+    winners.retain(|(parts, _)| seen.insert(parts.as_ptr()));
+}
+
+fn source_candidates(src: &[String], crate_name: Option<&str>) -> Vec<Vec<String>> {
+    let mut out = vec![src.to_vec()];
+    // Bare filenames stay unaugmented so `pkg/lib.rs` cannot beat `pkg/src/lib.rs`
+    // via a false friend like `src/pkg/lib.rs`; package_hit handles those ties.
+    if src.len() <= 1 {
+        return out;
+    }
+    let Some(name) = crate_name else {
+        return out;
+    };
+    let parts = package_parts(name);
+    if parts.is_empty() {
+        return out;
+    }
+    out.push(prepend(&parts, src));
+    if parts.len() > 1 {
+        out.push(prepend(&parts[parts.len() - 1..], src));
+    }
+    out
+}
+
+fn package_parts(name: &str) -> Vec<String> {
+    name.split('/').filter(|part| !part.is_empty()).map(str::to_owned).collect()
+}
+
+fn prepend(prefix: &[String], src: &[String]) -> Vec<String> {
+    let mut out = prefix.to_vec();
+    out.extend(src.iter().cloned());
+    out
 }
 
 fn consider_match<'a>(
@@ -83,14 +175,14 @@ fn apply_rank<'a>(
     winners.push((&file.parts, &file.coverage));
 }
 
-fn pick_winner<'a>(
+fn resolve_winners<'a>(
     winners: &[(&'a Vec<String>, &'a FileCoverage)],
     crate_name: Option<&str>,
-) -> Option<&'a FileCoverage> {
+) -> Lookup<'a> {
     match winners {
-        [] => None,
-        [(_, file)] => Some(*file),
-        many => unique_crate_hit(many, crate_name),
+        [] => Lookup::Missing,
+        [(_, file)] => Lookup::Found(file),
+        many => unique_crate_hit(many, crate_name).map_or(Lookup::Ambiguous, Lookup::Found),
     }
 }
 
@@ -99,7 +191,17 @@ fn unique_crate_hit<'a>(
     crate_name: Option<&str>,
 ) -> Option<&'a FileCoverage> {
     let name = crate_name?;
-    let mut named = winners.iter().filter(|(key, _)| package_hit(key, name));
+    // Prefer Cargo/TS `{name}/{src|lib|…}` (and Go import suffixes) before a bare
+    // path-component hit, so `demo/src/…` wins over false friend `src/demo/…`.
+    unique_named(winners, name, true).or_else(|| unique_named(winners, name, false))
+}
+
+fn unique_named<'a>(
+    winners: &[(&'a Vec<String>, &'a FileCoverage)],
+    name: &str,
+    strong_only: bool,
+) -> Option<&'a FileCoverage> {
+    let mut named = winners.iter().filter(|(key, _)| package_hit(key, name, strong_only));
     let first = named.next()?;
     if named.next().is_some() {
         return None;
@@ -107,12 +209,13 @@ fn unique_crate_hit<'a>(
     Some(first.1)
 }
 
-/// Cargo package name or Go import path vs a coverage path key.
-fn package_hit(key: &[String], name: &str) -> bool {
+/// Cargo package name, Go import path, or npm package name vs a coverage path key.
+fn package_hit(key: &[String], name: &str, strong_only: bool) -> bool {
     let parts: Vec<&str> = name.split('/').filter(|part| !part.is_empty()).collect();
     match parts.as_slice() {
         [] => false,
-        [single] => crate_root_hit(key, single),
+        [single] if strong_only => crate_root_hit(key, single),
+        [single] => crate_root_hit(key, single) || contains_contiguous(key, &[single]),
         multi => import_path_hit(key, multi),
     }
 }
@@ -122,7 +225,7 @@ fn crate_root_hit(key: &[String], name: &str) -> bool {
 }
 
 fn is_source_root(part: &str) -> bool {
-    ["src", "tests", "benches", "examples"].contains(&part)
+    ["src", "lib", "tests", "benches", "examples"].contains(&part)
 }
 
 /// Full import path or any non-empty suffix (remapped filesystem keys).
@@ -200,87 +303,5 @@ fn is_suffix_pair(a: &[String], b: &[String]) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn file(hits: u64) -> FileCoverage {
-        FileCoverage {
-            lines: std::iter::once((1, hits)).collect(),
-        }
-    }
-
-    #[test]
-    fn lookup_only_considers_the_same_basename() {
-        let coverage = HashMap::from([
-            (PathBuf::from("src/foo.rs"), file(1)),
-            (PathBuf::from("src/bar.rs"), file(99)),
-        ]);
-        let index = PathIndex::from_coverage(&coverage);
-        let found = index.lookup(Path::new("/proj/src/foo.rs"), None);
-        assert_eq!(found.and_then(|cov| cov.lines.get(&1).copied()), Some(1));
-        assert!(index.lookup(Path::new("/proj/src/missing.rs"), None).is_none());
-        assert!(index.lookup(Path::new(""), None).is_none());
-    }
-
-    #[test]
-    fn two_crate_named_suffixes_are_ambiguous() {
-        let coverage = HashMap::from([
-            (PathBuf::from("/ws/demo/src/lib.rs"), file(1)),
-            (PathBuf::from("/other/demo/src/lib.rs"), file(99)),
-        ]);
-        let index = PathIndex::from_coverage(&coverage);
-        assert!(index.lookup(Path::new("src/lib.rs"), Some("demo")).is_none());
-    }
-
-    #[test]
-    fn import_path_breaks_remapped_filesystem_tie() {
-        let coverage = HashMap::from([
-            (PathBuf::from("/mod/pkg_a/foo.go"), file(1)),
-            (PathBuf::from("/mod/pkg_b/foo.go"), file(99)),
-        ]);
-        let index = PathIndex::from_coverage(&coverage);
-        let found = index.lookup(Path::new("foo.go"), Some("example.com/mod/pkg_a"));
-        assert_eq!(found.and_then(|cov| cov.lines.get(&1).copied()), Some(1));
-    }
-
-    #[test]
-    fn import_path_matches_unremapped_coverprofile_keys() {
-        let coverage = HashMap::from([
-            (PathBuf::from("example.com/mod/pkg_a/foo.go"), file(1)),
-            (PathBuf::from("example.com/mod/pkg_b/foo.go"), file(99)),
-        ]);
-        let index = PathIndex::from_coverage(&coverage);
-        let found = index.lookup(Path::new("foo.go"), Some("example.com/mod/pkg_a"));
-        assert_eq!(found.and_then(|cov| cov.lines.get(&1).copied()), Some(1));
-    }
-
-    #[test]
-    fn shared_import_path_last_segment_stays_ambiguous() {
-        let coverage = HashMap::from([
-            (PathBuf::from("/a/util/foo.go"), file(1)),
-            (PathBuf::from("/b/util/foo.go"), file(99)),
-        ]);
-        let index = PathIndex::from_coverage(&coverage);
-        // Last segment alone matches both; longer suffixes match neither.
-        assert!(index.lookup(Path::new("foo.go"), Some("example.com/x/util")).is_none());
-    }
-
-    #[test]
-    fn apply_rank_ignores_a_worse_suffix() {
-        let better = IndexedFile {
-            parts: vec!["src".into(), "foo.rs".into()],
-            coverage: file(1),
-        };
-        let worse = IndexedFile {
-            parts: vec!["foo.rs".into()],
-            coverage: file(9),
-        };
-        let src = vec!["proj".into(), "src".into(), "foo.rs".into()];
-        let mut best_rank = None;
-        let mut winners = Vec::new();
-        consider_match(&src, &better, &mut best_rank, &mut winners);
-        consider_match(&src, &worse, &mut best_rank, &mut winners);
-        assert_eq!(winners.len(), 1);
-        assert_eq!(winners[0].1.lines.get(&1).copied(), Some(1));
-    }
-}
+#[path = "path_index_tests.rs"]
+mod tests;

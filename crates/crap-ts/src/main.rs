@@ -1,6 +1,6 @@
 //! Binary entry point for `crap-ts`.
 
-use crap_core::{Error, RunResult, ScanRequest, render, run};
+use crap_core::{Error, RunResult, ScanRequest, ambiguous_join_warning, render, run};
 use crap_ts::cli::{self, Action};
 use std::io::IsTerminal;
 use std::process::ExitCode;
@@ -29,6 +29,7 @@ fn run_scan(args: &cli::Args) -> ExitCode {
 }
 
 fn finish_run(request: &ScanRequest, result: &RunResult) -> ExitCode {
+    emit_ambiguous_warning(result);
     exit_from_render(
         render(request, result, "typescript", color_enabled()),
         result.gate_failed,
@@ -48,6 +49,13 @@ fn finish_ok(text: &str, gate_failed: bool) -> ExitCode {
         ExitCode::from(1)
     } else {
         ExitCode::SUCCESS
+    }
+}
+
+fn emit_ambiguous_warning(result: &RunResult) {
+    let warning = ambiguous_join_warning(&result.entries);
+    if !warning.is_empty() {
+        emit_stderr(&warning);
     }
 }
 
@@ -115,6 +123,35 @@ mod tests {
             format: crap_core::ReportFormat::Text,
         };
         let result = RunResult::default();
+        assert_eq!(finish_run(&request, &result), ExitCode::SUCCESS);
+    }
+
+    #[test]
+    fn finish_run_emits_ambiguous_path_warning() {
+        let request = ScanRequest {
+            path: std::path::PathBuf::from("."),
+            coverage: std::path::PathBuf::from("lcov.info"),
+            metric: crap_core::Metric::Cyclomatic,
+            threshold: None,
+            summary: true,
+            fail_above: false,
+            missing: crap_core::MissingPolicy::Pessimistic,
+            format: crap_core::ReportFormat::Text,
+        };
+        let result = RunResult {
+            entries: vec![crap_core::CrapEntry {
+                file: std::path::PathBuf::from("src/util.ts"),
+                function: "tied".into(),
+                start_line: 1,
+                end_line: 1,
+                complexity: 1,
+                coverage: 0.0,
+                coverage_join: crap_core::CoverageJoin::Ambiguous,
+                crap: 2.0,
+                crate_name: None,
+            }],
+            gate_failed: false,
+        };
         assert_eq!(finish_run(&request, &result), ExitCode::SUCCESS);
     }
 }

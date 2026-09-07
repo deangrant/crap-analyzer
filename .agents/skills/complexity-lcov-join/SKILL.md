@@ -56,7 +56,15 @@ LCOV `SF:` paths and source paths may be absolute or relative.
 - Rank **forward** matches (`src` ends with key) **above** reverse
   suffix length. A relative `SF:src/foo.rs` must beat a longer reverse
   false friend.
-- Equal basename ties: Cargo package name matches `{name}/src|tests|benches|examples`;
-  Go import path matches a contiguous path suffix (including remapped filesystem keys).
+- When a package name is known, also rank against package-augmented
+  source spellings (`{name}/…` and, for multi-segment names, the last
+  segment only). Bare filenames are not augmented (avoids
+  `src/{name}/lib.rs` false friends).
+- Equal basename ties: prefer `{name}/{src|lib|tests|benches|examples}`;
+  else a unique path-component hit. Go import paths and scoped npm names
+  match a contiguous path suffix (including remapped filesystem keys).
 - Absolute and relative spellings of the same suffix merge for join and
   nested-exclude grouping.
+- Leftover unresolved ties still apply `--missing`, but are marked
+  `coverage_join: ambiguous` (JSON schema 3) and warned on stderr / in
+  the text footer — distinct from ordinary missing coverage.

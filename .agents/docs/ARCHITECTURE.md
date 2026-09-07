@@ -138,7 +138,7 @@ Pipeline entry: [`run`](../../crates/crap-core/src/run.rs) /
 **Risk bands** (Low / Acceptable / Moderate / High) classify the score. The
 **gate** (`--threshold`, `--fail-above`) is a separate pass/fail line. Do not
 read a Moderate band as “exceeds threshold.” JSON `result.passed` tracks
-threshold exceedances (`schema_version` 2); `gate_failed` / exit 1 still need
+threshold exceedances (`schema_version` 3); `gate_failed` / exit 1 still need
 `--fail-above`. Detail: [crap-scoring](../skills/crap-scoring/SKILL.md).
 
 ## `crap-rs` module map

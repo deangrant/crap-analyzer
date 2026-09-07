@@ -187,7 +187,8 @@ OPTIONS:
     --missing <policy>      No LCOV data, empty span, or an unresolved
                             path tie: pessimistic (0%, default),
                             optimistic (100%), or skip. A package name
-                            breaks equal basename ties ({{name}}/src|…).
+                            breaks equal basename ties ({{name}}/src|lib|…).
+                            Leftover ties are labeled ambiguous.
     --features <list>       Extra Cargo features (comma-separated);
                             pass the same set used for cargo llvm-cov
     --all-features          Enable every named package feature

@@ -31,6 +31,9 @@ SOLID: [rust-style-guide](../rust-style-guide/SKILL.md) and
 - LCOV `SF:` paths must resolve to `.ts` / `.tsx` sources. Enable source-map
   remapping when covering emitted JavaScript under `dist/`.
 - Empty spans and missing path joins use core `--missing`.
+- Unresolved equal-rank ties are `coverage_join: ambiguous` (still
+  scored via `--missing`); package names strengthen ranking
+  (`{name}/src|lib|…` or a unique path component).
 
 ## Package walk
 

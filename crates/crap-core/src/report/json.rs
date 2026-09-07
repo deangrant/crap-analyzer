@@ -2,7 +2,7 @@
 
 use super::display_path;
 use crate::error::{Error, Result};
-use crate::merge::CrapEntry;
+use crate::merge::{CrapEntry, ambiguous_join_count};
 use crate::metric::Metric;
 use crate::score::{Risk, classify_risk, exceeds_threshold, to_f64};
 use serde::Serialize;
@@ -22,7 +22,7 @@ pub fn render_json(
     let exceeding = entries.iter().filter(|e| exceeds_threshold(e.crap, threshold)).count();
     let scores: Vec<f64> = entries.iter().map(|e| e.crap).collect();
     let doc = ReportDoc {
-        schema_version: 2,
+        schema_version: 3,
         language,
         metric: metric.to_string(),
         threshold,
@@ -32,6 +32,7 @@ pub fn render_json(
             summary: SummaryDoc {
                 functions: entries.len(),
                 exceeding,
+                ambiguous: ambiguous_join_count(entries),
                 average_crap: average(&scores),
                 median_crap: median(&scores),
                 risk: risk_counts(entries),
@@ -67,6 +68,7 @@ struct ResultDoc {
 struct SummaryDoc {
     functions: usize,
     exceeding: usize,
+    ambiguous: usize,
     average_crap: f64,
     median_crap: f64,
     risk: RiskCounts,
@@ -86,6 +88,7 @@ struct FunctionDoc {
     identity: IdentityDoc,
     complexity: usize,
     coverage_percent: f64,
+    coverage_join: &'static str,
     crap: f64,
     risk: String,
 }
@@ -119,6 +122,7 @@ fn function_doc(entry: &CrapEntry, threshold: f64) -> FunctionDoc {
         },
         complexity: entry.complexity,
         coverage_percent: entry.coverage,
+        coverage_join: entry.coverage_join.as_str(),
         crap: entry.crap,
         risk: classify_risk(entry.crap).to_string(),
     }
@@ -166,6 +170,7 @@ fn median(scores: &[f64]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::merge::CoverageJoin;
     use crate::metric::Metric;
     use serde_json::Value;
     use std::path::PathBuf;
@@ -185,6 +190,7 @@ mod tests {
             end_line,
             complexity: cc,
             coverage: cov,
+            coverage_join: CoverageJoin::Measured,
             crap,
             crate_name: crate_name.map(str::to_owned),
         }
@@ -232,7 +238,7 @@ mod tests {
         assert_fields(
             &value,
             &[
-                ("/schema_version", Value::from(2)),
+                ("/schema_version", Value::from(3)),
                 ("/language", Value::from("rust")),
                 ("/metric", Value::from("cyclomatic")),
                 ("/threshold", Value::from(15.0)),
@@ -240,6 +246,7 @@ mod tests {
                 ("/result/gate_failed", Value::from(false)),
                 ("/result/summary/functions", Value::from(2)),
                 ("/result/summary/exceeding", Value::from(1)),
+                ("/result/summary/ambiguous", Value::from(0)),
                 ("/result/summary/average_crap", Value::from(78.5)),
                 ("/result/summary/median_crap", Value::from(78.5)),
                 ("/result/summary/risk/low", Value::from(1)),
@@ -256,12 +263,14 @@ mod tests {
             &[
                 ("/result/functions/1/exceeds", Value::from(true)),
                 ("/result/functions/1/risk", Value::from("high")),
+                ("/result/functions/1/coverage_join", Value::from("measured")),
                 (
                     "/result/functions/1/identity/span/end_line",
                     Value::from(24),
                 ),
                 ("/result/functions/0/exceeds", Value::from(false)),
                 ("/result/functions/0/risk", Value::from("low")),
+                ("/result/functions/0/coverage_join", Value::from("measured")),
             ],
         );
     }
@@ -283,6 +292,7 @@ mod tests {
                 ("/result/passed", Value::from(true)),
                 ("/result/summary/functions", Value::from(0)),
                 ("/result/summary/exceeding", Value::from(0)),
+                ("/result/summary/ambiguous", Value::from(0)),
                 ("/result/summary/average_crap", Value::from(0.0)),
                 ("/result/summary/median_crap", Value::from(0.0)),
                 ("/result/summary/risk/low", Value::from(0)),
@@ -329,6 +339,18 @@ mod tests {
         assert_eq!(value["result"]["passed"], false);
         assert_eq!(value["result"]["gate_failed"], true);
         assert_eq!(value["result"]["summary"]["exceeding"], 1);
+    }
+
+    #[test]
+    fn ambiguous_join_is_reported_in_json() {
+        let mut entries = mixed_entries();
+        entries[1].coverage_join = CoverageJoin::Ambiguous;
+        let value = json(&entries, 15.0, Metric::Cyclomatic, false);
+        assert_eq!(value["result"]["summary"]["ambiguous"], 1);
+        assert_eq!(
+            value["result"]["functions"][1]["coverage_join"],
+            "ambiguous"
+        );
     }
 
     #[test]

@@ -163,6 +163,8 @@ OPTIONS:
                             unresolved path tie: pessimistic (0%,
                             default), optimistic (100%), or skip.
                             A package name breaks equal basename ties
+                            ({{name}}/src|lib|…). Leftover ties are
+                            labeled ambiguous.
     -h, --help              Print help
     -V, --version           Print version
 

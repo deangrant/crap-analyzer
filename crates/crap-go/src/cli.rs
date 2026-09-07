@@ -164,7 +164,8 @@ OPTIONS:
     --missing <policy>      No coverage data, empty span, or an
                             unresolved path tie: pessimistic (0%,
                             default), optimistic (100%), or skip.
-                            An import path breaks equal basename ties
+                            An import path breaks equal basename ties.
+                            Leftover ties are labeled ambiguous.
     --tags <list>           Build tags treated as enabled
                             (comma-separated)
     -h, --help              Print help

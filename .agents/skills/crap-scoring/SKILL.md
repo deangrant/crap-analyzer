@@ -36,10 +36,12 @@ These are two axes. Do not conflate them.
 A function **exceeds** when its score is **strictly above** the active
 threshold. Moderate (score 20) can still pass a lenient gate (25).
 
-JSON (`schema_version` 2): `result.passed` is `exceeding == 0` (score vs
+JSON (`schema_version` 3): `result.passed` is `exceeding == 0` (score vs
 threshold only). `result.gate_failed` is true only when `--fail-above` is set
-and any score exceeds. Automations that care about scores should use `passed`
-/ `exceeding`; CI exit 1 still requires `--fail-above`.
+and any score exceeds. Each function has `coverage_join` (`measured` /
+`missing` / `ambiguous`); `result.summary.ambiguous` counts unresolved path
+ties. Automations that care about scores should use `passed` / `exceeding`;
+CI exit 1 still requires `--fail-above`.
 
 ## `--missing`
 
@@ -49,8 +51,12 @@ No LCOV data, an empty instrumented span, or an unresolved path tie:
 - `optimistic` — treat as 100%
 - `skip` — drop the row
 
-A package name (`--workspace` / `-p`) breaks equal basename suffix ties:
-Cargo `{name}/src|…`, Go import-path path suffix.
+Unresolved path ties are still scored via this policy, but are labeled
+`ambiguous` (not `missing`) and emit a stderr / text-footer warning.
+
+A package name (`--workspace` / `-p`) strengthens ranking and breaks equal
+basename suffix ties: Cargo/TS `{name}/src|lib|…` (or a unique path
+component); Go import-path path suffix.
 
 ## CI / dogfood contract
 
