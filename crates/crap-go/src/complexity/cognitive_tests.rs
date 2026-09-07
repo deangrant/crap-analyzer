@@ -15,6 +15,13 @@ fn else_is_flat_one() {
 }
 
 #[test]
+fn else_if_is_flat_else_plus_if() {
+    let body = "{ if a { x } else if b { y } }";
+    // if: 1, else: 1, if: 1 → 3
+    assert_eq!(count(body), 3);
+}
+
+#[test]
 fn bool_run_counts_once() {
     let body = "{ if a && b && c { x } }";
     // if: 1, && run: 1 → 2

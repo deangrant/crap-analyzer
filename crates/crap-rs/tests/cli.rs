@@ -185,6 +185,8 @@ fn fixture_json_fail_above_sets_gate_failed() {
 }
 
 fn assert_fixture_gate(value: &serde_json::Value) {
+    // Without --fail-above: passed/exceeds still reflect the threshold;
+    // gate_failed stays false and the process exits 0.
     assert_eq!(value["schema_version"], 2);
     assert_eq!(value["result"]["passed"], false);
     assert_eq!(value["result"]["gate_failed"], false);

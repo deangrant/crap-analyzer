@@ -101,6 +101,21 @@ mod tests {
     }
 
     #[test]
+    fn else_if_chain_counts_each_if() {
+        let src =
+            "package p\nfunc f(x int) {\n  if x > 0 {\n  } else if x < 0 {\n  } else {\n  }\n}\n";
+        // base + if + if (else does not add)
+        assert_eq!(snippet(src), 3);
+    }
+
+    #[test]
+    fn type_switch_counts_cases_not_switch() {
+        let src = "package p\nfunc f(x any) {\n  switch x.(type) {\n  case int:\n  case string:\n  default:\n  }\n}\n";
+        // base + case + case + default
+        assert_eq!(snippet(src), 4);
+    }
+
+    #[test]
     fn comments_and_strings_are_ignored() {
         let src = r#"package p
 func f() {

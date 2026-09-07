@@ -48,6 +48,12 @@ fn methods_and_pointer_receivers() {
 }
 
 #[test]
+fn generic_method_receiver_emits_type_name() {
+    let src = "package p\nfunc (s *S[T]) M() {}\n";
+    assert!(names(src).iter().any(|n| n == "S.M"));
+}
+
+#[test]
 fn result_tuple_and_slice_types() {
     let src =
         "package p\nfunc F() (int, error) { return 0, nil }\nfunc G() []byte { return nil }\n";

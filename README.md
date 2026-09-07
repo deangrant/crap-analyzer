@@ -134,7 +134,7 @@ Shared flags work the same on both CLIs unless noted.
 | `--path <dir>` | Walk this tree (default `.`). Rust: a workspace root is analyzed per member; a member package root is that package only. Go: a module root (`go.mod`) is analyzed per package. |
 | `--metric` | `cyclomatic` (default) or `cognitive` |
 | `--threshold` | Flag scores strictly above this. Number, `strict` (8), or `lenient` (25). Default `15` for both metrics. Independent of the risk band. |
-| `--format` | `text` (default table) or `json` (versioned envelope, `schema_version` 2). `result.passed` is true when no function exceeds `--threshold`; `result.gate_failed` / exit 1 require `--fail-above`. |
+| `--format` | `text` (default table) or `json` (versioned envelope, `schema_version` 2). `result.passed` is true when no function exceeds `--threshold`; omitting `--fail-above` still reports `passed` / per-function `exceeds` from the threshold, but `result.gate_failed` stays false and the process exits 0. `result.gate_failed` / exit 1 require `--fail-above`. |
 | `--workspace` | Every workspace/module member |
 | `-p, --package <name>` | One member; repeatable; conflicts with `--workspace`. Go: import path. |
 | `--summary` | Counts and worst offender; text only; conflicts with `--format json` |

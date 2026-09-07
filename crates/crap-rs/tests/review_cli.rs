@@ -182,3 +182,72 @@ fn mixed_parse_with_fail_above_still_exits_two() {
     assert_eq!(code, 2, "{stdout}{stderr}");
     assert!(stderr.contains("failed to parse"), "{stderr}");
 }
+
+#[test]
+fn mixed_parse_without_fail_above_still_exits_two() {
+    let root = temp_root("mixed-no-gate");
+    require_ok(fs::create_dir_all(&root));
+    require_ok(fs::write(root.join("ok.rs"), "fn keep() {}\n"));
+    require_ok(fs::write(root.join("broken.rs"), "fn not rust {{{"));
+    let lcov = root.join("lcov.info");
+    require_ok(fs::write(&lcov, "TN:\nSF:ok.rs\nDA:1,1\nend_of_record\n"));
+    let (code, stdout, stderr) = output_of(bin().arg("--lcov").arg(&lcov).arg("--path").arg(&root));
+    let _ = fs::remove_dir_all(&root);
+    assert_eq!(code, 2, "{stdout}{stderr}");
+    assert!(stderr.contains("failed to parse"), "{stderr}");
+    assert!(!stdout.contains("FUNCTION"), "{stdout}");
+}
+
+#[test]
+fn debug_assertions_gated_fn_uses_missing_when_lcov_omits_it() {
+    let root = temp_root("cfg-debug");
+    require_ok(fs::create_dir_all(&root));
+    require_ok(fs::write(
+        root.join("lib.rs"),
+        concat!(
+            "fn keep() {}\n\n",
+            "#[cfg(debug_assertions)]\n",
+            "fn gated() {\n",
+            "    let x = 1;\n",
+            "    let _ = x;\n",
+            "}\n",
+        ),
+    ));
+    // Coverage as if produced without debug_assertions: only `keep` has DA lines.
+    let lcov = root.join("lcov.info");
+    require_ok(fs::write(&lcov, "TN:\nSF:lib.rs\nDA:1,1\nend_of_record\n"));
+    let (code, stdout, stderr) = output_of(
+        bin()
+            .arg("--lcov")
+            .arg(&lcov)
+            .arg("--path")
+            .arg(&root)
+            .arg("--missing")
+            .arg("pessimistic")
+            .arg("--format")
+            .arg("json"),
+    );
+    let _ = fs::remove_dir_all(&root);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    let parsed = serde_json::from_str::<serde_json::Value>(&stdout);
+    assert!(parsed.is_ok(), "{parsed:?}");
+    let value = parsed.unwrap_or_default();
+    let rows = value["result"]["functions"].as_array().cloned().unwrap_or_default();
+    let keep = rows.iter().find(|row| row["identity"]["function"] == "keep");
+    assert!(keep.is_some(), "{value}");
+    #[cfg(debug_assertions)]
+    {
+        let gated = rows.iter().find(|row| row["identity"]["function"] == "gated");
+        assert!(gated.is_some(), "{value}");
+        if let Some(row) = gated {
+            assert_eq!(row["coverage_percent"], 0.0);
+        }
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        assert!(
+            rows.iter().all(|row| row["identity"]["function"] != "gated"),
+            "{value}"
+        );
+    }
+}
