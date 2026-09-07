@@ -51,8 +51,7 @@ fn module_root_resolves_packages() {
     };
     let targets = require_ok(lang.resolve_targets(&request(&root)));
     assert_eq!(targets.len(), 2);
-    let (fns, warnings) = require_ok(lang.collect_functions(&targets, Metric::Cyclomatic));
-    assert!(warnings.is_empty());
+    let fns = require_ok(lang.collect_functions(&targets, Metric::Cyclomatic));
     assert!(fns.iter().any(|f| f.function.name == "main"));
     assert!(fns.iter().any(|f| f.function.name == "Hi"));
     let _ = fs::remove_dir_all(&root);
@@ -124,8 +123,7 @@ fn build_tag_skips_file() {
         tags: Vec::new(),
     };
     let targets = require_ok(lang.resolve_targets(&request(&root)));
-    let (fns, warnings) = require_ok(lang.collect_functions(&targets, Metric::Cyclomatic));
-    assert!(warnings.is_empty());
+    let fns = require_ok(lang.collect_functions(&targets, Metric::Cyclomatic));
     assert!(fns.iter().any(|f| f.function.name == "Ok"));
     assert!(!fns.iter().any(|f| f.function.name == "main"));
     let _ = fs::remove_dir_all(&root);

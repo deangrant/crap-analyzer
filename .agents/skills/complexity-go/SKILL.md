@@ -33,7 +33,8 @@ empty spans apply after coverprofile is in `FileCoverage`).
   data line.
 - Data line shape:
   `file.go:startLine.startCol,endLine.endCol stmts hits`.
-- Expand each block across `startLine..=endLine` into `FileCoverage.lines`.
+- Expand each block across `startLine..=endLine` into `FileCoverage.lines`
+  (per-line map expansion; fine at normal coverprofile scale).
 - `set`: hit → store `max(1)`. `count` / `atomic`: saturating-add hits.
 - Normalize `\` to `/` in paths.
 - After parse, remap import-path keys (`module/pkg/file.go`) to filesystem
@@ -79,5 +80,6 @@ Custom Rust scanner over source text (not `go/ast`, not tree-sitter).
 `else`; a run of the same `&&` or `||` counts once. No per-`case`
 increment.
 
-Limits: imperfect Go grammar coverage (generics edge cases, unusual
-syntax). Prefer fixing the Rust visitor over adding a Go runtime dependency.
+Limits: approximate by design — text scanner, not `go/ast`. Generics edge
+cases and unusual syntax may under-count. Prefer fixing the Rust visitor
+over adding a Go runtime dependency.

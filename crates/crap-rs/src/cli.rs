@@ -2,7 +2,7 @@
 
 use crate::RustLanguage;
 use clap::Parser;
-use crap_core::{Metric, MissingPolicy, ReportFormat, ScanRequest};
+use crap_core::{Metric, MissingPolicy, ReportFormat, ScanRequest, parse_threshold};
 use std::env;
 use std::path::PathBuf;
 
@@ -124,30 +124,16 @@ fn parse_args(raw: Vec<String>) -> std::result::Result<Action, String> {
     if raw.iter().skip(1).any(|arg| arg == "-V" || arg == "--version") {
         return Ok(Action::Version);
     }
-    Args::try_parse_from(raw).map(Action::Run).map_err(|err| err.to_string())
+    let args = Args::try_parse_from(raw).map_err(|err| err.to_string())?;
+    reject_summary_json(&args)?;
+    Ok(Action::Run(args))
 }
 
-fn parse_threshold(text: &str) -> std::result::Result<f64, String> {
-    if let Some(preset) = named_threshold(text) {
-        return Ok(preset);
+fn reject_summary_json(args: &Args) -> std::result::Result<(), String> {
+    if args.summary && args.format == ReportFormat::Json {
+        return Err("--summary conflicts with --format json".into());
     }
-    parse_numeric_threshold(text)
-}
-
-fn named_threshold(text: &str) -> Option<f64> {
-    match text {
-        "strict" => Some(8.0),
-        "lenient" => Some(25.0),
-        _ => None,
-    }
-}
-
-fn parse_numeric_threshold(text: &str) -> std::result::Result<f64, String> {
-    let value: f64 = text.parse().map_err(|_| format!("invalid --threshold `{text}`"))?;
-    if !value.is_finite() || value < 0.0 {
-        return Err("--threshold must be a non-negative number or strict|lenient".into());
-    }
-    Ok(value)
+    Ok(())
 }
 
 /// Usage and scoring help text.
@@ -178,16 +164,17 @@ OPTIONS:
                             is that package only (no -p required)
     --metric <name>         cyclomatic (default) or cognitive
     --threshold <n>         Flag scores strictly above this
-                            [default: 15; strict=8, lenient=25]
+                            [default: 15; strict={strict}, lenient={lenient}]
     --format <name>         text (default) or json
     --workspace             Analyze every Cargo workspace member
     -p, --package <name>    Analyze only this member (repeatable)
     --summary               Counts and worst offender; text only
+                            (conflicts with --format json)
     --fail-above            Exit 1 if any function exceeds --threshold
     --missing <policy>      No LCOV data, empty span, or an unresolved
                             path tie: pessimistic (0%, default),
                             optimistic (100%), or skip. A package name
-                            breaks equal basename ties ({name}/src|…).
+                            breaks equal basename ties ({{name}}/src|…).
     --features <list>       Extra Cargo features (comma-separated);
                             pass the same set used for cargo llvm-cov
     --all-features          Enable every named package feature
@@ -204,6 +191,8 @@ EXIT CODES:
 ",
         name = env!("CARGO_PKG_NAME"),
         version = env!("CARGO_PKG_VERSION"),
+        strict = crap_core::STRICT,
+        lenient = crap_core::LENIENT,
     )
 }
 
@@ -267,6 +256,18 @@ mod tests {
     #[test]
     fn workspace_conflicts_with_package() {
         let err = parse_args(argv(&["--coverage", "x.info", "--workspace", "-p", "core"]));
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn summary_conflicts_with_json() {
+        let err = parse_args(argv(&[
+            "--coverage",
+            "x.info",
+            "--summary",
+            "--format",
+            "json",
+        ]));
         assert!(err.is_err());
     }
 

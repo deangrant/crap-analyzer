@@ -94,11 +94,7 @@ pub trait Language {
     ///
     /// Returns I/O or collect errors. Any source file that fails to parse or
     /// read fails the run.
-    fn collect_functions(
-        &self,
-        targets: &[Target],
-        metric: Metric,
-    ) -> Result<(Vec<LocatedFn>, Vec<String>)>;
+    fn collect_functions(&self, targets: &[Target], metric: Metric) -> Result<Vec<LocatedFn>>;
 }
 
 #[cfg(test)]

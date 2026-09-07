@@ -121,6 +121,7 @@ Pipeline entry: [`run`](../../crates/crap-core/src/run.rs) /
 | Join | [`merge/mod.rs`](../../crates/crap-core/src/merge/mod.rs) | Function spans + coverage + `--missing` |
 | Path index | [`merge/path_index.rs`](../../crates/crap-core/src/merge/path_index.rs) | Suffix ranking of coverage paths vs source paths |
 | Score | [`score.rs`](../../crates/crap-core/src/score.rs) | CRAP formula, `exceeds_threshold`, `classify_risk` |
+| Threshold | [`threshold.rs`](../../crates/crap-core/src/threshold.rs) | Shared `--threshold` parse (`strict` / `lenient` / number) |
 | Metric | [`metric.rs`](../../crates/crap-core/src/metric.rs) | Cyclomatic or cognitive; default gate 15 |
 | Language port | [`language.rs`](../../crates/crap-core/src/language.rs) | `Language`, `ScanRequest` (`coverage` path), `Target`, `ReportFormat` |
 | Report | [`report.rs`](../../crates/crap-core/src/report.rs), [`report/json.rs`](../../crates/crap-core/src/report/json.rs) | Text table / `--summary` / JSON envelope |
@@ -142,7 +143,7 @@ Composition: [`main.rs`](../../crates/crap-rs/src/main.rs) parses CLI, calls
 | ---- | ---- | ---- |
 | CLI | [`cli.rs`](../../crates/crap-rs/src/cli.rs) | Flags → `ScanRequest` + `RustLanguage` (`--coverage` default `lcov.info`, alias `--lcov`) |
 | Workspace | [`workspace.rs`](../../crates/crap-rs/src/workspace.rs) | `cargo metadata`, members, feature graphs |
-| Walk | [`walk.rs`](../../crates/crap-rs/src/walk.rs) | `.rs` files; skip `tests`, `target`, convention dirs, nested members |
+| Walk | [`walk.rs`](../../crates/crap-rs/src/walk.rs) | `.rs` files; skip `target` / `.git`; package-root `tests` / `benches` / `examples`; nested members |
 | Visitor | [`complexity/visitor.rs`](../../crates/crap-rs/src/complexity/visitor.rs) | Function spans and names |
 | Cyclomatic | [`complexity/cyclomatic.rs`](../../crates/crap-rs/src/complexity/cyclomatic.rs) | Decision-point count |
 | Cognitive | [`complexity/cognitive.rs`](../../crates/crap-rs/src/complexity/cognitive.rs) | Nesting-weighted count |
@@ -213,6 +214,14 @@ Detail: [complexity-go](../skills/complexity-go/SKILL.md).
 | `2` | Usage, I/O, metadata, or collect error. Any unparseable source file is a collect error. |
 
 Flag reference: [README.md](../../README.md).
+
+## Trust boundary
+
+These CLIs are local analysis tools. They do not open network sockets or
+execute untrusted code. Walk follows file and directory symlinks only when
+the resolved target stays under the walk root; cycles and out-of-root links
+are skipped. Residual risk is local filesystem access under the chosen
+`--path`, not remote code execution.
 
 ## Verification and agent layout
 

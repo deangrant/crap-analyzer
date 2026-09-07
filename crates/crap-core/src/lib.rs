@@ -7,6 +7,7 @@ pub mod merge;
 pub mod metric;
 pub mod report;
 pub mod score;
+pub mod threshold;
 
 mod run;
 
@@ -26,3 +27,5 @@ pub use report::render;
 pub use run::{RunResult, run, run_with_coverage};
 #[doc(inline)]
 pub use score::Risk;
+#[doc(inline)]
+pub use threshold::{LENIENT, STRICT, parse_threshold};

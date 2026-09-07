@@ -137,7 +137,7 @@ Shared flags work the same on both CLIs unless noted.
 | `--format` | `text` (default table) or `json` (versioned envelope, `schema_version` 2). `result.passed` is true when no function exceeds `--threshold`; `result.gate_failed` / exit 1 require `--fail-above`. |
 | `--workspace` | Every workspace/module member |
 | `-p, --package <name>` | One member; repeatable; conflicts with `--workspace`. Go: import path. |
-| `--summary` | Counts and worst offender; text only; no table |
+| `--summary` | Counts and worst offender; text only; conflicts with `--format json` |
 | `--fail-above` | Exit 1 when any function exceeds the threshold (not the risk band) |
 | `--missing` | No coverage data, an empty span, or an unresolved path tie: `pessimistic` (default, 0%), `optimistic` (100%), or `skip`. A package name (`--workspace` / `-p`) breaks equal basename ties (Cargo `{name}/src|…`; Go import-path path suffix). |
 | `--features`, `--all-features`, `--no-default-features` | `crap-rs` only: same feature universe as the `cargo llvm-cov` run that produced the LCOV file |
@@ -191,12 +191,14 @@ Decisions inside unexpanded or opaque macros may be missed.
 - Trait default methods are omitted (llvm-cov often has no line hits).
 - Unknown `#[cfg]` predicates skip the item. Skipped items are not gated.
 - `#[cfg]` uses the host (`target_os`, `target_arch`, `target_family`,
-  `target_pointer_width`, `unix` / `windows`). Cross-compile LCOV can
-  disagree; there is no `--target` flag.
+  `target_pointer_width`, `unix` / `windows`, `debug_assertions`).
+  Cross-compile LCOV can disagree; there is no `--target` flag.
 - File and directory symlinks are followed only when the target stays
   under the walk root; cycles are skipped.
 - `$CARGO` is used only when it names an existing file (Cargo’s usual
   override); otherwise `crap-rs` runs `cargo` from `PATH`.
+- `crap-go` complexity is an approximate text scanner (not `go/ast`).
+  Generics edge cases and unusual syntax may under-count.
 
 ## Develop
 

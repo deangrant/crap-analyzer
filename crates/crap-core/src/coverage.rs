@@ -138,7 +138,10 @@ fn apply_da(
         return Ok(());
     };
     let Some(path) = current else {
-        return Ok(());
+        return Err(Error::coverage(format!(
+            "{}: DA record without SF: {raw}",
+            origin.display()
+        )));
     };
     let Some((line, hits)) = parse_da(rest) else {
         return Err(Error::coverage(format!(
@@ -208,13 +211,17 @@ mod tests {
     }
 
     #[test]
-    fn stray_da_after_end_is_dropped() {
-        let map = parse(concat!(
+    fn stray_da_after_end_is_rejected() {
+        assert!(reject(concat!(
             "SF:src/a.rs\nDA:1,1\nend_of_record\n",
             "DA:99,99\n",
             "SF:src/b.rs\nDA:2,4\nend_of_record\n",
-        ));
-        assert!(!map[Path::new("src/a.rs")].lines.contains_key(&99));
+        )));
+    }
+
+    #[test]
+    fn da_before_sf_is_rejected() {
+        assert!(reject("DA:1,1\nSF:src/foo.rs\nDA:2,1\nend_of_record\n"));
     }
 
     #[test]

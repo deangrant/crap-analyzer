@@ -48,9 +48,6 @@ fn load_coverage(
 }
 
 fn finish_run(request: &ScanRequest, result: &RunResult) -> ExitCode {
-    for warning in &result.warnings {
-        emit_stderr(warning);
-    }
     exit_from_render(
         render(request, result, "go", color_enabled()),
         result.gate_failed,
@@ -102,7 +99,7 @@ fn emit_stdout(text: &str) {
 
 #[expect(
     clippy::print_stderr,
-    reason = "warnings and usage errors go to stderr on purpose"
+    reason = "usage and analysis errors go to stderr on purpose"
 )]
 fn emit_stderr(text: &str) {
     eprintln!("{text}");
@@ -138,7 +135,7 @@ mod tests {
     }
 
     #[test]
-    fn finish_run_emits_warnings() {
+    fn finish_run_renders_summary() {
         let request = ScanRequest {
             path: std::path::PathBuf::from("."),
             coverage: std::path::PathBuf::from("cover.out"),
@@ -149,10 +146,7 @@ mod tests {
             missing: crap_core::MissingPolicy::Pessimistic,
             format: crap_core::ReportFormat::Text,
         };
-        let result = RunResult {
-            warnings: vec!["skipping x".into()],
-            ..RunResult::default()
-        };
+        let result = RunResult::default();
         assert_eq!(finish_run(&request, &result), ExitCode::SUCCESS);
     }
 

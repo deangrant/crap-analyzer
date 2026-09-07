@@ -124,16 +124,16 @@ fn collect_targets_propagates_walk_error() {
         enabled_features: Vec::new(),
     }];
     let mut functions = Vec::new();
-    let mut warnings = Vec::new();
-    let result = collect_targets(&targets, Metric::Cyclomatic, &mut functions, &mut warnings);
+    let mut details = Vec::new();
+    let result = collect_targets(&targets, Metric::Cyclomatic, &mut functions, &mut details);
     assert!(result.is_err());
 }
 
 #[test]
-fn parse_warning_includes_path() {
-    let warning = parse_warning(Path::new("broken.rs"), &Error::collect("nope"));
-    assert!(warning.contains("broken.rs"));
-    assert!(warning.contains("nope"));
+fn parse_failure_includes_path() {
+    let detail = parse_failure(Path::new("broken.rs"), &Error::collect("nope"));
+    assert!(detail.contains("broken.rs"));
+    assert!(detail.contains("nope"));
 }
 
 #[test]

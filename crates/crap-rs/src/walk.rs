@@ -6,10 +6,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Directories skipped at any depth.
-const SKIP_ALWAYS: &[&str] = &["target", ".git", "tests"];
+const SKIP_ALWAYS: &[&str] = &["target", ".git"];
 
 /// Cargo convention dirs skipped only as children of a package root.
-const CONVENTION_DIRS: &[&str] = &["benches", "examples"];
+const CONVENTION_DIRS: &[&str] = &["tests", "benches", "examples"];
 
 /// Shared walk state so directory helpers stay under Clippy's argument cap.
 struct Walk<'a> {

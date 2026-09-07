@@ -14,8 +14,6 @@ use std::path::PathBuf;
 pub struct RunResult {
     /// Functions after join, scored and sorted worst-first.
     pub entries: Vec<CrapEntry>,
-    /// Non-fatal notices that survived a successful collect.
-    pub warnings: Vec<String>,
     /// True when `--fail-above` should trip.
     pub gate_failed: bool,
 }
@@ -45,14 +43,13 @@ pub fn run_with_coverage<L: Language, S: BuildHasher>(
     coverage: &HashMap<PathBuf, FileCoverage, S>,
 ) -> Result<RunResult> {
     let targets = lang.resolve_targets(request)?;
-    let (functions, warnings) = lang.collect_functions(&targets, request.metric)?;
+    let functions = lang.collect_functions(&targets, request.metric)?;
     let entries = join(&functions, coverage, request.missing);
     let threshold = request.effective_threshold();
     let gate_failed =
         request.fail_above && entries.iter().any(|entry| exceeds_threshold(entry.crap, threshold));
     Ok(RunResult {
         entries,
-        warnings,
         gate_failed,
     })
 }
@@ -69,7 +66,6 @@ mod tests {
 
     struct FakeLang {
         functions: Vec<LocatedFn>,
-        warnings: Vec<String>,
         fail: bool,
     }
 
@@ -87,11 +83,11 @@ mod tests {
             &self,
             _targets: &[Target],
             _metric: Metric,
-        ) -> Result<(Vec<LocatedFn>, Vec<String>)> {
+        ) -> Result<Vec<LocatedFn>> {
             if self.fail {
                 return Err(Error::collect("failed to parse all 1 file(s)"));
             }
-            Ok((self.functions.clone(), self.warnings.clone()))
+            Ok(self.functions.clone())
         }
     }
 
@@ -159,14 +155,13 @@ mod tests {
         let coverage = write_lcov(&dir);
         let lang = FakeLang {
             functions: vec![func("src/lib.rs", "dense", 1, 2, 31)],
-            warnings: vec!["skipping broken.rs: parse".into()],
             fail: false,
         };
         let req = request(&coverage, false, true, Some(8.0));
         let result = require_ok(run(&lang, &req));
         let _ = std::fs::remove_dir_all(&dir);
         assert!(result.gate_failed);
-        assert_eq!((result.warnings.len(), result.entries.len()), (1, 1));
+        assert_eq!(result.entries.len(), 1);
         let table = require_ok(render(&req, &result, "rust", false));
         assert!(table.contains("FAIL") && table.contains("dense"));
     }
@@ -184,7 +179,6 @@ mod tests {
                 crap: 1.0,
                 crate_name: None,
             }],
-            warnings: Vec::new(),
             gate_failed: false,
         };
         let req = request(Path::new("lcov.info"), true, false, Some(30.0));
@@ -208,7 +202,6 @@ mod tests {
                 crap: 1.0,
                 crate_name: Some("demo".into()),
             }],
-            warnings: Vec::new(),
             gate_failed: false,
         };
         let req = request(Path::new("lcov.info"), true, false, Some(30.0));
@@ -232,7 +225,6 @@ mod tests {
                 crap: 1.0,
                 crate_name: None,
             }],
-            warnings: Vec::new(),
             gate_failed: false,
         };
         let mut req = request(Path::new("lcov.info"), true, false, Some(15.0));
@@ -251,7 +243,6 @@ mod tests {
         let coverage = write_lcov(&dir);
         let lang = FakeLang {
             functions: Vec::new(),
-            warnings: Vec::new(),
             fail: true,
         };
         let result = run(&lang, &request(&coverage, false, false, None));
@@ -263,7 +254,6 @@ mod tests {
     fn missing_coverage_is_io_error() {
         let lang = FakeLang {
             functions: Vec::new(),
-            warnings: Vec::new(),
             fail: false,
         };
         let result = run(

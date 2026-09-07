@@ -35,11 +35,7 @@ impl Language for GoLanguage {
         Ok(vec![self.path_target(request)])
     }
 
-    fn collect_functions(
-        &self,
-        targets: &[Target],
-        metric: Metric,
-    ) -> Result<(Vec<LocatedFn>, Vec<String>)> {
+    fn collect_functions(&self, targets: &[Target], metric: Metric) -> Result<Vec<LocatedFn>> {
         collect_functions(targets, metric)
     }
 }
@@ -88,16 +84,16 @@ impl GoLanguage {
     }
 }
 
-fn collect_functions(targets: &[Target], metric: Metric) -> Result<(Vec<LocatedFn>, Vec<String>)> {
+fn collect_functions(targets: &[Target], metric: Metric) -> Result<Vec<LocatedFn>> {
     let mut functions = Vec::new();
-    let mut warnings = Vec::new();
-    let (succeeded, failed) = collect_targets(targets, metric, &mut functions, &mut warnings)?;
+    let mut details = Vec::new();
+    let (succeeded, failed) = collect_targets(targets, metric, &mut functions, &mut details)?;
     if failed > 0 {
         return Err(Error::collect(collect_failure(
-            "Go", failed, succeeded, &warnings,
+            "Go", failed, succeeded, &details,
         )));
     }
-    Ok((functions, warnings))
+    Ok(functions)
 }
 
 fn collect_failure(lang: &str, failed: usize, succeeded: usize, details: &[String]) -> String {
@@ -112,7 +108,7 @@ fn collect_targets(
     targets: &[Target],
     metric: Metric,
     functions: &mut Vec<LocatedFn>,
-    warnings: &mut Vec<String>,
+    details: &mut Vec<String>,
 ) -> Result<(usize, usize)> {
     let mut succeeded = 0_usize;
     let mut failed = 0_usize;
@@ -121,7 +117,7 @@ fn collect_targets(
             target,
             metric,
             functions,
-            warnings,
+            details,
             &mut succeeded,
             &mut failed,
         )?;
@@ -133,7 +129,7 @@ fn collect_target(
     target: &Target,
     metric: Metric,
     functions: &mut Vec<LocatedFn>,
-    warnings: &mut Vec<String>,
+    details: &mut Vec<String>,
     succeeded: &mut usize,
     failed: &mut usize,
 ) -> Result<()> {
@@ -145,7 +141,7 @@ fn collect_target(
             metric,
             &target.enabled_features,
             functions,
-            warnings,
+            details,
         ) {
             FileOutcome::Ok => *succeeded += 1,
             FileOutcome::Skipped => {}
@@ -167,12 +163,12 @@ fn take_file(
     metric: Metric,
     tags: &[String],
     functions: &mut Vec<LocatedFn>,
-    warnings: &mut Vec<String>,
+    details: &mut Vec<String>,
 ) -> FileOutcome {
     let source = match std::fs::read_to_string(file) {
         Ok(text) => text,
         Err(err) => {
-            warnings.push(format!("skipping {}: {err}", file.display()));
+            details.push(format!("skipping {}: {err}", file.display()));
             return FileOutcome::Failed;
         }
     };
