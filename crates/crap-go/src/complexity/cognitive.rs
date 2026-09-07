@@ -107,18 +107,22 @@ fn consume_bool_run(bytes: &[u8], i: usize) -> Option<usize> {
 fn skip_to_bool_or_stop(bytes: &[u8], mut i: usize) -> usize {
     while i < bytes.len() {
         i = skip_noise(bytes, i);
-        if i >= bytes.len() {
-            return i;
-        }
-        if match_op(bytes, i, b"&&") || match_op(bytes, i, b"||") {
-            return i;
-        }
-        if matches!(bytes[i], b';' | b'{' | b')' | b',') {
+        if at_bool_or_stop(bytes, i) {
             return i;
         }
         i += 1;
     }
     i
+}
+
+fn at_bool_or_stop(bytes: &[u8], i: usize) -> bool {
+    if i >= bytes.len() {
+        return true;
+    }
+    if match_op(bytes, i, b"&&") || match_op(bytes, i, b"||") {
+        return true;
+    }
+    matches!(bytes[i], b';' | b'{' | b')' | b',')
 }
 
 fn find_block_open(bytes: &[u8], mut i: usize) -> Option<usize> {
@@ -152,6 +156,10 @@ fn match_braces(bytes: &[u8], open: usize) -> Option<usize> {
     if bytes.get(open) != Some(&b'{') {
         return None;
     }
+    scan_brace_depth(bytes, open)
+}
+
+fn scan_brace_depth(bytes: &[u8], open: usize) -> Option<usize> {
     let mut depth = 0_i32;
     let mut i = open;
     while i < bytes.len() {
@@ -159,17 +167,24 @@ fn match_braces(bytes: &[u8], open: usize) -> Option<usize> {
         if i >= bytes.len() {
             return None;
         }
-        match bytes[i] {
-            b'{' => depth += 1,
-            b'}' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(i + 1);
-                }
-            }
-            _ => {}
+        if let Some(end) = update_brace_depth(&mut depth, bytes[i], i) {
+            return Some(end);
         }
         i += 1;
+    }
+    None
+}
+
+const fn update_brace_depth(depth: &mut i32, b: u8, i: usize) -> Option<usize> {
+    match b {
+        b'{' => *depth += 1,
+        b'}' => {
+            *depth -= 1;
+            if *depth == 0 {
+                return Some(i + 1);
+            }
+        }
+        _ => {}
     }
     None
 }

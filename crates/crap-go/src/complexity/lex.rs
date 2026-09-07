@@ -12,10 +12,19 @@ pub(super) fn skip_noise(bytes: &[u8], mut i: usize) -> usize {
 }
 
 fn skip_noise_step(bytes: &[u8], i: usize) -> Option<usize> {
-    match bytes[i] {
-        b'/' if bytes.get(i + 1) == Some(&b'/') => Some(skip_line_comment(bytes, i)),
-        b'/' if bytes.get(i + 1) == Some(&b'*') => Some(skip_block_comment(bytes, i)),
-        b'"' | b'\'' | b'`' => Some(skip_string(bytes, i)),
+    if bytes[i] == b'/' {
+        return skip_comment_start(bytes, i);
+    }
+    if matches!(bytes[i], b'"' | b'\'' | b'`') {
+        return Some(skip_string(bytes, i));
+    }
+    None
+}
+
+fn skip_comment_start(bytes: &[u8], i: usize) -> Option<usize> {
+    match bytes.get(i + 1) {
+        Some(&b'/') => Some(skip_line_comment(bytes, i)),
+        Some(&b'*') => Some(skip_block_comment(bytes, i)),
         _ => None,
     }
 }
@@ -58,11 +67,28 @@ fn skip_raw_string(bytes: &[u8], start: usize) -> usize {
 fn skip_quoted_string(bytes: &[u8], start: usize, quote: u8) -> usize {
     let mut i = start + 1;
     while i < bytes.len() {
-        match bytes[i] {
-            b'\\' => i = i.saturating_add(2),
-            b if b == quote => return i + 1,
-            _ => i += 1,
+        if bytes[i] == quote {
+            return i + 1;
         }
+        i = after_quoted_byte(bytes, i);
     }
     i
+}
+
+fn after_quoted_byte(bytes: &[u8], i: usize) -> usize {
+    if bytes[i] == b'\\' {
+        return i.saturating_add(2);
+    }
+    i + 1
+}
+
+#[cfg(test)]
+mod tests {
+    use super::skip_noise;
+
+    #[test]
+    fn lone_slash_is_not_noise() {
+        assert_eq!(skip_noise(b"/", 0), 0);
+        assert_eq!(skip_noise(b"/x", 0), 0);
+    }
 }

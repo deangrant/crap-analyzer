@@ -86,16 +86,40 @@ fn collect_packages(
     module_path: &str,
     out: &mut Vec<Package>,
 ) -> Result<()> {
-    if dir != module_root && dir.join("go.mod").is_file() {
+    if is_nested_module(dir, module_root) {
         return Ok(());
     }
     let collected = read_dir_entries(dir)?;
+    maybe_push_package(dir, module_root, module_path, &collected, out);
+    walk_package_dirs(collected, dir, module_root, module_path, out)
+}
+
+fn is_nested_module(dir: &Path, module_root: &Path) -> bool {
+    dir != module_root && dir.join("go.mod").is_file()
+}
+
+fn maybe_push_package(
+    dir: &Path,
+    module_root: &Path,
+    module_path: &str,
+    collected: &[fs::DirEntry],
+    out: &mut Vec<Package>,
+) {
     if collected.iter().any(|entry| is_go_source_path(&entry.path())) {
         out.push(Package {
             name: import_path(dir, module_root, module_path),
             root: dir.to_path_buf(),
         });
     }
+}
+
+fn walk_package_dirs(
+    collected: Vec<fs::DirEntry>,
+    dir: &Path,
+    module_root: &Path,
+    module_path: &str,
+    out: &mut Vec<Package>,
+) -> Result<()> {
     for entry in collected {
         take_package_dir(Ok(entry), dir, module_root, module_path, out)?;
     }
@@ -175,24 +199,30 @@ fn is_skip_dir_name(path: &Path) -> bool {
 
 fn read_module_path(root: &Path) -> Result<String> {
     let path = root.join("go.mod");
-    let text = match fs::read_to_string(&path) {
-        Ok(text) => text,
-        Err(source) => return Err(Error::io(&path, source)),
-    };
+    let text = read_gomod_text(&path)?;
+    module_path_from_text(&text, &path)
+}
+
+fn read_gomod_text(path: &Path) -> Result<String> {
+    fs::read_to_string(path).map_err(|source| Error::io(path, source))
+}
+
+fn module_path_from_text(text: &str, path: &Path) -> Result<String> {
     for line in text.lines() {
-        let trimmed = line.trim();
-        let Some(rest) = trimmed.strip_prefix("module") else {
-            continue;
-        };
-        let name = rest.trim();
-        if !name.is_empty() {
-            return Ok(name.to_owned());
+        if let Some(name) = module_line_name(line) {
+            return Ok(name);
         }
     }
     Err(Error::resolve(format!(
         "{}: missing module path",
         path.display()
     )))
+}
+
+fn module_line_name(line: &str) -> Option<String> {
+    let rest = line.trim().strip_prefix("module")?;
+    let name = rest.trim();
+    (!name.is_empty()).then(|| name.to_owned())
 }
 
 #[cfg(test)]

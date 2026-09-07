@@ -96,15 +96,26 @@ pub fn parse() -> std::result::Result<Action, String> {
 
 /// Parses an argv vector (binary name first).
 fn parse_args(raw: Vec<String>) -> std::result::Result<Action, String> {
-    if raw.iter().skip(1).any(|arg| arg == "-h" || arg == "--help") {
-        return Ok(Action::Help);
-    }
-    if raw.iter().skip(1).any(|arg| arg == "-V" || arg == "--version") {
-        return Ok(Action::Version);
+    if let Some(action) = help_or_version(&raw) {
+        return Ok(action);
     }
     let args = Args::try_parse_from(raw).map_err(|err| err.to_string())?;
     reject_summary_json(&args)?;
     Ok(Action::Run(args))
+}
+
+fn help_or_version(raw: &[String]) -> Option<Action> {
+    if has_flag(raw, "-h", "--help") {
+        return Some(Action::Help);
+    }
+    if has_flag(raw, "-V", "--version") {
+        return Some(Action::Version);
+    }
+    None
+}
+
+fn has_flag(raw: &[String], short: &str, long: &str) -> bool {
+    raw.iter().skip(1).any(|arg| arg == short || arg == long)
 }
 
 fn reject_summary_json(args: &Args) -> std::result::Result<(), String> {

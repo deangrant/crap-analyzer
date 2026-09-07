@@ -135,26 +135,35 @@ fn collect_target(
 ) -> Result<()> {
     let files = walk::go_files(&target.root, &target.skip)?;
     for file in files {
-        match take_file(
-            &file,
-            target.crate_name.as_deref(),
-            metric,
-            &target.enabled_features,
-            functions,
-            details,
-        ) {
-            FileOutcome::Ok => *succeeded += 1,
-            FileOutcome::Skipped => {}
-            FileOutcome::Failed => *failed += 1,
-        }
+        apply_file_outcome(
+            take_file(
+                &file,
+                target.crate_name.as_deref(),
+                metric,
+                &target.enabled_features,
+                functions,
+                details,
+            ),
+            succeeded,
+            failed,
+        );
     }
     Ok(())
 }
 
+#[derive(Clone, Copy)]
 enum FileOutcome {
     Ok,
     Skipped,
     Failed,
+}
+
+const fn apply_file_outcome(outcome: FileOutcome, succeeded: &mut usize, failed: &mut usize) {
+    match outcome {
+        FileOutcome::Ok => *succeeded += 1,
+        FileOutcome::Skipped => {}
+        FileOutcome::Failed => *failed += 1,
+    }
 }
 
 fn take_file(

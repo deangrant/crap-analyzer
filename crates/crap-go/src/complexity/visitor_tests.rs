@@ -140,6 +140,7 @@ fn cognitive_metric_via_analyze_source() {
 fn skip_signature_direct_edges() {
     assert!(skip_signature(b"F", 0).is_none());
     assert_eq!(skip_signature(b"()@", 0), Some(2));
+    assert_eq!(skip_signature(b"()", 0), Some(2));
 }
 
 #[test]

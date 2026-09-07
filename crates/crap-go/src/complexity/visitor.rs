@@ -86,26 +86,35 @@ fn try_parse_func(source: &str, bytes: &[u8], start: usize) -> Option<FoundFn> {
     if !is_func_keyword(bytes, start) {
         return None;
     }
-    let after_func = start + 4;
+    let (name, body_lo, body_hi) = parse_func_parts(source, bytes, start + 4)?;
+    Some(FoundFn {
+        name,
+        start_line: line_of(source, start),
+        end_line: line_of(source, body_hi.saturating_sub(1)),
+        body_lo,
+        body_hi,
+    })
+}
+
+fn parse_func_parts(
+    source: &str,
+    bytes: &[u8],
+    after_func: usize,
+) -> Option<(String, usize, usize)> {
     let mut i = skip_spaces(bytes, after_func);
     let (name, after_sig) = parse_func_name(source, bytes, i)?;
     i = skip_spaces(bytes, after_sig);
     i = skip_signature(bytes, i)?;
-    i = skip_spaces(bytes, i);
+    parse_func_body(bytes, i).map(|(lo, hi)| (name, lo, hi))
+}
+
+fn parse_func_body(bytes: &[u8], i: usize) -> Option<(usize, usize)> {
+    let i = skip_spaces(bytes, i);
     if bytes.get(i) != Some(&b'{') {
         return None;
     }
-    let body_lo = i;
     let body_hi = match_braces(bytes, i)?;
-    let start_line = line_of(source, start);
-    let end_line = line_of(source, body_hi.saturating_sub(1));
-    Some(FoundFn {
-        name,
-        start_line,
-        end_line,
-        body_lo,
-        body_hi,
-    })
+    Some((i, body_hi))
 }
 
 fn is_func_keyword(bytes: &[u8], i: usize) -> bool {
@@ -137,19 +146,31 @@ fn parse_method_name(source: &str, bytes: &[u8], i: usize) -> Option<(String, us
 }
 
 fn receiver_type(source: &str, bytes: &[u8], lo: usize, hi: usize) -> Option<String> {
-    let mut i = skip_spaces(bytes, lo);
+    let i = after_optional_ident(source, bytes, lo);
+    scan_receiver_type(source, bytes, i, hi)
+}
+
+fn after_optional_ident(source: &str, bytes: &[u8], lo: usize) -> usize {
+    let i = skip_spaces(bytes, lo);
     if let Some((_, next)) = read_ident(source, bytes, i) {
-        i = skip_spaces(bytes, next);
+        return skip_spaces(bytes, next);
     }
-    while i < hi {
-        match bytes.get(i) {
-            Some(&b'*' | &b' ' | &b'\t') => i += 1,
-            Some(b) if is_ident_byte(*b) => {
-                let (ty, _) = read_ident(source, bytes, i)?;
-                return Some(ty);
-            }
-            _ => break,
+    i
+}
+
+fn scan_receiver_type(source: &str, bytes: &[u8], start: usize, hi: usize) -> Option<String> {
+    let end = hi.min(bytes.len());
+    let mut i = start;
+    while i < end {
+        let b = bytes[i];
+        if matches!(b, b'*' | b' ' | b'\t') {
+            i += 1;
+            continue;
         }
+        if is_ident_byte(b) {
+            return read_ident(source, bytes, i).map(|(ty, _)| ty);
+        }
+        break;
     }
     None
 }
@@ -166,36 +187,48 @@ fn skip_signature(bytes: &[u8], i: usize) -> Option<usize> {
 }
 
 fn skip_result_type(bytes: &[u8], i: usize) -> Option<usize> {
-    match bytes.get(i) {
-        Some(&b'{') => Some(i),
-        Some(&b'(') => skip_balanced(bytes, i, b'(', b')'),
-        Some(b) if is_ident_byte(*b) || *b == b'*' || *b == b'[' => Some(skip_typeish(bytes, i)),
-        _ => Some(i),
+    // EOF behaves like `{` (result omitted; body starts / end of input).
+    let b = bytes.get(i).copied().unwrap_or(b'{');
+    skip_result_byte(bytes, i, b)
+}
+
+fn skip_result_byte(bytes: &[u8], i: usize, b: u8) -> Option<usize> {
+    if b == b'{' {
+        return Some(i);
     }
+    if b == b'(' {
+        return skip_balanced(bytes, i, b'(', b')');
+    }
+    if starts_typeish(b) {
+        return Some(skip_typeish(bytes, i));
+    }
+    Some(i)
+}
+
+const fn starts_typeish(b: u8) -> bool {
+    is_ident_byte(b) || b == b'*' || b == b'['
 }
 
 fn skip_typeish(bytes: &[u8], mut i: usize) -> usize {
     while i < bytes.len() {
-        match bytes[i] {
-            b'{' | b'\n' => break,
-            b'(' => {
-                if let Some(next) = skip_balanced(bytes, i, b'(', b')') {
-                    i = next;
-                } else {
-                    break;
-                }
-            }
-            b'[' => {
-                if let Some(next) = skip_balanced(bytes, i, b'[', b']') {
-                    i = next;
-                } else {
-                    break;
-                }
-            }
-            _ => i += 1,
+        if matches!(bytes[i], b'{' | b'\n') {
+            break;
         }
+        if let Some(next) = skip_typeish_bracket(bytes, i) {
+            i = next;
+            continue;
+        }
+        i += 1;
     }
     i
+}
+
+fn skip_typeish_bracket(bytes: &[u8], i: usize) -> Option<usize> {
+    match bytes[i] {
+        b'(' => skip_balanced(bytes, i, b'(', b')'),
+        b'[' => skip_balanced(bytes, i, b'[', b']'),
+        _ => None,
+    }
 }
 
 fn match_braces(bytes: &[u8], open: usize) -> Option<usize> {
@@ -206,6 +239,10 @@ fn skip_balanced(bytes: &[u8], open: usize, open_ch: u8, close_ch: u8) -> Option
     if bytes.get(open) != Some(&open_ch) {
         return None;
     }
+    scan_balanced(bytes, open, open_ch, close_ch)
+}
+
+fn scan_balanced(bytes: &[u8], open: usize, open_ch: u8, close_ch: u8) -> Option<usize> {
     let mut depth = 0_i32;
     let mut i = open;
     while i < bytes.len() {
@@ -213,18 +250,24 @@ fn skip_balanced(bytes: &[u8], open: usize, open_ch: u8, close_ch: u8) -> Option
         if i >= bytes.len() {
             return None;
         }
-        let b = bytes[i];
-        if b == open_ch {
-            depth += 1;
-        } else if b == close_ch {
-            depth -= 1;
-            if depth == 0 {
-                return Some(i + 1);
-            }
+        if let Some(end) = step_balance(&mut depth, bytes[i], open_ch, close_ch, i) {
+            return Some(end);
         }
         i += 1;
     }
     None
+}
+
+fn step_balance(depth: &mut i32, b: u8, open_ch: u8, close_ch: u8, i: usize) -> Option<usize> {
+    if b == open_ch {
+        *depth += 1;
+        return None;
+    }
+    if b != close_ch {
+        return None;
+    }
+    *depth -= 1;
+    (*depth == 0).then_some(i + 1)
 }
 
 fn skip_noise(bytes: &[u8], i: usize) -> usize {
