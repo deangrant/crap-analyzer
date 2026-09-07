@@ -51,6 +51,28 @@ pub fn nested_module_roots(root: &Path, all: &[Package]) -> Vec<PathBuf> {
         .collect()
 }
 
+/// Walks up from `start` looking for a directory that contains `go.mod`.
+///
+/// Returns the module root and the `module` path from that file.
+///
+/// # Errors
+///
+/// Returns [`Error::Io`] or [`Error::Resolve`] when a `go.mod` is found but
+/// cannot be read or has no module path. Returns `Ok(None)` when no enclosing
+/// module exists.
+pub fn enclosing_module(start: &Path) -> Result<Option<(PathBuf, String)>> {
+    let mut dir = start.to_path_buf();
+    loop {
+        if dir.join("go.mod").is_file() {
+            let module = read_module_path(&dir)?;
+            return Ok(Some((dir, module)));
+        }
+        if !dir.pop() {
+            return Ok(None);
+        }
+    }
+}
+
 fn discover_packages(module_root: &Path, module_path: &str) -> Result<Vec<Package>> {
     let mut packages = Vec::new();
     collect_packages(module_root, module_root, module_path, &mut packages)?;

@@ -36,6 +36,9 @@ empty spans apply after coverprofile is in `FileCoverage`).
 - Expand each block across `startLine..=endLine` into `FileCoverage.lines`.
 - `set`: hit → store `max(1)`. `count` / `atomic`: saturating-add hits.
 - Normalize `\` to `/` in paths.
+- After parse, remap import-path keys (`module/pkg/file.go`) to filesystem
+  paths under the enclosing `go.mod` via `remap_import_paths` before
+  `run_with_coverage`. Non-module keys stay unchanged.
 
 Empty spans and missing path joins still use `--missing` in core.
 

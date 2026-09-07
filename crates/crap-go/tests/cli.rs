@@ -53,6 +53,26 @@ fn sample_module_scores_functions() {
 }
 
 #[test]
+fn import_path_coverprofile_joins_with_non_zero_coverage() {
+    let root = sample_root();
+    let (code, stdout, stderr) = output_of(
+        bin()
+            .arg("--coverage")
+            .arg(root.join("cover.out"))
+            .arg("--path")
+            .arg(&root)
+            .arg("--format")
+            .arg("json"),
+    );
+    assert_eq!(code, 0, "stderr={stderr}\nstdout={stdout}");
+    assert!(
+        stdout.contains("\"coverage_percent\": 100.0"),
+        "expected joined 100% coverage for covered functions; got:\n{stdout}"
+    );
+    assert!(stdout.contains("branched") || stdout.contains("trivial"));
+}
+
+#[test]
 fn sample_with_threshold_and_package() {
     let root = sample_root();
     let (code, stdout, stderr) = output_of(

@@ -86,7 +86,8 @@ A frontend run proceeds as follows:
    (`cli` + `main` in the frontend crate).
 2. Load coverage into `HashMap<PathBuf, FileCoverage>`:
    - `crap-rs`: `parse_lcov` inside `crap_core::run`
-   - `crap-go`: `parse_coverprofile`, then `run_with_coverage`
+   - `crap-go`: `parse_coverprofile`, remap import-path keys via
+     enclosing `go.mod`, then `run_with_coverage`
 3. `Language::resolve_targets` selects package roots and nested skip paths.
 4. `Language::collect_functions` walks sources and scores function spans.
 5. `merge::join` matches source paths to coverage, applies `--missing`, and
@@ -159,15 +160,16 @@ flowchart TB
 ## `crap-go` module map
 
 Composition: [`main.rs`](../../crates/crap-go/src/main.rs) parses CLI, parses
-coverprofile, calls `crap_core::run_with_coverage`, then `render` with
-language `"go"`. [`GoLanguage`](../../crates/crap-go/src/lib.rs) implements
-`Language`. The analyzer is Rust-only; no Go toolchain and no tree-sitter.
+coverprofile, remaps import-path keys via the enclosing `go.mod`, calls
+`crap_core::run_with_coverage`, then `render` with language `"go"`.
+[`GoLanguage`](../../crates/crap-go/src/lib.rs) implements `Language`. The
+analyzer is Rust-only; no Go toolchain and no tree-sitter.
 
 | Area | Path | Role |
 | ---- | ---- | ---- |
 | CLI | [`cli.rs`](../../crates/crap-go/src/cli.rs) | Flags → `ScanRequest` + `GoLanguage` (`--coverage` default `cover.out`) |
-| Coverprofile | [`coverprofile.rs`](../../crates/crap-go/src/coverprofile.rs) | Go coverprofile → `FileCoverage` |
-| Module resolve | [`module_resolve.rs`](../../crates/crap-go/src/module_resolve.rs) | `go.mod` packages and nested module skips |
+| Coverprofile | [`coverprofile.rs`](../../crates/crap-go/src/coverprofile.rs) | Go coverprofile → `FileCoverage`; remap import paths via `go.mod` |
+| Module resolve | [`module_resolve.rs`](../../crates/crap-go/src/module_resolve.rs) | `go.mod` packages, enclosing module, and nested module skips |
 | Walk | [`walk.rs`](../../crates/crap-go/src/walk.rs) | `.go` files; skip `vendor`, `.git`, `testdata`, nested modules |
 | Build tags | [`build_tag.rs`](../../crates/crap-go/src/build_tag.rs) | Leading `//go:build` / `// +build` skip |
 | Visitor | [`complexity/visitor.rs`](../../crates/crap-go/src/complexity/visitor.rs) | Named funcs / methods and body spans |
@@ -179,11 +181,12 @@ flowchart TB
   Main[main] --> Cli[cli]
   Cli --> Lang[GoLanguage]
   Main --> Cover[parse_coverprofile]
+  Cover --> Remap[remap_import_paths]
   Lang --> Module[module_resolve]
   Lang --> Walk[walk]
   Lang --> Tags[build_tag]
   Lang --> Visitor[complexity_visitor]
-  Cover --> Run[crap_core_run_with_coverage]
+  Remap --> Run[crap_core_run_with_coverage]
   Lang --> Run
 ```
 

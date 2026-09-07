@@ -7,6 +7,8 @@ pub mod coverprofile;
 pub(crate) mod module_resolve;
 pub(crate) mod walk;
 
+pub use module_resolve::enclosing_module;
+
 use crap_core::{Error, Language, LocatedFn, Metric, Result, ScanRequest, Target};
 use module_resolve::Package;
 use std::path::Path;

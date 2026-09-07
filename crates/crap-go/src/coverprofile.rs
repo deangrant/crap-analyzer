@@ -3,6 +3,7 @@
 use crap_core::{Error, FileCoverage, Result};
 use std::collections::HashMap;
 use std::fs::File;
+use std::hash::BuildHasher;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
@@ -22,6 +23,31 @@ enum Mode {
 pub fn parse_coverprofile(path: &Path) -> Result<HashMap<PathBuf, FileCoverage>> {
     let file = File::open(path).map_err(|source| Error::io(path, source))?;
     parse_reader(BufReader::new(file), path)
+}
+
+/// Rewrites import-path coverprofile keys to paths under `module_root`.
+///
+/// Keys that begin with `{module_path}/` become `module_root.join(rest)`.
+/// Other keys (absolute GOPATH paths, dependencies, bare names) stay as-is.
+#[must_use]
+pub fn remap_import_paths<S: BuildHasher>(
+    coverage: &HashMap<PathBuf, FileCoverage, S>,
+    module_root: &Path,
+    module_path: &str,
+) -> HashMap<PathBuf, FileCoverage> {
+    let prefix = format!("{module_path}/");
+    let mut out: HashMap<PathBuf, FileCoverage> = HashMap::new();
+    for (path, file) in coverage {
+        let key = remap_one_path(path, module_root, &prefix);
+        out.entry(key).or_default().merge_from(file);
+    }
+    out
+}
+
+fn remap_one_path(path: &Path, module_root: &Path, prefix: &str) -> PathBuf {
+    let key = path.to_string_lossy().replace('\\', "/");
+    key.strip_prefix(prefix)
+        .map_or_else(|| path.to_path_buf(), |rel| module_root.join(rel))
 }
 
 fn parse_reader<R: BufRead>(reader: R, origin: &Path) -> Result<HashMap<PathBuf, FileCoverage>> {

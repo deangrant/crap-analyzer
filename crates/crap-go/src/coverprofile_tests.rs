@@ -1,5 +1,6 @@
-use super::parse_coverprofile;
-use crap_core::Error;
+use super::{parse_coverprofile, remap_import_paths};
+use crap_core::{Error, FileCoverage};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -177,4 +178,57 @@ fn malformed_data_lines_are_rejected() {
         assert_coverage_err(&path);
         let _ = fs::remove_dir_all(&dir);
     }
+}
+
+fn file_hits(line: u32, hits: u64) -> FileCoverage {
+    FileCoverage {
+        lines: std::iter::once((line, hits)).collect(),
+    }
+}
+
+#[test]
+fn remap_rewrites_import_path_keys() {
+    let root = PathBuf::from("/proj");
+    let coverage = HashMap::from([(PathBuf::from("example.com/demo/pkg/a.go"), file_hits(1, 1))]);
+    let remapped = remap_import_paths(&coverage, &root, "example.com/demo");
+    assert_eq!(
+        remapped.get(Path::new("/proj/pkg/a.go")).and_then(|c| c.lines.get(&1)),
+        Some(&1)
+    );
+}
+
+#[test]
+fn remap_leaves_non_module_keys() {
+    let root = PathBuf::from("/proj");
+    let coverage = HashMap::from([
+        (PathBuf::from("main.go"), file_hits(1, 1)),
+        (PathBuf::from("/abs/main.go"), file_hits(2, 3)),
+        (PathBuf::from("example.com/other/x.go"), file_hits(4, 1)),
+    ]);
+    let remapped = remap_import_paths(&coverage, &root, "example.com/demo");
+    assert!(remapped.contains_key(Path::new("main.go")));
+    assert!(remapped.contains_key(Path::new("/abs/main.go")));
+    assert!(remapped.contains_key(Path::new("example.com/other/x.go")));
+}
+
+#[test]
+fn remap_respects_module_prefix_boundary() {
+    let root = PathBuf::from("/proj");
+    let coverage = HashMap::from([(PathBuf::from("example.com/foobar/x.go"), file_hits(1, 1))]);
+    let remapped = remap_import_paths(&coverage, &root, "example.com/foo");
+    assert!(remapped.contains_key(Path::new("example.com/foobar/x.go")));
+    assert!(!remapped.contains_key(Path::new("/proj/bar/x.go")));
+}
+
+#[test]
+fn remap_merges_when_keys_collapse() {
+    let root = PathBuf::from("/proj");
+    let coverage = HashMap::from([
+        (PathBuf::from("example.com/demo/a.go"), file_hits(1, 1)),
+        (PathBuf::from("/proj/a.go"), file_hits(2, 2)),
+    ]);
+    let remapped = remap_import_paths(&coverage, &root, "example.com/demo");
+    let cov = remapped.get(Path::new("/proj/a.go")).cloned().unwrap_or_default();
+    assert_eq!(cov.lines.get(&1), Some(&1));
+    assert_eq!(cov.lines.get(&2), Some(&2));
 }

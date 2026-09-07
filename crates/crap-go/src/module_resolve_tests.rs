@@ -1,6 +1,6 @@
 use super::{
-    all_packages, import_path, nested_module_roots, push_dir_entry, selected_packages,
-    take_package_dir,
+    all_packages, enclosing_module, import_path, nested_module_roots, push_dir_entry,
+    selected_packages, take_package_dir,
 };
 use crap_core::Error;
 use std::fs;
@@ -123,6 +123,29 @@ fn missing_go_mod_is_io_error() {
     let err = all_packages(&root);
     let _ = fs::remove_dir_all(&root);
     assert!(matches!(err, Err(Error::Io { .. })), "{err:?}");
+}
+
+#[test]
+fn enclosing_module_finds_parent_go_mod() {
+    let root = temp_dir("enclose");
+    write(&root.join("go.mod"), "module example.com/demo\n");
+    write(&root.join("pkg/lib.go"), "package pkg\n");
+    let found = require_ok(enclosing_module(&root.join("pkg")));
+    assert!(found.is_some());
+    if let Some((mod_root, module)) = found {
+        assert_eq!(mod_root, root);
+        assert_eq!(module, "example.com/demo");
+    }
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn enclosing_module_returns_none_without_go_mod() {
+    let root = temp_dir("noenclose");
+    write(&root.join("x.go"), "package x\n");
+    let found = require_ok(enclosing_module(&root));
+    assert!(found.is_none());
+    let _ = fs::remove_dir_all(&root);
 }
 
 #[cfg(unix)]

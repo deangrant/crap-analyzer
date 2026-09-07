@@ -1,9 +1,12 @@
 //! Binary entry point for `crap-go`.
 
-use crap_core::{Error, RunResult, ScanRequest, render, run_with_coverage};
+use crap_core::{Error, FileCoverage, RunResult, ScanRequest, render, run_with_coverage};
 use crap_go::cli::{self, Action};
-use crap_go::coverprofile::parse_coverprofile;
+use crap_go::coverprofile::{parse_coverprofile, remap_import_paths};
+use crap_go::enclosing_module;
+use std::collections::HashMap;
 use std::io::IsTerminal;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
@@ -23,11 +26,24 @@ fn run_action(action: Action) -> ExitCode {
 
 fn run_scan(args: &cli::Args) -> ExitCode {
     let (lang, request) = args.parts();
-    match parse_coverprofile(&request.coverage)
+    match load_coverage(&request.coverage, &request.path)
         .and_then(|coverage| run_with_coverage(&lang, &request, &coverage))
     {
         Ok(result) => finish_run(&request, &result),
         Err(err) => print_core_err(&err),
+    }
+}
+
+fn load_coverage(
+    coverage_path: &Path,
+    analysis_root: &Path,
+) -> crap_core::Result<HashMap<PathBuf, FileCoverage>> {
+    let coverage = parse_coverprofile(coverage_path)?;
+    match enclosing_module(analysis_root)? {
+        Some((module_root, module_path)) => {
+            Ok(remap_import_paths(&coverage, &module_root, &module_path))
+        }
+        None => Ok(coverage),
     }
 }
 
