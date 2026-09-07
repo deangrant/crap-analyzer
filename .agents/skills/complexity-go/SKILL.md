@@ -52,7 +52,9 @@ Empty spans and missing path joins still use `--missing` in core.
 
 - Evaluate leading `//go:build` (preferred) or legacy `// +build` lines.
 - Skip the whole file when the constraint is false for `--tags` plus host
-  tags (`unix`, `linux`, `windows`, `darwin`).
+  tags (`unix`, common GOOS names such as `linux` / `windows` / `darwin`
+  / BSD family / `android` / `ios` / …). Unlisted OS names still need
+  `--tags`.
 - Unknown custom tags are false unless listed in `--tags`.
 - No constraint → do not skip.
 

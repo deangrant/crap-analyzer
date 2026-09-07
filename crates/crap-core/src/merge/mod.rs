@@ -132,9 +132,12 @@ pub fn join<S: BuildHasher>(
 ) -> Vec<CrapEntry> {
     let index = PathIndex::from_coverage(coverage);
     let by_file = functions_by_file(functions);
+    let excludes = precomputed_nested_excludes(&by_file);
     let mut entries = Vec::new();
     for item in functions {
-        let Some((coverage_pct, coverage_join)) = coverage_for(&index, item, &by_file, missing)
+        let exclude =
+            excludes.get(&std::ptr::from_ref(&item.function)).map_or(&[][..], Vec::as_slice);
+        let Some((coverage_pct, coverage_join)) = coverage_for(&index, item, exclude, missing)
         else {
             continue;
         };
@@ -183,19 +186,15 @@ pub fn ambiguous_join_warning(entries: &[CrapEntry]) -> String {
 fn coverage_for(
     index: &PathIndex,
     item: &LocatedFn,
-    by_file: &HashMap<Vec<String>, Vec<&FunctionComplexity>>,
+    exclude: &[(usize, usize)],
     missing: MissingPolicy,
 ) -> Option<(f64, CoverageJoin)> {
-    let empty = [];
-    let key = path_index::components(&item.function.file);
-    let peers = by_file.get(&key).map_or(&empty[..], Vec::as_slice);
-    let exclude = nested_excludes(peers, &item.function);
     match index.lookup(
         &item.function.file,
         item.join_key.as_deref().or(item.crate_name.as_deref()),
     ) {
         Lookup::Found(file) => file
-            .coverage_in_span_excluding(item.function.start_line, item.function.end_line, &exclude)
+            .coverage_in_span_excluding(item.function.start_line, item.function.end_line, exclude)
             .map_or_else(
                 || policy_coverage(missing, CoverageJoin::Missing),
                 |pct| Some((pct, CoverageJoin::Measured)),
@@ -216,6 +215,21 @@ const fn policy_coverage(
     }
 }
 
+fn precomputed_nested_excludes(
+    by_file: &HashMap<Vec<String>, Vec<&FunctionComplexity>>,
+) -> HashMap<*const FunctionComplexity, Vec<(usize, usize)>> {
+    let mut out = HashMap::new();
+    for peers in by_file.values() {
+        for current in peers {
+            out.insert(
+                std::ptr::from_ref(*current),
+                merge_ranges(nested_excludes(peers, current)),
+            );
+        }
+    }
+    out
+}
+
 fn nested_excludes(
     fns: &[&FunctionComplexity],
     current: &FunctionComplexity,
@@ -224,6 +238,26 @@ fn nested_excludes(
         .filter(|other| is_nested(current, other))
         .map(|other| (other.start_line, other.end_line))
         .collect()
+}
+
+fn merge_ranges(mut ranges: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
+    if ranges.len() <= 1 {
+        return ranges;
+    }
+    ranges.sort_unstable();
+    let mut merged = Vec::with_capacity(ranges.len());
+    let (mut start, mut end) = ranges[0];
+    for &(next_start, next_end) in &ranges[1..] {
+        if next_start <= end.saturating_add(1) {
+            end = end.max(next_end);
+        } else {
+            merged.push((start, end));
+            start = next_start;
+            end = next_end;
+        }
+    }
+    merged.push((start, end));
+    merged
 }
 
 const fn is_nested(outer: &FunctionComplexity, inner: &FunctionComplexity) -> bool {

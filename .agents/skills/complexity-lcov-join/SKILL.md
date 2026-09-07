@@ -45,8 +45,9 @@ Known failure modes from this project's history. Read before editing
   (including `#[tokio::test]`). Criterion / custom harnesses are not
   detected.
 - `#[cfg]`: skip unless the feature/host predicate is enabled. Unknown
-  predicates skip the item. `debug_assertions` follows host `cfg!`, same
-  as `unix` / `windows`.
+  predicates skip the item. Host `target_os` / `target_arch` use
+  `std::env::consts`; `debug_assertions` follows host `cfg!`, same as
+  `unix` / `windows`. No `--target` flag.
 
 ## Empty instrumented spans
 

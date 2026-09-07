@@ -440,3 +440,13 @@ fn join_hundreds_of_nested_functions_finishes_under_a_second() {
     assert!(started.elapsed().as_secs() < 1, "{:?}", started.elapsed());
     assert_eq!(entries.len(), 300);
 }
+
+#[test]
+fn merge_ranges_collapses_overlap_and_adjacent() {
+    assert_eq!(merge_ranges(vec![]), vec![]);
+    assert_eq!(merge_ranges(vec![(3, 5)]), vec![(3, 5)]);
+    assert_eq!(
+        merge_ranges(vec![(10, 12), (1, 4), (3, 6), (8, 9)]),
+        vec![(1, 6), (8, 12)]
+    );
+}

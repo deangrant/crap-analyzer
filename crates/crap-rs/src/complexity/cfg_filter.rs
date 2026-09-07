@@ -105,35 +105,8 @@ fn lit_str(expr: &syn::Expr) -> Option<String> {
     None
 }
 
-const HOST_OS: &str = if cfg!(target_os = "linux") {
-    "linux"
-} else if cfg!(target_os = "macos") {
-    "macos"
-} else if cfg!(target_os = "windows") {
-    "windows"
-} else if cfg!(target_os = "ios") {
-    "ios"
-} else if cfg!(target_os = "android") {
-    "android"
-} else if cfg!(target_os = "freebsd") {
-    "freebsd"
-} else {
-    ""
-};
-
-const HOST_ARCH: &str = if cfg!(target_arch = "x86_64") {
-    "x86_64"
-} else if cfg!(target_arch = "aarch64") {
-    "aarch64"
-} else if cfg!(target_arch = "x86") {
-    "x86"
-} else if cfg!(target_arch = "wasm32") {
-    "wasm32"
-} else if cfg!(target_arch = "riscv64") {
-    "riscv64"
-} else {
-    ""
-};
+const HOST_OS: &str = std::env::consts::OS;
+const HOST_ARCH: &str = std::env::consts::ARCH;
 
 const HOST_FAMILY: &str = if cfg!(target_family = "unix") {
     "unix"

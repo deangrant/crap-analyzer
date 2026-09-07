@@ -217,12 +217,18 @@ Decisions inside unexpanded or opaque macros may be missed.
   not detected; ungated helpers in `src/tests/` can still be scored.
 - One unreadable or unparseable source file fails the whole collect (exit
   2), same fail-closed contract for Rust, Go, and TypeScript.
+- Nested coverage exclude cost grows with functions and instrumented lines
+  per file; extreme per-file function counts may be slow.
+- The full LCOV or coverprofile is held in memory for join (Go expands
+  coverprofile blocks across every line); large monorepo coverage files
+  can use substantial RAM.
 - Unknown `#[cfg]` predicates skip the item. Skipped items are not gated.
-- `#[cfg]` uses the host (`target_os`, `target_arch`, `target_family`,
-  `target_pointer_width`, `unix` / `windows`, `debug_assertions`).
-  Cross-compile LCOV can disagree; there is no `--target` flag. Local
-  `/verify` and CI dogfood pair `cargo llvm-cov --all-features` with
-  `crap-rs --all-features` so the feature universe matches.
+- `#[cfg]` uses the host (`target_os` / `target_arch` via
+  `std::env::consts`, plus `target_family`, `target_pointer_width`,
+  `unix` / `windows`, `debug_assertions`). Unlisted rustc cfg keys still
+  skip. Cross-compile LCOV can disagree; there is no `--target` flag.
+  Local `/verify` and CI dogfood pair `cargo llvm-cov --all-features`
+  with `crap-rs --all-features` so the feature universe matches.
 - File and directory symlinks are followed only when the target stays
   under the walk root; cycles are skipped. The walk root must
   canonicalize (otherwise the run fails); files that fail canonicalize
@@ -234,7 +240,9 @@ Decisions inside unexpanded or opaque macros may be missed.
   Valid but unusual syntax (generics edge cases) may still under-count.
   Coverprofile shared-line statements are merged pessimistically (any
   zero-hit block on a line leaves that line uncovered). Nested `go.mod`
-  modules are remapped and analyzed with the parent module.
+  modules are remapped and analyzed with the parent module. Host build
+  tags cover common GOOS names (`linux`, `windows`, `darwin`, BSD family,
+  …); other OS names still need `--tags`.
 - `crap-ts` complexity is an approximate text scanner (not `tsc`).
   Unclosed literals/comments or unbalanced `{}`/`()`/`[]` fail the run.
   Valid but unusual syntax (generics, decorators, TSX) may under- or

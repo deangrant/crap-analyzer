@@ -158,10 +158,36 @@ fn host_tag(name: &str) -> bool {
 }
 
 fn known_os_tag(name: &str) -> Option<bool> {
+    if let Some(enabled) = primary_goos(name) {
+        return Some(enabled);
+    }
+    if let Some(enabled) = secondary_goos(name) {
+        return Some(enabled);
+    }
+    // No stable rustc host mapping; enable only via `--tags`.
+    matches!(name, "plan9" | "js" | "zos" | "hurd").then_some(false)
+}
+
+fn primary_goos(name: &str) -> Option<bool> {
     match name {
         "linux" => Some(cfg!(target_os = "linux")),
         "windows" => Some(cfg!(target_os = "windows")),
         "darwin" => Some(cfg!(target_os = "macos")),
+        "freebsd" => Some(cfg!(target_os = "freebsd")),
+        "netbsd" => Some(cfg!(target_os = "netbsd")),
+        "openbsd" => Some(cfg!(target_os = "openbsd")),
+        _ => None,
+    }
+}
+
+fn secondary_goos(name: &str) -> Option<bool> {
+    match name {
+        "dragonfly" => Some(cfg!(target_os = "dragonfly")),
+        "android" => Some(cfg!(target_os = "android")),
+        "ios" => Some(cfg!(target_os = "ios")),
+        "illumos" => Some(cfg!(target_os = "illumos")),
+        "solaris" => Some(cfg!(target_os = "solaris")),
+        "aix" => Some(cfg!(target_os = "aix")),
         _ => None,
     }
 }
