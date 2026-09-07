@@ -7,7 +7,7 @@ pub(crate) mod walk;
 
 use crap_core::{Error, Language, LocatedFn, Metric, Result, ScanRequest, Target};
 use project_resolve::Package;
-use std::path::Path;
+use std::path::{Component, Path};
 
 /// TypeScript implementation of [`Language`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,12 +39,13 @@ impl TsLanguage {
         self.workspace || !self.packages.is_empty()
     }
 
-    fn targets_from_packages(packages: &[Package]) -> Vec<Target> {
+    fn targets_from_packages(packages: &[Package], workspace_root: &Path) -> Vec<Target> {
         packages
             .iter()
             .map(|pkg| Target {
                 root: pkg.root.clone(),
                 crate_name: Some(pkg.name.clone()),
+                join_key: Some(relative_join_key(workspace_root, &pkg.root)),
                 skip: project_resolve::nested_package_roots(&pkg.root, packages),
                 enabled_features: Vec::new(),
             })
@@ -57,7 +58,7 @@ impl TsLanguage {
         } else {
             project_resolve::selected_packages(&self.packages, &request.path)?
         };
-        Ok(Self::targets_from_packages(&packages))
+        Ok(Self::targets_from_packages(&packages, &request.path))
     }
 
     fn targets_from_package_root(path: &Path) -> Result<Option<Vec<Target>>> {
@@ -65,17 +66,41 @@ impl TsLanguage {
             return Ok(None);
         }
         let package = project_resolve::root_package(path)?;
-        Ok(Some(Self::targets_from_packages(&[package])))
+        Ok(Some(Self::targets_from_packages(&[package], path)))
     }
 
     fn path_target(request: &ScanRequest) -> Target {
         Target {
             root: request.path.clone(),
             crate_name: None,
+            join_key: None,
             skip: Vec::new(),
             enabled_features: Vec::new(),
         }
     }
+}
+
+/// Relative POSIX path of `pkg_root` under `workspace_root` for `PathIndex`.
+fn relative_join_key(workspace_root: &Path, pkg_root: &Path) -> String {
+    let rel = pkg_root.strip_prefix(workspace_root).unwrap_or(pkg_root);
+    let key = posix_components(rel);
+    if key.is_empty() {
+        pkg_root
+            .file_name()
+            .map_or_else(|| ".".into(), |n| n.to_string_lossy().into_owned())
+    } else {
+        key
+    }
+}
+
+fn posix_components(path: &Path) -> String {
+    path.components()
+        .filter_map(|c| match c {
+            Component::Normal(s) => Some(s.to_string_lossy()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 fn collect_functions(targets: &[Target], metric: Metric) -> Result<Vec<LocatedFn>> {
@@ -135,6 +160,7 @@ fn collect_target(
         if take_file(
             &file,
             target.crate_name.as_deref(),
+            target.join_key.as_deref(),
             metric,
             functions,
             details,
@@ -150,6 +176,7 @@ fn collect_target(
 fn take_file(
     file: &Path,
     crate_name: Option<&str>,
+    join_key: Option<&str>,
     metric: Metric,
     functions: &mut Vec<LocatedFn>,
     details: &mut Vec<String>,
@@ -167,6 +194,7 @@ fn take_file(
                 functions.push(LocatedFn {
                     function,
                     crate_name: crate_name.map(str::to_owned),
+                    join_key: join_key.map(str::to_owned),
                 });
             }
             true

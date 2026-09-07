@@ -155,21 +155,29 @@ fn rust_files_skips_star_tests_rs() {
 }
 
 #[test]
-fn collect_rust_file_skips_non_rust_and_keeps_missing() {
+fn collect_rust_file_skips_non_rust_and_missing() {
     let root = Path::new("/proj");
     let mut visited = HashSet::new();
     let mut out = Vec::new();
     let mut walk = Walk {
         root,
-        root_canon: None,
+        root_canon: root,
         nested_skip: &[],
         visited: &mut visited,
         out: &mut out,
     };
     collect_rust_file(PathBuf::from("notes.txt"), &mut walk);
     collect_rust_file(PathBuf::from("/no/such/crap-rs-missing.rs"), &mut walk);
-    assert_eq!(out.len(), 1);
-    assert!(out[0].ends_with("crap-rs-missing.rs"));
+    assert!(out.is_empty());
+}
+
+#[test]
+fn missing_root_fails_rust_files() {
+    let root = temp_root();
+    let missing = root.join("gone");
+    let err = rust_files(&missing, &[]);
+    let _ = fs::remove_dir_all(&root);
+    assert!(matches!(err, Err(crap_core::Error::Io { .. })), "{err:?}");
 }
 
 #[test]
@@ -179,7 +187,7 @@ fn take_typed_entry_propagates_file_type_error() {
     let mut out = Vec::new();
     let mut walk = Walk {
         root,
-        root_canon: None,
+        root_canon: root,
         nested_skip: &[],
         visited: &mut visited,
         out: &mut out,
@@ -201,7 +209,7 @@ fn walk_entries_propagates_read_dir_error() {
     let mut out = Vec::new();
     let mut walk = Walk {
         root,
-        root_canon: None,
+        root_canon: root,
         nested_skip: &[],
         visited: &mut visited,
         out: &mut out,
@@ -214,6 +222,21 @@ fn walk_entries_propagates_read_dir_error() {
 mod unix {
     use super::*;
     use std::os::unix::fs::symlink;
+
+    #[test]
+    fn unreadable_root_fails_rust_files() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = temp_root();
+        require_ok(fs::set_permissions(
+            &root,
+            fs::Permissions::from_mode(0o000),
+        ));
+        let err = rust_files(&root, &[]);
+        let _ = fs::set_permissions(&root, fs::Permissions::from_mode(0o755));
+        let _ = fs::remove_dir_all(&root);
+        assert!(matches!(err, Err(crap_core::Error::Io { .. })), "{err:?}");
+    }
 
     #[test]
     fn directory_symlink_cycle_does_not_hang() {
@@ -302,7 +325,7 @@ mod unix {
         let mut out = Vec::new();
         let mut walk = Walk {
             root: &root,
-            root_canon: None,
+            root_canon: &root,
             nested_skip: &[],
             visited: &mut visited,
             out: &mut out,
@@ -327,7 +350,7 @@ mod unix {
         let mut out = Vec::new();
         let mut walk = Walk {
             root: &root,
-            root_canon: Some(root_canon.as_path()),
+            root_canon: &root_canon,
             nested_skip: &[],
             visited: &mut visited,
             out: &mut out,

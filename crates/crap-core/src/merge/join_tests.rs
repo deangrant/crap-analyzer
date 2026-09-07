@@ -24,6 +24,28 @@ fn func_in(
             complexity: 1,
         },
         crate_name: crate_name.map(str::to_owned),
+        join_key: None,
+    }
+}
+
+fn func_join(
+    file: &str,
+    name: &str,
+    start: usize,
+    end: usize,
+    crate_name: Option<&str>,
+    join_key: Option<&str>,
+) -> LocatedFn {
+    LocatedFn {
+        function: FunctionComplexity {
+            file: PathBuf::from(file),
+            name: name.into(),
+            start_line: start,
+            end_line: end,
+            complexity: 1,
+        },
+        crate_name: crate_name.map(str::to_owned),
+        join_key: join_key.map(str::to_owned),
     }
 }
 
@@ -372,6 +394,30 @@ fn leading_parent_dir_stays_on_the_stack() {
     let coverage = cov("../src/lib.rs", &[(1, 1)]);
     let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
     assert_f64_bits_eq(entries[0].coverage, 100.0);
+}
+
+#[test]
+fn ts_join_key_breaks_scoped_npm_basename_tie() {
+    // Scoped npm names are not path segments; join_key is the package dir.
+    let functions = [func_join(
+        "src/util.ts",
+        "f",
+        1,
+        1,
+        Some("@scope/a"),
+        Some("packages/a"),
+    )];
+    let mut coverage = cov("/repo/packages/a/src/util.ts", &[(1, 1)]);
+    coverage.insert(
+        PathBuf::from("/repo/packages/b/src/util.ts"),
+        FileCoverage {
+            lines: std::iter::once((1, 0)).collect(),
+        },
+    );
+    let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
+    assert_eq!(entries[0].coverage_join, CoverageJoin::Measured);
+    assert_f64_bits_eq(entries[0].coverage, 100.0);
+    assert_eq!(entries[0].crate_name.as_deref(), Some("@scope/a"));
 }
 
 #[test]

@@ -120,6 +120,7 @@ fn collect_targets_propagates_walk_error() {
     let targets = [Target {
         root: PathBuf::from("/no/such/crap-rs-collect-targets"),
         crate_name: None,
+        join_key: None,
         skip: Vec::new(),
         enabled_features: Vec::new(),
     }];
@@ -268,6 +269,7 @@ fn collect_functions_fails_when_any_file_is_unparseable() {
     let targets = [Target {
         root: dir.clone(),
         crate_name: None,
+        join_key: None,
         skip: Vec::new(),
         enabled_features: Vec::new(),
     }];

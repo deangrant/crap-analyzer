@@ -215,17 +215,23 @@ Decisions inside unexpanded or opaque macros may be missed.
   `target_pointer_width`, `unix` / `windows`, `debug_assertions`).
   Cross-compile LCOV can disagree; there is no `--target` flag.
 - File and directory symlinks are followed only when the target stays
-  under the walk root; cycles are skipped.
+  under the walk root; cycles are skipped. The walk root must
+  canonicalize (otherwise the run fails); files that fail canonicalize
+  are skipped.
 - `$CARGO` is used only when it names an existing file (Cargo’s usual
   override); otherwise `crap-rs` runs `cargo` from `PATH`.
 - `crap-go` complexity is an approximate text scanner (not `go/ast`).
   Unclosed literals/comments or unbalanced `{}`/`()`/`[]` fail the run.
   Valid but unusual syntax (generics edge cases) may still under-count.
+  Coverprofile shared-line statements are merged pessimistically (any
+  zero-hit block on a line leaves that line uncovered). Nested `go.mod`
+  modules are remapped and analyzed with the parent module.
 - `crap-ts` complexity is an approximate text scanner (not `tsc`).
   Unclosed literals/comments or unbalanced `{}`/`()`/`[]` fail the run.
   Valid but unusual syntax (generics, decorators, TSX) may under- or
   over-count. Cover `.ts` / `.tsx` paths in LCOV (source-map remapping
-  when needed).
+  when needed). Path join uses the package directory relative to the
+  workspace (`join_key`); reports still show the npm package name.
 
 ## Develop
 

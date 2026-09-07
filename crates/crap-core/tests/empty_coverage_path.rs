@@ -17,6 +17,7 @@ fn func(file: &str, crate_name: Option<&str>) -> LocatedFn {
             complexity: 1,
         },
         crate_name: crate_name.map(str::to_owned),
+        join_key: None,
     }
 }
 

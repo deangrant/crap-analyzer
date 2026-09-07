@@ -4,8 +4,8 @@ use crap_core::{
     Error, FileCoverage, RunResult, ScanRequest, ambiguous_join_warning, render, run_with_coverage,
 };
 use crap_go::cli::{self, Action};
-use crap_go::coverprofile::{parse_coverprofile, remap_import_paths};
-use crap_go::enclosing_module;
+use crap_go::coverprofile::{parse_coverprofile, remap_import_paths_all};
+use crap_go::modules_for_remap;
 use std::collections::HashMap;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
@@ -41,12 +41,11 @@ fn load_coverage(
     analysis_root: &Path,
 ) -> crap_core::Result<HashMap<PathBuf, FileCoverage>> {
     let coverage = parse_coverprofile(coverage_path)?;
-    match enclosing_module(analysis_root)? {
-        Some((module_root, module_path)) => {
-            Ok(remap_import_paths(&coverage, &module_root, &module_path))
-        }
-        None => Ok(coverage),
+    let modules = modules_for_remap(analysis_root)?;
+    if modules.is_empty() {
+        return Ok(coverage);
     }
+    Ok(remap_import_paths_all(&coverage, &modules))
 }
 
 fn finish_run(request: &ScanRequest, result: &RunResult) -> ExitCode {

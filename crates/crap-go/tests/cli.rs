@@ -96,6 +96,27 @@ fn nested_module_import_path_cover_matches_hits() {
 }
 
 #[test]
+fn multi_module_remaps_and_scores_nested_go_mod() {
+    let root = fixture_root("multi_module");
+    let (code, stdout, stderr) = output_of(
+        bin()
+            .arg("--coverage")
+            .arg(root.join("cover.out"))
+            .arg("--path")
+            .arg(&root)
+            .arg("--workspace")
+            .arg("--format")
+            .arg("json"),
+    );
+    assert_eq!(code, 0, "stderr={stderr}\nstdout={stdout}");
+    let value = parse_json(&stdout);
+    for name in ["Parent", "Child"] {
+        let row = fn_row(&value, name);
+        assert_eq!(row["coverage_percent"], 100.0, "{name}: {row}");
+    }
+}
+
+#[test]
 fn basename_util_tie_broken_by_import_path() {
     let root = fixture_root("basename_tie");
     let (code, stdout, stderr) = output_of(

@@ -74,6 +74,7 @@ mod tests {
             Ok(vec![Target {
                 root: request.path.clone(),
                 crate_name: Some("demo".into()),
+                join_key: None,
                 skip: Vec::new(),
                 enabled_features: Vec::new(),
             }])
@@ -119,6 +120,7 @@ mod tests {
                 complexity,
             },
             crate_name: Some("demo".into()),
+            join_key: None,
         }
     }
 

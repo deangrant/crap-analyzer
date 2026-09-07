@@ -14,7 +14,7 @@ const CONVENTION_DIRS: &[&str] = &["tests", "benches", "examples"];
 /// Shared walk state so directory helpers stay under Clippy's argument cap.
 struct Walk<'a> {
     root: &'a Path,
-    root_canon: Option<&'a Path>,
+    root_canon: &'a Path,
     nested_skip: &'a [PathBuf],
     visited: &'a mut HashSet<PathBuf>,
     out: &'a mut Vec<PathBuf>,
@@ -24,17 +24,16 @@ struct Walk<'a> {
 ///
 /// # Errors
 ///
-/// Returns [`Error::Io`] if a directory cannot be read.
+/// Returns [`Error::Io`] if the root cannot be canonicalized or a directory
+/// cannot be read.
 pub fn rust_files(root: &Path, nested_skip: &[PathBuf]) -> Result<Vec<PathBuf>> {
     let mut out = Vec::new();
     let mut visited = HashSet::new();
-    let walk_root_canon = fs::canonicalize(root).ok();
-    if let Some(canon) = walk_root_canon.as_ref() {
-        visited.insert(canon.clone());
-    }
+    let walk_root_canon = fs::canonicalize(root).map_err(|source| Error::io(root, source))?;
+    visited.insert(walk_root_canon.clone());
     let mut walk = Walk {
         root,
-        root_canon: walk_root_canon.as_deref(),
+        root_canon: &walk_root_canon,
         nested_skip,
         visited: &mut visited,
         out: &mut out,
@@ -124,7 +123,6 @@ fn collect_rust_file(path: PathBuf, walk: &mut Walk<'_>) {
         return;
     }
     let Ok(canon) = fs::canonicalize(&path) else {
-        walk.out.push(path);
         return;
     };
     if !stays_in_root(&canon, walk.root_canon) || !walk.visited.insert(canon) {
@@ -133,8 +131,8 @@ fn collect_rust_file(path: PathBuf, walk: &mut Walk<'_>) {
     walk.out.push(path);
 }
 
-fn stays_in_root(canon: &Path, walk_root_canon: Option<&Path>) -> bool {
-    walk_root_canon.is_none_or(|root| canon.starts_with(root))
+fn stays_in_root(canon: &Path, walk_root_canon: &Path) -> bool {
+    canon.starts_with(walk_root_canon)
 }
 
 fn skip_dir(

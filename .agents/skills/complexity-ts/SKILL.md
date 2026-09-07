@@ -32,8 +32,9 @@ SOLID: [rust-style-guide](../rust-style-guide/SKILL.md) and
   remapping when covering emitted JavaScript under `dist/`.
 - Empty spans and missing path joins use core `--missing`.
 - Unresolved equal-rank ties are `coverage_join: ambiguous` (still
-  scored via `--missing`); package names strengthen ranking
-  (`{name}/src|lib|…` or a unique path component).
+  scored via `--missing`); PathIndex uses `join_key` (package directory
+  relative to the workspace) when set, else the npm package `name`.
+  Reports still show the npm `name` as `crate_name`.
 
 ## Package walk
 
@@ -46,6 +47,7 @@ SOLID: [rust-style-guide](../rust-style-guide/SKILL.md) and
 - `-p` selects by package `name`.
 - Walk `.ts` / `.tsx`; skip `node_modules`, `.git`, `dist`, `build`,
   `coverage`, and nested `package.json` roots in `Target.skip`.
+  Walk root must canonicalize; files that fail canonicalize are skipped.
 
 ## Complexity attribution
 

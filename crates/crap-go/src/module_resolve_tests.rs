@@ -1,6 +1,6 @@
 use super::{
-    all_packages, enclosing_module, import_path, nested_module_roots, push_dir_entry,
-    selected_packages, take_package_dir,
+    all_packages, enclosing_module, import_path, modules_for_remap, nested_module_roots,
+    push_dir_entry, selected_packages, take_package_dir,
 };
 use crap_core::Error;
 use std::fs;
@@ -29,7 +29,7 @@ fn write(path: &Path, body: &str) {
 }
 
 #[test]
-fn discovers_packages_and_skips_nested_module() {
+fn discovers_packages_including_nested_module() {
     let root = temp_dir("all");
     write(&root.join("go.mod"), "module example.com/demo\n\ngo 1.22\n");
     write(&root.join("main.go"), "package main\n");
@@ -41,10 +41,15 @@ fn discovers_packages_and_skips_nested_module() {
     let names: Vec<_> = packages.iter().map(|p| p.name.as_str()).collect();
     assert!(names.contains(&"example.com/demo"));
     assert!(names.contains(&"example.com/demo/pkg"));
-    assert!(!names.iter().any(|n| n.contains("nested")));
+    assert!(names.contains(&"example.com/other"));
     assert!(!names.iter().any(|n| n.contains("vendor")));
-    let nested = nested_module_roots(&packages[0].root, &packages);
+    let demo_root = packages
+        .iter()
+        .find(|p| p.name == "example.com/demo")
+        .map_or(root.as_path(), |p| p.root.as_path());
+    let nested = nested_module_roots(demo_root, &packages);
     assert!(nested.iter().any(|p| p.ends_with("pkg")));
+    assert!(nested.iter().any(|p| p.ends_with("nested")));
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -145,6 +150,27 @@ fn enclosing_module_returns_none_without_go_mod() {
     write(&root.join("x.go"), "package x\n");
     let found = require_ok(enclosing_module(&root));
     assert!(found.is_none());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn modules_for_remap_falls_back_to_enclosing() {
+    let root = temp_dir("remap-encl");
+    write(&root.join("go.mod"), "module example.com/demo\n");
+    let nested = root.join("subdir");
+    require_ok(fs::create_dir(&nested));
+    let modules = require_ok(modules_for_remap(&nested));
+    assert_eq!(modules.len(), 1);
+    assert_eq!(modules[0].0, root);
+    assert_eq!(modules[0].1, "example.com/demo");
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn modules_for_remap_empty_without_module() {
+    let root = temp_dir("remap-empty");
+    let modules = require_ok(modules_for_remap(&root));
+    assert!(modules.is_empty());
     let _ = fs::remove_dir_all(&root);
 }
 

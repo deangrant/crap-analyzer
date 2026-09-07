@@ -52,8 +52,13 @@ fn resolve_single_package_root() {
     let targets = require_ok(lang.resolve_targets(&request(root.clone())));
     assert_eq!(targets.len(), 1);
     assert_eq!(targets[0].crate_name.as_deref(), Some("sample"));
+    assert_eq!(
+        targets[0].join_key.as_deref(),
+        root.file_name().map(|n| n.to_string_lossy()).as_deref()
+    );
     let fns = require_ok(lang.collect_functions(&targets, Metric::Cyclomatic));
     assert!(fns.iter().any(|f| f.function.name == "ok"));
+    assert_eq!(fns[0].join_key, targets[0].join_key);
     let _ = fs::remove_dir_all(&root);
 }
 
@@ -104,7 +109,20 @@ fn workspace_selection_expands_packages() {
     let targets = require_ok(selected.resolve_targets(&request(root.clone())));
     assert_eq!(targets.len(), 1);
     assert_eq!(targets[0].crate_name.as_deref(), Some("b"));
+    assert_eq!(targets[0].join_key.as_deref(), Some("packages/b"));
     let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn relative_join_key_filters_root_and_falls_back() {
+    assert_eq!(
+        relative_join_key(Path::new("/workspace"), Path::new("/other/pkg")),
+        "other/pkg"
+    );
+    assert_eq!(
+        relative_join_key(Path::new("/workspace"), Path::new("/")),
+        "."
+    );
 }
 
 #[cfg(unix)]
@@ -168,12 +186,14 @@ fn collect_propagates_walk_errors_across_targets() {
     let ok = Target {
         root: root.clone(),
         crate_name: Some("ok".into()),
+        join_key: None,
         skip: Vec::new(),
         enabled_features: Vec::new(),
     };
     let bad = Target {
         root: root.join("missing-dir"),
         crate_name: Some("bad".into()),
+        join_key: None,
         skip: Vec::new(),
         enabled_features: Vec::new(),
     };

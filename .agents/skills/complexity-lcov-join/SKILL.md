@@ -63,6 +63,9 @@ LCOV `SF:` paths and source paths may be absolute or relative.
 - Equal basename ties: prefer `{name}/{src|lib|tests|benches|examples}`;
   else a unique path-component hit. Go import paths and scoped npm names
   match a contiguous path suffix (including remapped filesystem keys).
+  TypeScript also sets `LocatedFn.join_key` to the package directory
+  relative to the workspace root (PathIndex uses `join_key` over the npm
+  `crate_name` display name).
 - Absolute and relative spellings of the same suffix merge for join and
   nested-exclude grouping.
 - Leftover unresolved ties still apply `--missing`, but are marked

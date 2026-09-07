@@ -34,12 +34,15 @@ empty spans apply after coverprofile is in `FileCoverage`).
 - Data line shape:
   `file.go:startLine.startCol,endLine.endCol stmts hits`.
 - Expand each block across `startLine..=endLine` into `FileCoverage.lines`
-  (per-line map expansion; fine at normal coverprofile scale).
-- `set`: hit → store `max(1)`. `count` / `atomic`: saturating-add hits.
+  (columns are discarded). When multiple blocks touch the same line, the
+  line is **uncovered** if any intersecting block has 0 hits (pessimistic
+  shared-line merge); otherwise `set` uses max(1) and `count`/`atomic`
+  saturating-add positive hits.
 - Normalize `\` to `/` in paths.
-- After parse, remap import-path keys (`module/pkg/file.go`) to filesystem
-  paths under the enclosing `go.mod` via `remap_import_paths` before
-  `run_with_coverage`. Non-module keys stay unchanged.
+- After parse, remap import-path keys for **every** `go.mod` under the
+  analysis root (`modules_for_remap` + `remap_import_paths_all`, longest
+  module path first). If none are under the root, fall back to the
+  enclosing module. Non-module keys stay unchanged.
 
 Empty spans and missing path joins still use `--missing` in core.
 
@@ -55,11 +58,12 @@ Empty spans and missing path joins still use `--missing` in core.
 
 ## Module walk
 
-- Resolve packages from `go.mod` (`module_resolve`).
-- Walk `.go` files; skip `vendor`, `.git`, `testdata`, and nested module
-  roots.
+- Resolve packages from `go.mod` (`module_resolve`), including nested
+  modules (each nested `go.mod` is a separate module root).
+- Walk `.go` files; skip `vendor`, `.git`, `testdata`, and foreign nested
+  module roots on a given target's `skip` list.
 - `--workspace` / `-p` select packages; a module-root `--path` analyzes
-  every package under that module.
+  every package under that module **and** nested modules.
 
 ## Complexity attribution
 

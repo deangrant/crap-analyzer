@@ -82,6 +82,7 @@ impl RustLanguage {
             .map(|pkg| Target {
                 root: pkg.root.clone(),
                 crate_name: Some(pkg.name.clone()),
+                join_key: None,
                 skip: workspace::nested_member_roots(&pkg.root, packages),
                 enabled_features: self.enabled_features(Some(pkg)),
             })
@@ -109,6 +110,7 @@ impl RustLanguage {
         Target {
             root: request.path.clone(),
             crate_name: None,
+            join_key: None,
             skip: Vec::new(),
             enabled_features: self.enabled_features(None),
         }
@@ -196,6 +198,7 @@ fn take_file(
                 functions.push(LocatedFn {
                     function,
                     crate_name: crate_name.map(str::to_owned),
+                    join_key: None,
                 });
             }
             true

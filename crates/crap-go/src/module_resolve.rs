@@ -13,15 +13,20 @@ pub struct Package {
     pub root: PathBuf,
 }
 
-/// Loads every package under the module at `root`.
+/// Loads every package under the module at `root`, including nested modules.
 ///
 /// # Errors
 ///
 /// Returns [`Error::Resolve`] if `go.mod` is missing or malformed, or
 /// [`Error::Io`] if directories cannot be read.
 pub fn all_packages(root: &Path) -> Result<Vec<Package>> {
-    let module = read_module_path(root)?;
-    discover_packages(root, &module)
+    let _ = read_module_path(root)?;
+    let mut packages = Vec::new();
+    for (module_root, module_path) in discover_modules_under(root)? {
+        packages.extend(discover_packages(&module_root, &module_path)?);
+    }
+    packages.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(packages)
 }
 
 /// Loads the named packages (by import path) under the module at `root`.
@@ -73,10 +78,66 @@ pub fn enclosing_module(start: &Path) -> Result<Option<(PathBuf, String)>> {
     }
 }
 
+/// Modules under `root` for coverprofile remapping.
+///
+/// Prefers every `go.mod` under `root`. When none exist, falls back to the
+/// enclosing module of `root` (analysis inside a module without scanning up).
+///
+/// # Errors
+///
+/// Returns I/O or resolve errors while reading `go.mod` files.
+pub fn modules_for_remap(root: &Path) -> Result<Vec<(PathBuf, String)>> {
+    let mut modules = discover_modules_under(root)?;
+    if modules.is_empty()
+        && let Some(enclosing) = enclosing_module(root)?
+    {
+        modules.push(enclosing);
+    }
+    Ok(modules)
+}
+
+/// Finds every `(module_root, module_path)` under `root` (inclusive).
+///
+/// # Errors
+///
+/// Returns I/O or resolve errors while walking or reading `go.mod`.
+pub fn discover_modules_under(root: &Path) -> Result<Vec<(PathBuf, String)>> {
+    let mut out = Vec::new();
+    collect_modules(root, &mut out)?;
+    out.sort_by(|a, b| a.1.cmp(&b.1));
+    Ok(out)
+}
+
+fn collect_modules(dir: &Path, out: &mut Vec<(PathBuf, String)>) -> Result<()> {
+    push_module_if_present(dir, out)?;
+    for entry in read_dir_entries(dir)? {
+        let Some(child) = walkable_subdir(&entry) else {
+            continue;
+        };
+        collect_modules(&child, out)?;
+    }
+    Ok(())
+}
+
+fn push_module_if_present(dir: &Path, out: &mut Vec<(PathBuf, String)>) -> Result<()> {
+    if !dir.join("go.mod").is_file() {
+        return Ok(());
+    }
+    out.push((dir.to_path_buf(), read_module_path(dir)?));
+    Ok(())
+}
+
+fn walkable_subdir(entry: &fs::DirEntry) -> Option<PathBuf> {
+    let path = entry.path();
+    if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) || is_skip_dir_name(&path) {
+        return None;
+    }
+    Some(path)
+}
+
 fn discover_packages(module_root: &Path, module_path: &str) -> Result<Vec<Package>> {
     let mut packages = Vec::new();
     collect_packages(module_root, module_root, module_path, &mut packages)?;
-    packages.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(packages)
 }
 

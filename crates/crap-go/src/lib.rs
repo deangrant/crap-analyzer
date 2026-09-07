@@ -7,7 +7,7 @@ pub mod coverprofile;
 pub(crate) mod module_resolve;
 pub(crate) mod walk;
 
-pub use module_resolve::enclosing_module;
+pub use module_resolve::{enclosing_module, modules_for_remap};
 
 use crap_core::{Error, Language, LocatedFn, Metric, Result, ScanRequest, Target};
 use module_resolve::Package;
@@ -52,6 +52,7 @@ impl GoLanguage {
                 root: pkg.root.clone(),
                 // Go import path (language-agnostic package key).
                 crate_name: Some(pkg.name.clone()),
+                join_key: None,
                 skip: module_resolve::nested_module_roots(&pkg.root, packages),
                 // Go build tags treated as enabled.
                 enabled_features: self.tags.clone(),
@@ -80,6 +81,7 @@ impl GoLanguage {
         Target {
             root: request.path.clone(),
             crate_name: None,
+            join_key: None,
             skip: Vec::new(),
             // Go build tags treated as enabled.
             enabled_features: self.tags.clone(),
@@ -193,6 +195,7 @@ fn take_file(
                 functions.push(LocatedFn {
                     function,
                     crate_name: crate_name.map(str::to_owned),
+                    join_key: None,
                 });
             }
             FileOutcome::Ok

@@ -1,0 +1,3 @@
+mode: set
+example.com/parent/main.go:3.18,5.2 1 1
+example.com/child/lib.go:3.17,5.2 1 1

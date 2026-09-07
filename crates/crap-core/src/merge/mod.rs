@@ -117,8 +117,10 @@ pub struct FunctionComplexity {
 pub struct LocatedFn {
     /// Complexity row.
     pub function: FunctionComplexity,
-    /// Package name, if known.
+    /// Package name, if known (report / JSON display).
     pub crate_name: Option<String>,
+    /// Path-index join key when it differs from [`Self::crate_name`].
+    pub join_key: Option<String>,
 }
 
 /// Builds scored entries from `functions` and `coverage`.
@@ -188,7 +190,10 @@ fn coverage_for(
     let key = path_index::components(&item.function.file);
     let peers = by_file.get(&key).map_or(&empty[..], Vec::as_slice);
     let exclude = nested_excludes(peers, &item.function);
-    match index.lookup(&item.function.file, item.crate_name.as_deref()) {
+    match index.lookup(
+        &item.function.file,
+        item.join_key.as_deref().or(item.crate_name.as_deref()),
+    ) {
         Lookup::Found(file) => file
             .coverage_in_span_excluding(item.function.start_line, item.function.end_line, &exclude)
             .map_or_else(

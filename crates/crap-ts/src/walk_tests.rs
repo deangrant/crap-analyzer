@@ -83,21 +83,30 @@ fn nested_package_json_without_skip_list_is_skipped() {
 }
 
 #[test]
-fn collect_ts_file_skips_non_ts_and_keeps_missing() {
+fn collect_ts_file_skips_non_ts_and_missing() {
     let root = temp_dir("collect");
     let mut visited = HashSet::new();
     let mut out = Vec::new();
     let mut walk = Walk {
         root: &root,
-        root_canon: None,
+        root_canon: &root,
         nested_skip: &[],
         visited: &mut visited,
         out: &mut out,
     };
     collect_ts_file(root.join("x.js"), &mut walk);
     collect_ts_file(root.join("missing.ts"), &mut walk);
-    assert_eq!(walk.out.len(), 1);
+    assert!(walk.out.is_empty());
     let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn missing_root_fails_ts_files() {
+    let root = temp_dir("missing-root");
+    let missing = root.join("gone");
+    let err = ts_files(&missing, &[]);
+    let _ = fs::remove_dir_all(&root);
+    assert!(matches!(err, Err(crap_core::Error::Io { .. })), "{err:?}");
 }
 
 #[test]
@@ -111,7 +120,7 @@ fn visit_subdir_skips_missing_outside_and_revisited() {
     let mut out = Vec::new();
     let mut walk = Walk {
         root: &root,
-        root_canon: Some(root_canon.as_path()),
+        root_canon: &root_canon,
         nested_skip: &[],
         visited: &mut visited,
         out: &mut out,
@@ -133,7 +142,7 @@ fn take_typed_entry_propagates_file_type_error() {
     let mut out = Vec::new();
     let mut walk = Walk {
         root: &root,
-        root_canon: None,
+        root_canon: &root,
         nested_skip: &[],
         visited: &mut visited,
         out: &mut out,
@@ -154,7 +163,7 @@ fn walk_entries_propagates_read_dir_error() {
     let mut out = Vec::new();
     let mut walk = Walk {
         root: &root,
-        root_canon: None,
+        root_canon: &root,
         nested_skip: &[],
         visited: &mut visited,
         out: &mut out,
@@ -172,6 +181,21 @@ fn walk_entries_propagates_read_dir_error() {
 mod unix {
     use super::*;
     use std::os::unix::fs::symlink;
+
+    #[test]
+    fn unreadable_root_fails_ts_files() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = temp_dir("unreadable");
+        require_ok(fs::set_permissions(
+            &root,
+            fs::Permissions::from_mode(0o000),
+        ));
+        let err = ts_files(&root, &[]);
+        let _ = fs::set_permissions(&root, fs::Permissions::from_mode(0o755));
+        let _ = fs::remove_dir_all(&root);
+        assert!(matches!(err, Err(crap_core::Error::Io { .. })), "{err:?}");
+    }
 
     #[test]
     fn dangling_symlink_is_ignored() {
@@ -232,7 +256,7 @@ mod unix {
         let mut out = Vec::new();
         let mut walk = Walk {
             root: &root,
-            root_canon: None,
+            root_canon: &root,
             nested_skip: &[],
             visited: &mut visited,
             out: &mut out,
