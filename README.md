@@ -209,11 +209,20 @@ Decisions inside unexpanded or opaque macros may be missed.
 - Line coverage is not proof that tests assert anything useful.
 - Some complex functions are legitimate. The score does not measure
   coupling or cohesion.
-- Trait default methods are omitted (llvm-cov often has no line hits).
+- Trait default methods are omitted even when LCOV has line hits for the
+  trait item (llvm-cov often has no usable span; the visitor never emits
+  them).
+- Harness attrs whose last path segment is `test` or `bench` (including
+  `#[tokio::test]`) are skipped. Criterion and custom libtest harnesses are
+  not detected; ungated helpers in `src/tests/` can still be scored.
+- One unreadable or unparseable source file fails the whole collect (exit
+  2), same fail-closed contract for Rust, Go, and TypeScript.
 - Unknown `#[cfg]` predicates skip the item. Skipped items are not gated.
 - `#[cfg]` uses the host (`target_os`, `target_arch`, `target_family`,
   `target_pointer_width`, `unix` / `windows`, `debug_assertions`).
-  Cross-compile LCOV can disagree; there is no `--target` flag.
+  Cross-compile LCOV can disagree; there is no `--target` flag. Local
+  `/verify` and CI dogfood pair `cargo llvm-cov --all-features` with
+  `crap-rs --all-features` so the feature universe matches.
 - File and directory symlinks are followed only when the target stays
   under the walk root; cycles are skipped. The walk root must
   canonicalize (otherwise the run fails); files that fail canonicalize

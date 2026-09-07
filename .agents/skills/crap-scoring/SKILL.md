@@ -63,6 +63,6 @@ component); Go import-path path suffix.
 [`.github/workflows/coverage.yml`](../../../.github/workflows/coverage.yml):
 
 1. `cargo llvm-cov … --fail-under-lines 100`
-2. `crap-rs --coverage lcov.info --path . --workspace --fail-above --threshold strict`
+2. `crap-rs --coverage lcov.info --path . --workspace --all-features --fail-above --threshold strict`
 
 Do not weaken those flags to green a job. Remediate coverage or complexity.

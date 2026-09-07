@@ -1,4 +1,4 @@
-//! Skip `#[test]` and inactive `#[cfg]` items when collecting functions.
+//! Skip harness attrs (`#[test]` / `#[bench]` / `#[…::test]`) and inactive `#[cfg]`.
 
 use std::collections::HashSet;
 
@@ -69,12 +69,19 @@ impl CfgUniverse {
     }
 }
 
-fn has_attr(attrs: &[syn::Attribute], name: &str) -> bool {
-    attrs.iter().any(|attr| attr.path().is_ident(name))
+fn is_harness_attr(attr: &syn::Attribute) -> bool {
+    attr.path()
+        .segments
+        .last()
+        .is_some_and(|seg| seg.ident == "test" || seg.ident == "bench")
+}
+
+fn has_harness_attr(attrs: &[syn::Attribute]) -> bool {
+    attrs.iter().any(is_harness_attr)
 }
 
 pub(super) fn skip_item(attrs: &[syn::Attribute], cfg: &CfgUniverse) -> bool {
-    has_attr(attrs, "test") || !cfg.all_cfgs_active(attrs)
+    has_harness_attr(attrs) || !cfg.all_cfgs_active(attrs)
 }
 
 pub(super) fn skip_cfg(attrs: &[syn::Attribute], cfg: &CfgUniverse) -> bool {
@@ -192,6 +199,29 @@ mod tests {
         let fns = cyclo("#[test] fn t() { if true {} } fn keep() {}");
         assert_eq!(fns.len(), 1);
         assert_eq!(fns[0].name, "keep");
+    }
+
+    #[test]
+    fn bench_functions_are_skipped() {
+        let fns = cyclo("#[bench] fn b() { if true {} } fn keep() {}");
+        assert_eq!(fns.len(), 1);
+        assert_eq!(fns[0].name, "keep");
+    }
+
+    #[test]
+    fn path_qualified_test_attrs_are_skipped() {
+        let fns = cyclo("#[tokio::test] fn t() { if true {} } fn keep() {}");
+        assert_eq!(fns.len(), 1);
+        assert_eq!(fns[0].name, "keep");
+    }
+
+    #[test]
+    fn ungated_tests_module_helpers_are_scored() {
+        let fns = cyclo("mod tests { fn helper() { if true {} } } fn keep() {}");
+        assert_eq!(fns.len(), 2);
+        let names: Vec<_> = fns.iter().map(|f| f.name.as_str()).collect();
+        assert!(names.contains(&"helper"));
+        assert!(names.contains(&"keep"));
     }
 
     #[test]

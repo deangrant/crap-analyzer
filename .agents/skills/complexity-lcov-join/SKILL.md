@@ -39,7 +39,11 @@ Known failure modes from this project's history. Read before editing
 - Closures: fold into the parent (do not emit a closure row).
 - Nested functions: emit separately.
 - Macros: decisions inside unexpanded or opaque macros may be missed.
-- Trait default methods: omit (llvm-cov often has no line hits).
+- Trait default methods: omit even when LCOV has line hits (visitor never
+  emits them; llvm-cov often has no usable span).
+- Harness attrs: skip when the last path segment is `test` or `bench`
+  (including `#[tokio::test]`). Criterion / custom harnesses are not
+  detected.
 - `#[cfg]`: skip unless the feature/host predicate is enabled. Unknown
   predicates skip the item. `debug_assertions` follows host `cfg!`, same
   as `unix` / `windows`.

@@ -248,7 +248,7 @@ Detail: [complexity-ts](../skills/complexity-ts/SKILL.md).
 | ---- | ------- |
 | `0` | Analysis finished; the gate did not trip |
 | `1` | Analysis finished; `--fail-above` tripped |
-| `2` | Usage, I/O, metadata, or collect error. Unreadable or structurally invalid source is a collect error. |
+| `2` | Usage, I/O, metadata, or collect error. Unreadable or structurally invalid source is a collect error: one failed file aborts the whole run for Rust, Go, and TypeScript. |
 
 Flag reference: [README.md](../../README.md).
 

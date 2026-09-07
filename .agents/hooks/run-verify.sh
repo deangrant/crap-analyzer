@@ -17,5 +17,5 @@ cargo llvm-cov --workspace --all-features "${locked[@]}" \
   --fail-under-lines 100
 
 cargo run -p crap-rs "${locked[@]}" -- \
-  --coverage lcov.info --path . --workspace \
+  --coverage lcov.info --path . --workspace --all-features \
   --fail-above --threshold strict
