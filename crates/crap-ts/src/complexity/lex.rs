@@ -24,16 +24,41 @@ fn skip_noise_step(bytes: &[u8], i: usize) -> Option<usize> {
     None
 }
 
+/// Tries to skip one comment, string, regex, or JSX token at `i`.
+///
+/// Returns `None` when `i` is not noise. `Err` means an unclosed literal.
+pub(super) fn try_skip_noise_token(bytes: &[u8], i: usize) -> Option<Result<usize, &'static str>> {
+    if bytes.get(i) == Some(&b'/') {
+        return try_skip_slash_token(bytes, i);
+    }
+    if matches!(bytes.get(i), Some(&b'"' | &b'\'' | &b'`')) {
+        return Some(try_skip_string(bytes, i).ok_or("unclosed string"));
+    }
+    if looks_like_jsx_tag(bytes, i) {
+        return Some(skip_jsx_tag(bytes, i).ok_or("unclosed jsx"));
+    }
+    None
+}
+
 fn skip_slash_start(bytes: &[u8], i: usize) -> Option<usize> {
+    let outcome = try_skip_slash_token(bytes, i)?;
+    if let Ok(next) = outcome {
+        return Some(next);
+    }
+    // Unclosed block comments are consumed to EOF; failed regex is not noise.
+    (bytes.get(i + 1) == Some(&b'*')).then_some(bytes.len())
+}
+
+fn try_skip_slash_token(bytes: &[u8], i: usize) -> Option<Result<usize, &'static str>> {
     let next = bytes.get(i + 1).copied()?;
     if next == b'/' {
-        return Some(skip_line_comment(bytes, i));
+        return Some(Ok(skip_line_comment(bytes, i)));
     }
     if next == b'*' {
-        return Some(skip_block_comment(bytes, i));
+        return Some(try_skip_block_comment(bytes, i).ok_or("unclosed comment"));
     }
     if can_start_regex(bytes, i) {
-        return skip_regex(bytes, i);
+        return Some(skip_regex(bytes, i).ok_or("unclosed regex"));
     }
     None
 }
@@ -46,34 +71,39 @@ fn skip_line_comment(bytes: &[u8], mut i: usize) -> usize {
     i
 }
 
-fn skip_block_comment(bytes: &[u8], mut i: usize) -> usize {
-    i += 2;
-    while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
-        i += 1;
+fn try_skip_block_comment(bytes: &[u8], i: usize) -> Option<usize> {
+    let mut j = i + 2;
+    while j + 1 < bytes.len() {
+        if bytes[j] == b'*' && bytes[j + 1] == b'/' {
+            return Some(j + 2);
+        }
+        j += 1;
     }
-    i.saturating_add(2)
+    None
 }
 
 /// Skips a `"..."`, `'...'`, or `` `...` `` literal starting at `start`.
 pub(super) fn skip_string(bytes: &[u8], start: usize) -> usize {
-    let Some(&quote) = bytes.get(start) else {
-        return start;
-    };
-    if quote == b'`' {
-        return skip_template(bytes, start);
-    }
-    skip_quoted_string(bytes, start, quote)
+    try_skip_string(bytes, start).unwrap_or(bytes.len())
 }
 
-fn skip_template(bytes: &[u8], start: usize) -> usize {
+fn try_skip_string(bytes: &[u8], start: usize) -> Option<usize> {
+    let quote = *bytes.get(start)?;
+    if quote == b'`' {
+        return try_skip_template(bytes, start);
+    }
+    try_skip_quoted_string(bytes, start, quote)
+}
+
+fn try_skip_template(bytes: &[u8], start: usize) -> Option<usize> {
     let mut i = start + 1;
     while i < bytes.len() {
-        match take_template_byte(bytes, i) {
-            TemplateOut::Done(end) => return end,
+        match try_template_byte(bytes, i)? {
+            TemplateOut::Done(end) => return Some(end),
             TemplateOut::Next(next) => i = next,
         }
     }
-    i
+    None
 }
 
 enum TemplateOut {
@@ -81,35 +111,35 @@ enum TemplateOut {
     Next(usize),
 }
 
-fn take_template_byte(bytes: &[u8], i: usize) -> TemplateOut {
+fn try_template_byte(bytes: &[u8], i: usize) -> Option<TemplateOut> {
     if bytes[i] == b'`' {
-        return TemplateOut::Done(i + 1);
+        return Some(TemplateOut::Done(i + 1));
     }
     if bytes[i] == b'$' && bytes.get(i + 1) == Some(&b'{') {
-        return TemplateOut::Next(skip_balanced(bytes, i + 1, b'{', b'}').unwrap_or(i + 2));
+        return Some(TemplateOut::Next(skip_balanced(bytes, i + 1, b'{', b'}')?));
     }
     if bytes[i] == b'\\' {
-        return TemplateOut::Next(i.saturating_add(2));
+        return (i + 1 < bytes.len()).then_some(TemplateOut::Next(i + 2));
     }
-    TemplateOut::Next(i + 1)
+    Some(TemplateOut::Next(i + 1))
 }
 
-fn skip_quoted_string(bytes: &[u8], start: usize, quote: u8) -> usize {
+fn try_skip_quoted_string(bytes: &[u8], start: usize, quote: u8) -> Option<usize> {
     let mut i = start + 1;
     while i < bytes.len() {
         if bytes[i] == quote {
-            return i + 1;
+            return Some(i + 1);
         }
-        i = after_quoted_byte(bytes, i);
+        i = after_quoted_byte(bytes, i)?;
     }
-    i
+    None
 }
 
-fn after_quoted_byte(bytes: &[u8], i: usize) -> usize {
-    if bytes[i] == b'\\' {
-        return i.saturating_add(2);
+fn after_quoted_byte(bytes: &[u8], i: usize) -> Option<usize> {
+    if bytes[i] != b'\\' {
+        return Some(i + 1);
     }
-    i + 1
+    (i + 1 < bytes.len()).then_some(i + 2)
 }
 
 fn can_start_regex(bytes: &[u8], i: usize) -> bool {

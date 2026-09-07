@@ -51,6 +51,11 @@ SOLID: [rust-style-guide](../rust-style-guide/SKILL.md) and
 
 Custom Rust scanner over source text (not the TypeScript compiler).
 
+**Structural integrity** ([`complexity/structure.rs`](../../../crates/crap-ts/src/complexity/structure.rs)):
+before attribution, fail the file on unclosed strings/comments/templates
+or unbalanced `{}` / `()` / `[]` (after skipping noise). That is a collect
+error (exit 2), matching the CLI contract.
+
 **Visitor** ([`complexity/visitor.rs`](../../../crates/crap-ts/src/complexity/visitor.rs)):
 
 - Emit named `function` / `async function`, class methods
@@ -69,6 +74,6 @@ ternary `?`, `&&`, `||`, `??`. Do not count `switch` / `try` themselves.
 **Cognitive**: nesting-weighted `if` / `for` / `while` / `do` / `switch` /
 `catch`; flat `else`; a run of the same `&&` / `||` / `??` counts once.
 
-Limits: approximate by design. Generics, decorators, and unusual TSX may
-under- or over-count. Prefer fixing the Rust visitor over adding a Node
-or AST-crate dependency.
+Limits: approximate by design. Structural failures fail the run; valid
+generics, decorators, and unusual TSX may still under- or over-count.
+Prefer fixing the Rust visitor over adding a Node or AST-crate dependency.

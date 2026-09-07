@@ -133,6 +133,34 @@ fn collect_fails_when_any_file_unreadable() {
 }
 
 #[test]
+fn structurally_invalid_ts_file_fails_collect() {
+    use crap_core::Error;
+
+    let root = unique_temp("struct-bad");
+    write_file(&root.join("package.json"), r#"{"name":"bad"}"#);
+    write_file(
+        &root.join("src/ok.ts"),
+        "export function ok() { return 1; }\n",
+    );
+    write_file(
+        &root.join("src/bad.ts"),
+        "export function bad() { const s = \"oops; }\n",
+    );
+    let lang = TsLanguage {
+        workspace: false,
+        packages: Vec::new(),
+    };
+    let targets = require_ok(lang.resolve_targets(&request(root.clone())));
+    let err = lang.collect_functions(&targets, Metric::Cyclomatic);
+    let _ = fs::remove_dir_all(&root);
+    assert!(matches!(err, Err(Error::Collect(_))), "{err:?}");
+    let message = format!("{err:?}");
+    assert!(message.contains("failed to parse"), "{message}");
+    assert!(message.contains("bad.ts"), "{message}");
+    assert!(message.contains("unclosed string"), "{message}");
+}
+
+#[test]
 fn collect_propagates_walk_errors_across_targets() {
     let root = unique_temp("walk-err");
     write_file(&root.join("package.json"), r#"{"name":"ok"}"#);

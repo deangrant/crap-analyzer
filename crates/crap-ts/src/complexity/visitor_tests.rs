@@ -1,19 +1,19 @@
 use super::*;
-use crap_core::Metric;
+use crap_core::{FunctionComplexity, Metric};
 use std::path::Path;
 
+fn parse(src: &str, metric: Metric) -> Vec<FunctionComplexity> {
+    let parsed = analyze_source(Path::new("t.ts"), src, metric);
+    assert!(parsed.is_ok(), "{parsed:?}");
+    parsed.unwrap_or_default()
+}
+
 fn names(src: &str) -> Vec<String> {
-    analyze_source(Path::new("t.ts"), src, Metric::Cyclomatic)
-        .into_iter()
-        .map(|f| f.name)
-        .collect()
+    parse(src, Metric::Cyclomatic).into_iter().map(|f| f.name).collect()
 }
 
 fn cyclo(src: &str) -> Vec<usize> {
-    analyze_source(Path::new("t.ts"), src, Metric::Cyclomatic)
-        .into_iter()
-        .map(|f| f.complexity)
-        .collect()
+    parse(src, Metric::Cyclomatic).into_iter().map(|f| f.complexity).collect()
 }
 
 #[test]
@@ -78,7 +78,11 @@ export class App {
   }
 }
 "#;
-    let fns = analyze_source(Path::new("t.tsx"), src, Metric::Cyclomatic);
+    let fns = {
+        let parsed = analyze_source(Path::new("t.tsx"), src, Metric::Cyclomatic);
+        assert!(parsed.is_ok(), "{parsed:?}");
+        parsed.unwrap_or_default()
+    };
     assert_eq!(fns.len(), 1);
     assert_eq!(fns[0].name, "App.render");
     assert!(fns[0].complexity >= 2);
@@ -185,7 +189,8 @@ fn arrow_and_params_edges() {
 
 #[test]
 fn class_unclosed_body_and_decorator_call() {
-    assert!(names("class Foo {\n").is_empty());
+    let bad = analyze_source(Path::new("t.ts"), "class Foo {\n", Metric::Cyclomatic);
+    assert!(bad.is_err(), "{bad:?}");
     assert!(names("class Foo\n").is_empty());
     let found = names(
         r"
@@ -216,4 +221,12 @@ class C {
 #[test]
 fn trailing_noise_only_source() {
     assert!(names("// only").is_empty());
+}
+
+#[test]
+fn analyze_source_rejects_unclosed_comment() {
+    let src = "/* open\nfunction f() {}\n";
+    let err = analyze_source(Path::new("t.ts"), src, Metric::Cyclomatic);
+    assert!(err.is_err(), "{err:?}");
+    assert!(format!("{err:?}").contains("unclosed comment"), "{err:?}");
 }

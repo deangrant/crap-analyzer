@@ -173,7 +173,8 @@ OPTIONS:
 EXIT CODES:
     0   Analysis finished; no requested gate tripped
     1   Analysis finished; --fail-above tripped
-    2   Usage, input, or analysis error (any source failed to parse)
+    2   Usage, input, or analysis error (unreadable or
+        structurally invalid source)
 ",
         name = env!("CARGO_PKG_NAME"),
         version = env!("CARGO_PKG_VERSION"),

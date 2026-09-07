@@ -161,13 +161,21 @@ fn take_file(
             return false;
         }
     };
-    for function in complexity::analyze_source(file, &source, metric) {
-        functions.push(LocatedFn {
-            function,
-            crate_name: crate_name.map(str::to_owned),
-        });
+    match complexity::analyze_source(file, &source, metric) {
+        Ok(found) => {
+            for function in found {
+                functions.push(LocatedFn {
+                    function,
+                    crate_name: crate_name.map(str::to_owned),
+                });
+            }
+            true
+        }
+        Err(err) => {
+            details.push(format!("skipping {}: {err}", file.display()));
+            false
+        }
     }
-    true
 }
 
 #[cfg(test)]

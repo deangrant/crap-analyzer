@@ -244,6 +244,40 @@ fn one_unreadable_file_among_many_exits_two() {
     assert!(!stdout.contains("\"schema_version\""), "{stdout}");
 }
 
+#[test]
+fn structurally_invalid_source_exits_two() {
+    let root = temp_root("struct-bad");
+    require_ok(fs::create_dir_all(root.join("src")));
+    require_ok(fs::write(root.join("package.json"), r#"{"name":"tmp"}"#));
+    require_ok(fs::write(
+        root.join("src/ok.ts"),
+        "export function Ok() { return 1; }\n",
+    ));
+    require_ok(fs::write(
+        root.join("src/bad.ts"),
+        "export function Bad() {\n",
+    ));
+    let lcov = root.join("lcov.info");
+    require_ok(fs::write(
+        &lcov,
+        "TN:\nSF:src/ok.ts\nDA:1,1\nDA:2,1\nend_of_record\n",
+    ));
+    let (code, stdout, stderr) = output_of(
+        bin()
+            .arg("--coverage")
+            .arg(&lcov)
+            .arg("--path")
+            .arg(&root)
+            .arg("--format")
+            .arg("json"),
+    );
+    let _ = fs::remove_dir_all(&root);
+    assert_eq!(code, 2, "{stdout}{stderr}");
+    assert!(stderr.contains("failed to parse"), "{stderr}");
+    assert!(stderr.contains("unbalanced braces"), "{stderr}");
+    assert!(!stdout.contains("\"schema_version\""), "{stdout}");
+}
+
 fn require_ok<T: Default + std::fmt::Debug, E: std::fmt::Debug>(
     result: std::result::Result<T, E>,
 ) -> T {

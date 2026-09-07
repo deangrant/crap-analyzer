@@ -2,7 +2,8 @@
 
 use super::count_metric;
 use super::lex::{is_ident_byte, is_ident_start};
-use crap_core::{FunctionComplexity, Metric};
+use super::structure::validate_structure;
+use crap_core::{Error, FunctionComplexity, Metric, Result};
 use std::path::Path;
 
 pub(super) use super::lex::skip_balanced;
@@ -18,13 +19,24 @@ struct FoundFn {
 }
 
 /// Parses `source` as if it lived at `path`.
-#[must_use]
-pub fn analyze_source(path: &Path, source: &str, metric: Metric) -> Vec<FunctionComplexity> {
+///
+/// # Errors
+///
+/// Returns [`Error::Collect`] when the source fails the structural integrity
+/// scan (unclosed literals/comments or unbalanced braces).
+pub fn analyze_source(
+    path: &Path,
+    source: &str,
+    metric: Metric,
+) -> Result<Vec<FunctionComplexity>> {
+    if let Err(reason) = validate_structure(source.as_bytes()) {
+        return Err(Error::collect(format!("{}: {reason}", path.display())));
+    }
     let found = find_functions(source);
-    found
+    Ok(found
         .iter()
         .map(|func| to_complexity(path, source, metric, func, &found))
-        .collect()
+        .collect())
 }
 
 fn to_complexity(

@@ -187,13 +187,21 @@ fn take_file(
     if build_tag::skip_file(&source, tags) {
         return FileOutcome::Skipped;
     }
-    for function in complexity::analyze_source(file, &source, metric) {
-        functions.push(LocatedFn {
-            function,
-            crate_name: crate_name.map(str::to_owned),
-        });
+    match complexity::analyze_source(file, &source, metric) {
+        Ok(found) => {
+            for function in found {
+                functions.push(LocatedFn {
+                    function,
+                    crate_name: crate_name.map(str::to_owned),
+                });
+            }
+            FileOutcome::Ok
+        }
+        Err(err) => {
+            details.push(format!("skipping {}: {err}", file.display()));
+            FileOutcome::Failed
+        }
     }
-    FileOutcome::Ok
 }
 
 #[cfg(test)]

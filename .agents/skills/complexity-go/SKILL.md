@@ -65,6 +65,11 @@ Empty spans and missing path joins still use `--missing` in core.
 
 Custom Rust scanner over source text (not `go/ast`, not tree-sitter).
 
+**Structural integrity** ([`complexity/structure.rs`](../../../crates/crap-go/src/complexity/structure.rs)):
+before attribution, fail the file on unclosed strings/comments or
+unbalanced `{}` / `()` / `[]` (after skipping noise). That is a collect
+error (exit 2), matching the CLI contract.
+
 **Visitor** ([`complexity/visitor.rs`](../../../crates/crap-go/src/complexity/visitor.rs)):
 
 - Emit named `func` items and methods (`Type.Name`).
@@ -80,6 +85,7 @@ Custom Rust scanner over source text (not `go/ast`, not tree-sitter).
 `else`; a run of the same `&&` or `||` counts once. No per-`case`
 increment.
 
-Limits: approximate by design — text scanner, not `go/ast`. Generics edge
-cases and unusual syntax may under-count. Prefer fixing the Rust visitor
-over adding a Go runtime dependency.
+Limits: approximate by design — text scanner, not `go/ast`. Structural
+failures fail the run; valid generics edge cases and unusual syntax may
+still under-count. Prefer fixing the Rust visitor over adding a Go
+runtime dependency.

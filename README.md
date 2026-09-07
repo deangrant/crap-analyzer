@@ -168,7 +168,7 @@ Shared flags work the same on the CLIs unless noted.
 | ---- | ------- |
 | `0` | Analysis finished; the gate did not trip |
 | `1` | Analysis finished; `--fail-above` tripped |
-| `2` | Usage, I/O, metadata, or collect error. Any unparseable source file is a collect error. |
+| `2` | Usage, I/O, metadata, or collect error. Unreadable or structurally invalid source is a collect error. |
 
 ## Crates
 
@@ -219,10 +219,13 @@ Decisions inside unexpanded or opaque macros may be missed.
 - `$CARGO` is used only when it names an existing file (Cargo’s usual
   override); otherwise `crap-rs` runs `cargo` from `PATH`.
 - `crap-go` complexity is an approximate text scanner (not `go/ast`).
-  Generics edge cases and unusual syntax may under-count.
+  Unclosed literals/comments or unbalanced `{}`/`()`/`[]` fail the run.
+  Valid but unusual syntax (generics edge cases) may still under-count.
 - `crap-ts` complexity is an approximate text scanner (not `tsc`).
-  Generics, decorators, and unusual TSX may under- or over-count. Cover
-  `.ts` / `.tsx` paths in LCOV (source-map remapping when needed).
+  Unclosed literals/comments or unbalanced `{}`/`()`/`[]` fail the run.
+  Valid but unusual syntax (generics, decorators, TSX) may under- or
+  over-count. Cover `.ts` / `.tsx` paths in LCOV (source-map remapping
+  when needed).
 
 ## Develop
 

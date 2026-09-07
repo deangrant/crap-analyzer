@@ -3,6 +3,7 @@
 mod cognitive;
 mod cyclomatic;
 mod lex;
+mod structure;
 mod visitor;
 
 use crap_core::Metric;
@@ -26,7 +27,9 @@ mod tests {
     #[test]
     fn cognitive_metric_counts_nested_if() {
         let src = "package p\nfunc f(x int) { if x > 0 { if x > 1 { x } } }\n";
-        let fns = analyze_source(Path::new("t.go"), src, Metric::Cognitive);
+        let parsed = analyze_source(Path::new("t.go"), src, Metric::Cognitive);
+        assert!(parsed.is_ok(), "{parsed:?}");
+        let fns = parsed.unwrap_or_default();
         assert_eq!(fns[0].complexity, 3);
     }
 }
