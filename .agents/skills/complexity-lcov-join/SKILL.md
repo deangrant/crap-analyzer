@@ -41,7 +41,8 @@ Known failure modes from this project's history. Read before editing
 - Macros: decisions inside unexpanded or opaque macros may be missed.
 - Trait default methods: omit (llvm-cov often has no line hits).
 - `#[cfg]`: skip unless the feature/host predicate is enabled. Unknown
-  predicates skip the item.
+  predicates skip the item. `debug_assertions` follows host `cfg!`, same
+  as `unix` / `windows`.
 
 ## Empty instrumented spans
 

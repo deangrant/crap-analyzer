@@ -24,7 +24,7 @@ fn take_decision(bytes: &[u8], i: usize, count: &mut usize) -> Option<usize> {
         *count += 1;
         return Some(i + 2);
     }
-    for word in [b"if" as &[u8], b"for", b"switch", b"select", b"case"] {
+    for word in [b"if" as &[u8], b"for", b"case", b"default"] {
         if is_word(bytes, i, word) {
             *count += 1;
             return Some(i + word.len());
@@ -76,7 +76,28 @@ mod tests {
     #[test]
     fn bool_ops_and_case_add() {
         let src = "package p\nfunc f(x int) {\n  if x > 0 && x < 10 || x == 0 {\n    switch x {\n    case 1:\n    }\n  }\n}\n";
-        assert!(snippet(src) >= 5);
+        // base + if + && + || + case (switch itself is not a decision)
+        assert_eq!(snippet(src), 5);
+    }
+
+    #[test]
+    fn switch_case_is_two() {
+        assert_eq!(
+            snippet("package p\nfunc f(x int) { switch x { case 1: } }\n"),
+            2
+        );
+    }
+
+    #[test]
+    fn switch_cases_and_default() {
+        let src =
+            "package p\nfunc f(x int) {\n  switch x {\n  case 1:\n  case 2:\n  default:\n  }\n}\n";
+        assert_eq!(snippet(src), 4);
+    }
+
+    #[test]
+    fn select_default_is_two() {
+        assert_eq!(snippet("package p\nfunc f() { select { default: } }\n"), 2);
     }
 
     #[test]

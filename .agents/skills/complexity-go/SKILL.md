@@ -72,8 +72,8 @@ Custom Rust scanner over source text (not `go/ast`, not tree-sitter).
   span before counting.
 - Skip comments and string / rune / raw literals while scanning.
 
-**Cyclomatic** (base 1): `if`, `for`, `switch`, `select`, `case`, `&&`,
-`||`.
+**Cyclomatic** (base 1): `if`, `for`, `case`, `default`, `&&`,
+`||`. Do not count `switch` / `select` themselves (branch labels only).
 
 **Cognitive**: nesting-weighted `if` / `for` / `switch` / `select`; flat
 `else`; a run of the same `&&` or `||` counts once. No per-`case`
