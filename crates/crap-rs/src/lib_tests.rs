@@ -274,4 +274,7 @@ fn collect_functions_fails_when_any_file_is_unparseable() {
     let result = collect_functions(&targets, Metric::Cyclomatic);
     let _ = std::fs::remove_dir_all(&dir);
     assert!(result.is_err(), "{result:?}");
+    let message = format!("{result:?}");
+    assert!(message.contains("failed to parse"), "{message}");
+    assert!(message.contains("broken.rs"), "{message}");
 }

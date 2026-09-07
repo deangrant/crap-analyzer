@@ -163,7 +163,8 @@ OPTIONS:
     --fail-above            Exit 1 if any function exceeds --threshold
     --missing <policy>      No coverage data, empty span, or an
                             unresolved path tie: pessimistic (0%,
-                            default), optimistic (100%), or skip
+                            default), optimistic (100%), or skip.
+                            An import path breaks equal basename ties
     --tags <list>           Build tags treated as enabled
                             (comma-separated)
     -h, --help              Print help

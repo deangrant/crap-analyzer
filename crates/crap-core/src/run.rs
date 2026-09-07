@@ -14,7 +14,7 @@ use std::path::PathBuf;
 pub struct RunResult {
     /// Functions after join, scored and sorted worst-first.
     pub entries: Vec<CrapEntry>,
-    /// Skipped files that failed to parse.
+    /// Non-fatal notices that survived a successful collect.
     pub warnings: Vec<String>,
     /// True when `--fail-above` should trip.
     pub gate_failed: bool,

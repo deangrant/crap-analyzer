@@ -22,12 +22,12 @@ pub fn render_json(
     let exceeding = entries.iter().filter(|e| exceeds_threshold(e.crap, threshold)).count();
     let scores: Vec<f64> = entries.iter().map(|e| e.crap).collect();
     let doc = ReportDoc {
-        schema_version: 1,
+        schema_version: 2,
         language,
         metric: metric.to_string(),
         threshold,
         result: ResultDoc {
-            passed: !gate_failed,
+            passed: exceeding == 0,
             gate_failed,
             summary: SummaryDoc {
                 functions: entries.len(),
@@ -232,11 +232,11 @@ mod tests {
         assert_fields(
             &value,
             &[
-                ("/schema_version", Value::from(1)),
+                ("/schema_version", Value::from(2)),
                 ("/language", Value::from("rust")),
                 ("/metric", Value::from("cyclomatic")),
                 ("/threshold", Value::from(15.0)),
-                ("/result/passed", Value::from(true)),
+                ("/result/passed", Value::from(false)),
                 ("/result/gate_failed", Value::from(false)),
                 ("/result/summary/functions", Value::from(2)),
                 ("/result/summary/exceeding", Value::from(1)),
@@ -317,10 +317,18 @@ mod tests {
             entry("c", 6.0, 1, 100.0, None, 1),
             entry("d", 8.0, 1, 100.0, None, 1),
         ];
-        let value = json(&entries, 15.0, Metric::Cyclomatic, true);
+        let value = json(&entries, 15.0, Metric::Cyclomatic, false);
         assert_eq!(value["result"]["summary"]["median_crap"], 5.0);
-        assert_eq!(value["result"]["gate_failed"], true);
+        assert_eq!(value["result"]["passed"], true);
+        assert_eq!(value["result"]["gate_failed"], false);
+    }
+
+    #[test]
+    fn passed_tracks_exceedances_not_the_gate_flag() {
+        let value = json(&mixed_entries(), 15.0, Metric::Cyclomatic, true);
         assert_eq!(value["result"]["passed"], false);
+        assert_eq!(value["result"]["gate_failed"], true);
+        assert_eq!(value["result"]["summary"]["exceeding"], 1);
     }
 
     #[test]

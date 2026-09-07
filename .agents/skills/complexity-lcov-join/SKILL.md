@@ -55,6 +55,7 @@ LCOV `SF:` paths and source paths may be absolute or relative.
 - Rank **forward** matches (`src` ends with key) **above** reverse
   suffix length. A relative `SF:src/foo.rs` must beat a longer reverse
   false friend.
-- Equal `src/lib.rs` ties: use package name when present.
+- Equal basename ties: Cargo package name matches `{name}/src|tests|benches|examples`;
+  Go import path matches a contiguous path suffix (including remapped filesystem keys).
 - Absolute and relative spellings of the same suffix merge for join and
   nested-exclude grouping.

@@ -134,12 +134,12 @@ Shared flags work the same on both CLIs unless noted.
 | `--path <dir>` | Walk this tree (default `.`). Rust: a workspace root is analyzed per member; a member package root is that package only. Go: a module root (`go.mod`) is analyzed per package. |
 | `--metric` | `cyclomatic` (default) or `cognitive` |
 | `--threshold` | Flag scores strictly above this. Number, `strict` (8), or `lenient` (25). Default `15` for both metrics. Independent of the risk band. |
-| `--format` | `text` (default table) or `json` (versioned envelope, `schema_version` 1) |
+| `--format` | `text` (default table) or `json` (versioned envelope, `schema_version` 2). `result.passed` is true when no function exceeds `--threshold`; `result.gate_failed` / exit 1 require `--fail-above`. |
 | `--workspace` | Every workspace/module member |
 | `-p, --package <name>` | One member; repeatable; conflicts with `--workspace`. Go: import path. |
 | `--summary` | Counts and worst offender; text only; no table |
 | `--fail-above` | Exit 1 when any function exceeds the threshold (not the risk band) |
-| `--missing` | No coverage data, an empty span, or an unresolved path tie: `pessimistic` (default, 0%), `optimistic` (100%), or `skip`. A package name (`--workspace` / `-p`) breaks equal suffix ties. |
+| `--missing` | No coverage data, an empty span, or an unresolved path tie: `pessimistic` (default, 0%), `optimistic` (100%), or `skip`. A package name (`--workspace` / `-p`) breaks equal basename ties (Cargo `{name}/src|…`; Go import-path path suffix). |
 | `--features`, `--all-features`, `--no-default-features` | `crap-rs` only: same feature universe as the `cargo llvm-cov` run that produced the LCOV file |
 | `--tags <list>` | `crap-go` only: build tags treated as enabled (comma-separated) |
 

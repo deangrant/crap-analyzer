@@ -154,6 +154,9 @@ mod unix {
         let _ = fs::set_permissions(&bad, fs::Permissions::from_mode(0o644));
         let _ = fs::remove_dir_all(&root);
         assert!(matches!(err, Err(Error::Collect(_))), "{err:?}");
+        let message = format!("{err:?}");
+        assert!(message.contains("failed to parse"), "{message}");
+        assert!(message.contains("bad.go"), "{message}");
     }
 
     #[test]

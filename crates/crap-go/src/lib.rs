@@ -93,12 +93,19 @@ fn collect_functions(targets: &[Target], metric: Metric) -> Result<(Vec<LocatedF
     let mut warnings = Vec::new();
     let (succeeded, failed) = collect_targets(targets, metric, &mut functions, &mut warnings)?;
     if failed > 0 {
-        return Err(Error::collect(format!(
-            "failed to parse {failed} of {} Go file(s)",
-            failed + succeeded
+        return Err(Error::collect(collect_failure(
+            "Go", failed, succeeded, &warnings,
         )));
     }
     Ok((functions, warnings))
+}
+
+fn collect_failure(lang: &str, failed: usize, succeeded: usize, details: &[String]) -> String {
+    format!(
+        "failed to parse {failed} of {} {lang} file(s)\n{}",
+        failed + succeeded,
+        details.join("\n")
+    )
 }
 
 fn collect_targets(

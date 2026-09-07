@@ -208,6 +208,20 @@ fn crate_name_breaks_equal_length_suffix_tie() {
 }
 
 #[test]
+fn import_path_breaks_equal_length_go_suffix_tie() {
+    let functions = [func_in("foo.go", "f", 1, 1, Some("example.com/mod/pkg_a"))];
+    let mut coverage = cov("/mod/pkg_a/foo.go", &[(1, 1)]);
+    coverage.insert(
+        PathBuf::from("/mod/pkg_b/foo.go"),
+        FileCoverage {
+            lines: std::iter::once((1, 0)).collect(),
+        },
+    );
+    let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
+    assert_f64_bits_eq(entries[0].coverage, 100.0);
+}
+
+#[test]
 fn nested_fn_path_spellings_still_exclude_inner_span() {
     let functions = [
         func("src/foo.rs", "outer", 1, 20),

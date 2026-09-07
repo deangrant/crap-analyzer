@@ -205,6 +205,27 @@ mod tests {
     }
 
     #[test]
+    fn load_coverage_without_module_keeps_raw_paths() {
+        let dir = std::env::temp_dir().join(format!(
+            "crap-go-nomod-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ));
+        let created = std::fs::create_dir_all(&dir);
+        assert!(created.is_ok(), "{created:?}");
+        let cover = dir.join("cover.out");
+        let written = std::fs::write(&cover, "mode: set\nmain.go:1.1,1.2 1 1\n");
+        assert!(written.is_ok(), "{written:?}");
+        let result = load_coverage(&cover, &dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(result.is_ok(), "{result:?}");
+        let map = result.unwrap_or_default();
+        assert!(map.contains_key(Path::new("main.go")), "{map:?}");
+    }
+
+    #[test]
     fn help_action_prints_ok() {
         assert_eq!(run_action(Action::Help), ExitCode::SUCCESS);
         let _ = cli::help_text();

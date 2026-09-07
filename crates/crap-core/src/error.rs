@@ -18,7 +18,7 @@ pub enum Error {
     Coverage(String),
     /// Target discovery failed.
     Resolve(String),
-    /// Every source file failed to parse.
+    /// Source collection failed (one or more files).
     Collect(String),
 }
 

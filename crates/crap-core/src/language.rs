@@ -92,8 +92,8 @@ pub trait Language {
     ///
     /// # Errors
     ///
-    /// Returns I/O or total-parse errors. Individual parse failures become
-    /// warnings unless every file fails.
+    /// Returns I/O or collect errors. Any source file that fails to parse or
+    /// read fails the run.
     fn collect_functions(
         &self,
         targets: &[Target],
