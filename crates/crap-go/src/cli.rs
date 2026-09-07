@@ -97,11 +97,19 @@ pub fn parse() -> std::result::Result<Action, String> {
 /// Parses an argv vector (binary name first).
 fn parse_args(raw: Vec<String>) -> std::result::Result<Action, String> {
     if let Some(action) = crap_core::help_or_version(&raw) {
-        return Ok(match action {
-            crap_core::HelpOrVersion::Help => Action::Help,
-            crap_core::HelpOrVersion::Version => Action::Version,
-        });
+        return Ok(help_or_version_action(action));
     }
+    run_from_clap(raw)
+}
+
+const fn help_or_version_action(action: crap_core::HelpOrVersion) -> Action {
+    match action {
+        crap_core::HelpOrVersion::Help => Action::Help,
+        crap_core::HelpOrVersion::Version => Action::Version,
+    }
+}
+
+fn run_from_clap(raw: Vec<String>) -> std::result::Result<Action, String> {
     let args = Args::try_parse_from(raw).map_err(|err| err.to_string())?;
     crap_core::reject_summary_json(args.summary, args.format)?;
     Ok(Action::Run(args))

@@ -209,14 +209,21 @@ fn unique_named<'a>(
     Some(first.1)
 }
 
-/// Cargo package name, Go import path, or npm package name vs a coverage path key.
+/// Returns whether `key` matches a Cargo, Go, or npm package name.
 fn package_hit(key: &[String], name: &str, strong_only: bool) -> bool {
     let parts: Vec<&str> = name.split('/').filter(|part| !part.is_empty()).collect();
     match parts.as_slice() {
         [] => false,
-        [single] if strong_only => crate_root_hit(key, single),
-        [single] => crate_root_hit(key, single) || contains_contiguous(key, &[single]),
+        [single] => single_package_hit(key, single, strong_only),
         multi => import_path_hit(key, multi),
+    }
+}
+
+fn single_package_hit(key: &[String], name: &str, strong_only: bool) -> bool {
+    if strong_only {
+        crate_root_hit(key, name)
+    } else {
+        crate_root_hit(key, name) || contains_contiguous(key, &[name])
     }
 }
 
@@ -228,7 +235,7 @@ fn is_source_root(part: &str) -> bool {
     ["src", "lib", "tests", "benches", "examples"].contains(&part)
 }
 
-/// Full import path or any non-empty suffix (remapped filesystem keys).
+/// Returns whether `key` contains the import path or a non-empty suffix.
 fn import_path_hit(key: &[String], parts: &[&str]) -> bool {
     (1..=parts.len()).rev().any(|len| {
         let suffix = &parts[parts.len() - len..];

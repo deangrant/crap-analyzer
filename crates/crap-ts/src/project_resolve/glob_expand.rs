@@ -94,12 +94,23 @@ fn walk_double_star_children(
         return Ok(());
     }
     for entry in read_dir_entries(dir)? {
-        let path = dir_entry_path(dir, entry)?;
-        if path.is_dir() && !is_skipped_dir(&path) {
-            walk_double_star(&path, segments, index, found)?;
-        }
+        visit_double_star_entry(dir, entry, segments, index, found)?;
     }
     Ok(())
+}
+
+fn visit_double_star_entry(
+    dir: &Path,
+    entry: std::io::Result<fs::DirEntry>,
+    segments: &[&str],
+    index: usize,
+    found: &mut BTreeMap<PathBuf, PathBuf>,
+) -> Result<()> {
+    let path = dir_entry_path(dir, entry)?;
+    if !path.is_dir() || is_skipped_dir(&path) {
+        return Ok(());
+    }
+    walk_double_star(&path, segments, index, found)
 }
 
 fn walk_star(
@@ -112,12 +123,23 @@ fn walk_star(
         return Ok(());
     }
     for entry in read_dir_entries(dir)? {
-        let path = dir_entry_path(dir, entry)?;
-        if path.is_dir() && !is_skipped_dir(&path) {
-            walk_segments(&path, segments, index + 1, found)?;
-        }
+        visit_star_entry(dir, entry, segments, index, found)?;
     }
     Ok(())
+}
+
+fn visit_star_entry(
+    dir: &Path,
+    entry: std::io::Result<fs::DirEntry>,
+    segments: &[&str],
+    index: usize,
+    found: &mut BTreeMap<PathBuf, PathBuf>,
+) -> Result<()> {
+    let path = dir_entry_path(dir, entry)?;
+    if !path.is_dir() || is_skipped_dir(&path) {
+        return Ok(());
+    }
+    walk_segments(&path, segments, index + 1, found)
 }
 
 fn record_package_dir(dir: &Path, found: &mut BTreeMap<PathBuf, PathBuf>) {
@@ -159,9 +181,15 @@ fn match_plain(path: &[&str], pattern: &[&str]) -> bool {
     match (path.first(), pattern.first()) {
         (None, None) => true,
         (None, Some(_)) | (Some(_), None) => false,
-        (Some(_), Some(&"*")) => match_segments(&path[1..], &pattern[1..]),
-        (Some(seg), Some(lit)) => *seg == *lit && match_segments(&path[1..], &pattern[1..]),
+        (Some(seg), Some(pat)) => match_plain_heads(seg, pat, path, pattern),
     }
+}
+
+fn match_plain_heads(seg: &str, pat: &str, path: &[&str], pattern: &[&str]) -> bool {
+    if pat == "*" || seg == pat {
+        return match_segments(&path[1..], &pattern[1..]);
+    }
+    false
 }
 
 fn read_dir_entries(dir: &Path) -> Result<fs::ReadDir> {

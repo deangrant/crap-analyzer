@@ -80,7 +80,7 @@ impl TsLanguage {
     }
 }
 
-/// Relative POSIX path of `pkg_root` under `workspace_root` for `PathIndex`.
+/// Builds a relative POSIX join key for `pkg_root` under `workspace_root`.
 fn relative_join_key(workspace_root: &Path, pkg_root: &Path) -> String {
     let rel = pkg_root.strip_prefix(workspace_root).unwrap_or(pkg_root);
     let key = posix_components(rel);
@@ -181,14 +181,34 @@ fn take_file(
     functions: &mut Vec<LocatedFn>,
     details: &mut Vec<String>,
 ) -> bool {
-    let source = match std::fs::read_to_string(file) {
-        Ok(text) => text,
+    let Some(source) = read_source(file, details) else {
+        return false;
+    };
+    analyze_into(
+        file, &source, crate_name, join_key, metric, functions, details,
+    )
+}
+
+fn read_source(file: &Path, details: &mut Vec<String>) -> Option<String> {
+    match std::fs::read_to_string(file) {
+        Ok(text) => Some(text),
         Err(err) => {
             details.push(format!("skipping {}: {err}", file.display()));
-            return false;
+            None
         }
-    };
-    match complexity::analyze_source(file, &source, metric) {
+    }
+}
+
+fn analyze_into(
+    file: &Path,
+    source: &str,
+    crate_name: Option<&str>,
+    join_key: Option<&str>,
+    metric: Metric,
+    functions: &mut Vec<LocatedFn>,
+    details: &mut Vec<String>,
+) -> bool {
+    match complexity::analyze_source(file, source, metric) {
         Ok(found) => {
             for function in found {
                 functions.push(LocatedFn {

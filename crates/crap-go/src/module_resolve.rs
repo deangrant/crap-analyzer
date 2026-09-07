@@ -111,12 +111,16 @@ pub fn discover_modules_under(root: &Path) -> Result<Vec<(PathBuf, String)>> {
 fn collect_modules(dir: &Path, out: &mut Vec<(PathBuf, String)>) -> Result<()> {
     push_module_if_present(dir, out)?;
     for entry in read_dir_entries(dir)? {
-        let Some(child) = walkable_subdir(&entry) else {
-            continue;
-        };
-        collect_modules(&child, out)?;
+        collect_child_module(&entry, out)?;
     }
     Ok(())
+}
+
+fn collect_child_module(entry: &fs::DirEntry, out: &mut Vec<(PathBuf, String)>) -> Result<()> {
+    let Some(child) = walkable_subdir(entry) else {
+        return Ok(());
+    };
+    collect_modules(&child, out)
 }
 
 fn push_module_if_present(dir: &Path, out: &mut Vec<(PathBuf, String)>) -> Result<()> {

@@ -7,16 +7,23 @@ pub(super) fn validate_structure(bytes: &[u8]) -> Result<(), &'static str> {
     let mut i = 0;
     let mut stack = Vec::new();
     while i < bytes.len() {
-        i = skip_spaces(bytes, i);
-        if i >= bytes.len() {
-            break;
-        }
-        if let Some(outcome) = try_skip_noise_token(bytes, i) {
-            i = outcome?;
-            continue;
-        }
-        i = step_delimiter(bytes, i, &mut stack)?;
+        i = advance_structure(bytes, i, &mut stack)?;
     }
+    finish_structure(&stack)
+}
+
+fn advance_structure(bytes: &[u8], i: usize, stack: &mut Vec<u8>) -> Result<usize, &'static str> {
+    let i = skip_spaces(bytes, i);
+    if i >= bytes.len() {
+        return Ok(i);
+    }
+    if let Some(outcome) = try_skip_noise_token(bytes, i) {
+        return outcome;
+    }
+    step_delimiter(bytes, i, stack)
+}
+
+const fn finish_structure(stack: &[u8]) -> Result<(), &'static str> {
     if stack.is_empty() {
         Ok(())
     } else {

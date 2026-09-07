@@ -98,7 +98,7 @@ fn try_skip_string(bytes: &[u8], start: usize) -> Option<usize> {
 fn try_skip_template(bytes: &[u8], start: usize) -> Option<usize> {
     let mut i = start + 1;
     while i < bytes.len() {
-        match try_template_byte(bytes, i)? {
+        match try_template_byte(bytes, i) {
             TemplateOut::Done(end) => return Some(end),
             TemplateOut::Next(next) => i = next,
         }
@@ -111,17 +111,31 @@ enum TemplateOut {
     Next(usize),
 }
 
-fn try_template_byte(bytes: &[u8], i: usize) -> Option<TemplateOut> {
+fn try_template_byte(bytes: &[u8], i: usize) -> TemplateOut {
     if bytes[i] == b'`' {
-        return Some(TemplateOut::Done(i + 1));
+        return TemplateOut::Done(i + 1);
     }
-    if bytes[i] == b'$' && bytes.get(i + 1) == Some(&b'{') {
-        return Some(TemplateOut::Next(skip_balanced(bytes, i + 1, b'{', b'}')?));
+    if let Some(next) = template_interpolation(bytes, i) {
+        return TemplateOut::Next(next);
     }
-    if bytes[i] == b'\\' {
-        return (i + 1 < bytes.len()).then_some(TemplateOut::Next(i + 2));
+    if let Some(next) = template_escape(bytes, i) {
+        return TemplateOut::Next(next);
     }
-    Some(TemplateOut::Next(i + 1))
+    TemplateOut::Next(i + 1)
+}
+
+fn template_interpolation(bytes: &[u8], i: usize) -> Option<usize> {
+    if bytes[i] != b'$' || bytes.get(i + 1) != Some(&b'{') {
+        return None;
+    }
+    skip_balanced(bytes, i + 1, b'{', b'}')
+}
+
+fn template_escape(bytes: &[u8], i: usize) -> Option<usize> {
+    if bytes[i] != b'\\' {
+        return None;
+    }
+    (i + 1 < bytes.len()).then_some(i + 2)
 }
 
 fn try_skip_quoted_string(bytes: &[u8], start: usize, quote: u8) -> Option<usize> {

@@ -18,17 +18,25 @@ pub(super) fn pnpm_workspace_patterns(root: &Path) -> Result<Option<Vec<String>>
     if !path.is_file() {
         return Ok(None);
     }
-    let text = match fs::read_to_string(&path) {
-        Ok(text) => text,
-        Err(source) => return Err(Error::io(&path, source)),
-    };
+    let text = read_workspace_yaml(&path)?;
+    packages_from_yaml_text(&path, &text)
+}
+
+fn read_workspace_yaml(path: &Path) -> Result<String> {
+    match fs::read_to_string(path) {
+        Ok(text) => Ok(text),
+        Err(source) => Err(Error::io(path, source)),
+    }
+}
+
+fn packages_from_yaml_text(path: &Path, text: &str) -> Result<Option<Vec<String>>> {
     // Prefer `match` over `map_or_else` so llvm-cov does not keep an unused
     // closure instantiation that leaves a phantom uncovered line.
     #[expect(
         clippy::option_if_let_else,
         reason = "match avoids uncovered map_or_else closure CGUs"
     )]
-    match parse_packages_list(&text) {
+    match parse_packages_list(text) {
         Some(patterns) => Ok(Some(patterns)),
         None => Err(Error::resolve(format!(
             "{}: missing or invalid packages list",
@@ -41,30 +49,41 @@ fn parse_packages_list(text: &str) -> Option<Vec<String>> {
     let mut in_packages = false;
     let mut out = Vec::new();
     for raw in text.lines() {
-        let line = strip_yaml_comment(raw);
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        if !in_packages {
-            if trimmed == "packages:" {
-                in_packages = true;
-            }
-            continue;
-        }
-        if let Some(item) = list_item(trimmed) {
-            out.push(item);
-            continue;
-        }
-        if trimmed.starts_with('-') {
-            continue;
-        }
-        if looks_like_yaml_key(trimmed) {
+        if !consume_packages_line(raw, &mut in_packages, &mut out)? {
             break;
         }
-        return None;
     }
     in_packages.then_some(out)
+}
+
+/// Returns `Some(false)` to stop the scan, `Some(true)` to continue, `None` on error.
+fn consume_packages_line(raw: &str, in_packages: &mut bool, out: &mut Vec<String>) -> Option<bool> {
+    let line = strip_yaml_comment(raw);
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return Some(true);
+    }
+    if !*in_packages {
+        if trimmed == "packages:" {
+            *in_packages = true;
+        }
+        return Some(true);
+    }
+    packages_body_line(trimmed, out)
+}
+
+fn packages_body_line(trimmed: &str, out: &mut Vec<String>) -> Option<bool> {
+    if let Some(item) = list_item(trimmed) {
+        out.push(item);
+        return Some(true);
+    }
+    if trimmed.starts_with('-') {
+        return Some(true);
+    }
+    if looks_like_yaml_key(trimmed) {
+        return Some(false);
+    }
+    None
 }
 
 fn list_item(trimmed: &str) -> Option<String> {
@@ -88,14 +107,18 @@ fn find_yaml_comment_index(line: &str) -> Option<usize> {
     let mut in_single = false;
     let mut in_double = false;
     for (i, ch) in line.char_indices() {
-        if apply_yaml_quote(ch, &mut in_single, &mut in_double) {
-            continue;
-        }
-        if ch == '#' && !in_single && !in_double {
+        if yaml_comment_at(ch, &mut in_single, &mut in_double) {
             return Some(i);
         }
     }
     None
+}
+
+fn yaml_comment_at(ch: char, in_single: &mut bool, in_double: &mut bool) -> bool {
+    if apply_yaml_quote(ch, in_single, in_double) {
+        return false;
+    }
+    ch == '#' && !*in_single && !*in_double
 }
 
 #[inline(never)]
@@ -113,15 +136,23 @@ fn apply_yaml_quote(ch: char, in_single: &mut bool, in_double: &mut bool) -> boo
 }
 
 fn unquote(value: &str) -> String {
-    if value.len() >= 2 {
-        let bytes = value.as_bytes();
-        if (bytes[0] == b'\'' && bytes[value.len() - 1] == b'\'')
-            || (bytes[0] == b'"' && bytes[value.len() - 1] == b'"')
-        {
-            return value[1..value.len() - 1].to_owned();
-        }
+    strip_matching_quotes(value).map_or_else(|| value.to_owned(), str::to_owned)
+}
+
+fn strip_matching_quotes(value: &str) -> Option<&str> {
+    if value.len() < 2 {
+        return None;
     }
-    value.to_owned()
+    let bytes = value.as_bytes();
+    let quote = bytes[0];
+    if !is_quote(quote) || bytes[value.len() - 1] != quote {
+        return None;
+    }
+    Some(&value[1..value.len() - 1])
+}
+
+const fn is_quote(byte: u8) -> bool {
+    byte == b'\'' || byte == b'"'
 }
 
 #[cfg(test)]
