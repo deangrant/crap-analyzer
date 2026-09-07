@@ -199,12 +199,8 @@ fn is_skip_dir_name(path: &Path) -> bool {
 
 fn read_module_path(root: &Path) -> Result<String> {
     let path = root.join("go.mod");
-    let text = read_gomod_text(&path)?;
+    let text = fs::read_to_string(&path).map_err(|source| Error::io(&path, source))?;
     module_path_from_text(&text, &path)
-}
-
-fn read_gomod_text(path: &Path) -> Result<String> {
-    fs::read_to_string(path).map_err(|source| Error::io(path, source))
 }
 
 fn module_path_from_text(text: &str, path: &Path) -> Result<String> {

@@ -105,6 +105,7 @@ fn parse_args(raw: Vec<String>) -> std::result::Result<Action, String> {
 }
 
 fn help_or_version(raw: &[String]) -> Option<Action> {
+    // Keep paired with crap-rs::cli::help_or_version.
     if has_flag(raw, "-h", "--help") {
         return Some(Action::Help);
     }
@@ -119,6 +120,7 @@ fn has_flag(raw: &[String], short: &str, long: &str) -> bool {
 }
 
 fn reject_summary_json(args: &Args) -> std::result::Result<(), String> {
+    // Keep paired with crap-rs::cli::reject_summary_json.
     if args.summary && args.format == ReportFormat::Json {
         return Err("--summary conflicts with --format json".into());
     }

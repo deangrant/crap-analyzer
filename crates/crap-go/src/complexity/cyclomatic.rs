@@ -1,5 +1,7 @@
 //! Cyclomatic complexity for a Go function body.
 
+use super::lex::{is_word, match_op, skip_noise};
+
 /// Returns cyclomatic complexity for `body` (minimum 1).
 pub(super) fn count(body: &str) -> usize {
     let mut count = 1_usize;
@@ -33,24 +35,6 @@ fn take_decision(bytes: &[u8], i: usize, count: &mut usize) -> Option<usize> {
     None
 }
 
-fn match_op(bytes: &[u8], i: usize, op: &[u8]) -> bool {
-    bytes.get(i..i + op.len()) == Some(op)
-}
-
-fn is_word(bytes: &[u8], i: usize, word: &[u8]) -> bool {
-    bytes.get(i..i + word.len()) == Some(word)
-        && !is_ident_byte(bytes.get(i.wrapping_sub(1)).copied().unwrap_or(0))
-        && !is_ident_byte(bytes.get(i + word.len()).copied().unwrap_or(0))
-}
-
-fn skip_noise(bytes: &[u8], i: usize) -> usize {
-    super::lex::skip_noise(bytes, i)
-}
-
-const fn is_ident_byte(b: u8) -> bool {
-    b.is_ascii_alphanumeric() || b == b'_'
-}
-
 #[cfg(test)]
 mod tests {
     use crate::complexity::analyze_source;
@@ -75,8 +59,9 @@ mod tests {
 
     #[test]
     fn bool_ops_and_case_add() {
-        let src = "package p\nfunc f(x int) {\n  if x > 0 && x < 10 || x == 0 {\n    switch x {\n    case 1:\n    }\n  }\n}\n";
-        // base + if + && + || + case (switch itself is not a decision)
+        let src = "package p\nfunc f(x int) {\n  if x > 0 && x < 10 || x == 0 {\n\
+            switch x {\n    case 1:\n    }\n  }\n}\n";
+        // Base + if + && + || + case; switch itself is not a decision.
         assert_eq!(snippet(src), 5);
     }
 
@@ -104,14 +89,15 @@ mod tests {
     fn else_if_chain_counts_each_if() {
         let src =
             "package p\nfunc f(x int) {\n  if x > 0 {\n  } else if x < 0 {\n  } else {\n  }\n}\n";
-        // base + if + if (else does not add)
+        // Base + if + if; else does not add.
         assert_eq!(snippet(src), 3);
     }
 
     #[test]
     fn type_switch_counts_cases_not_switch() {
-        let src = "package p\nfunc f(x any) {\n  switch x.(type) {\n  case int:\n  case string:\n  default:\n  }\n}\n";
-        // base + case + case + default
+        let src = "package p\nfunc f(x any) {\n  switch x.(type) {\n  case int:\n\
+            case string:\n  default:\n  }\n}\n";
+        // Base + case + case + default.
         assert_eq!(snippet(src), 4);
     }
 

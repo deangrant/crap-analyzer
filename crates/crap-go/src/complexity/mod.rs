@@ -5,15 +5,10 @@ mod cyclomatic;
 mod lex;
 mod visitor;
 
-use crap_core::{FunctionComplexity, Metric};
-use std::path::Path;
-use visitor::analyze_source as analyze_source_inner;
+use crap_core::Metric;
 
-/// Parses `source` as if it lived at `path`.
-#[must_use]
-pub fn analyze_source(path: &Path, source: &str, metric: Metric) -> Vec<FunctionComplexity> {
-    analyze_source_inner(path, source, metric)
-}
+#[doc(inline)]
+pub use visitor::analyze_source;
 
 fn count_metric(metric: Metric, body: &str) -> usize {
     match metric {

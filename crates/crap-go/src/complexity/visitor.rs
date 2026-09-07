@@ -1,8 +1,11 @@
 //! Scan Go source for named functions and their body spans.
 
 use super::count_metric;
+use super::lex::{is_ident_byte, is_ident_start};
 use crap_core::{FunctionComplexity, Metric};
 use std::path::Path;
+
+pub(super) use super::lex::skip_balanced;
 
 /// Named function found in a Go source file.
 #[derive(Debug, Clone)]
@@ -16,7 +19,7 @@ struct FoundFn {
 
 /// Parses `source` as if it lived at `path`.
 #[must_use]
-pub(super) fn analyze_source(path: &Path, source: &str, metric: Metric) -> Vec<FunctionComplexity> {
+pub fn analyze_source(path: &Path, source: &str, metric: Metric) -> Vec<FunctionComplexity> {
     let found = find_functions(source);
     found
         .iter()
@@ -235,41 +238,6 @@ fn match_braces(bytes: &[u8], open: usize) -> Option<usize> {
     skip_balanced(bytes, open, b'{', b'}')
 }
 
-fn skip_balanced(bytes: &[u8], open: usize, open_ch: u8, close_ch: u8) -> Option<usize> {
-    if bytes.get(open) != Some(&open_ch) {
-        return None;
-    }
-    scan_balanced(bytes, open, open_ch, close_ch)
-}
-
-fn scan_balanced(bytes: &[u8], open: usize, open_ch: u8, close_ch: u8) -> Option<usize> {
-    let mut depth = 0_i32;
-    let mut i = open;
-    while i < bytes.len() {
-        i = skip_noise(bytes, i);
-        if i >= bytes.len() {
-            return None;
-        }
-        if let Some(end) = step_balance(&mut depth, bytes[i], open_ch, close_ch, i) {
-            return Some(end);
-        }
-        i += 1;
-    }
-    None
-}
-
-fn step_balance(depth: &mut i32, b: u8, open_ch: u8, close_ch: u8, i: usize) -> Option<usize> {
-    if b == open_ch {
-        *depth += 1;
-        return None;
-    }
-    if b != close_ch {
-        return None;
-    }
-    *depth -= 1;
-    (*depth == 0).then_some(i + 1)
-}
-
 fn skip_noise(bytes: &[u8], i: usize) -> usize {
     super::lex::skip_noise(bytes, i)
 }
@@ -290,14 +258,6 @@ fn read_ident(source: &str, bytes: &[u8], i: usize) -> Option<(String, usize)> {
         end += 1;
     }
     Some((source[i..end].to_owned(), end))
-}
-
-const fn is_ident_start(b: u8) -> bool {
-    b.is_ascii_alphabetic() || b == b'_'
-}
-
-const fn is_ident_byte(b: u8) -> bool {
-    b.is_ascii_alphanumeric() || b == b'_'
 }
 
 fn line_of(source: &str, offset: usize) -> usize {

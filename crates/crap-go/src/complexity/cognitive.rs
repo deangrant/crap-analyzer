@@ -1,5 +1,7 @@
 //! Cognitive complexity for a Go function body.
 
+use super::lex::{is_word, match_op, skip_balanced, skip_noise};
+
 /// Returns cognitive complexity for `body` (minimum 0).
 pub(super) fn count(body: &str) -> usize {
     let mut counter = CognitiveCounter {
@@ -58,7 +60,7 @@ impl CognitiveCounter {
             return start;
         };
         self.scan_bools(&bytes[start..open]);
-        let Some(end) = match_braces(bytes, open) else {
+        let Some(end) = skip_balanced(bytes, open, b'{', b'}') else {
             return open + 1;
         };
         if end > open + 1 {
@@ -140,61 +142,6 @@ fn find_block_open(bytes: &[u8], mut i: usize) -> Option<usize> {
         i += 1;
     }
     None
-}
-
-fn match_op(bytes: &[u8], i: usize, op: &[u8]) -> bool {
-    bytes.get(i..i + op.len()) == Some(op)
-}
-
-fn is_word(bytes: &[u8], i: usize, word: &[u8]) -> bool {
-    bytes.get(i..i + word.len()) == Some(word)
-        && !is_ident_byte(bytes.get(i.wrapping_sub(1)).copied().unwrap_or(0))
-        && !is_ident_byte(bytes.get(i + word.len()).copied().unwrap_or(0))
-}
-
-fn match_braces(bytes: &[u8], open: usize) -> Option<usize> {
-    if bytes.get(open) != Some(&b'{') {
-        return None;
-    }
-    scan_brace_depth(bytes, open)
-}
-
-fn scan_brace_depth(bytes: &[u8], open: usize) -> Option<usize> {
-    let mut depth = 0_i32;
-    let mut i = open;
-    while i < bytes.len() {
-        i = skip_noise(bytes, i);
-        if i >= bytes.len() {
-            return None;
-        }
-        if let Some(end) = update_brace_depth(&mut depth, bytes[i], i) {
-            return Some(end);
-        }
-        i += 1;
-    }
-    None
-}
-
-const fn update_brace_depth(depth: &mut i32, b: u8, i: usize) -> Option<usize> {
-    match b {
-        b'{' => *depth += 1,
-        b'}' => {
-            *depth -= 1;
-            if *depth == 0 {
-                return Some(i + 1);
-            }
-        }
-        _ => {}
-    }
-    None
-}
-
-fn skip_noise(bytes: &[u8], i: usize) -> usize {
-    super::lex::skip_noise(bytes, i)
-}
-
-const fn is_ident_byte(b: u8) -> bool {
-    b.is_ascii_alphanumeric() || b == b'_'
 }
 
 #[cfg(test)]

@@ -102,8 +102,8 @@ fn find_block_open_eof_after_noise() {
 
 #[test]
 fn match_braces_edges() {
-    assert!(super::match_braces(b"x", 0).is_none());
-    assert!(super::match_braces(b"{ /*", 0).is_none());
+    assert!(super::super::lex::skip_balanced(b"x", 0, b'{', b'}').is_none());
+    assert!(super::super::lex::skip_balanced(b"{ /*", 0, b'{', b'}').is_none());
 }
 
 #[test]

@@ -71,11 +71,11 @@ impl ScanRequest {
 pub struct Target {
     /// Directory to walk for sources.
     pub root: PathBuf,
-    /// Package name when a workspace member was selected.
+    /// Language-agnostic package key (Cargo package or Go import path).
     pub crate_name: Option<String>,
     /// Nested roots the walker must not enter.
     pub skip: Vec<PathBuf>,
-    /// Feature names treated as enabled when evaluating `#[cfg]`.
+    /// Enabled switches (Cargo `#[cfg]` features or Go build tags).
     pub enabled_features: Vec<String>,
 }
 

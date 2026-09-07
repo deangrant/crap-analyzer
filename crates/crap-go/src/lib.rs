@@ -50,8 +50,10 @@ impl GoLanguage {
             .iter()
             .map(|pkg| Target {
                 root: pkg.root.clone(),
+                // Go import path (language-agnostic package key).
                 crate_name: Some(pkg.name.clone()),
                 skip: module_resolve::nested_module_roots(&pkg.root, packages),
+                // Go build tags treated as enabled.
                 enabled_features: self.tags.clone(),
             })
             .collect()
@@ -79,6 +81,7 @@ impl GoLanguage {
             root: request.path.clone(),
             crate_name: None,
             skip: Vec::new(),
+            // Go build tags treated as enabled.
             enabled_features: self.tags.clone(),
         }
     }
