@@ -1,6 +1,11 @@
 [workspace]
 resolver = "3"
-members = ["crates/crap-core", "crates/crap-rs", "crates/crap-go"]
+members = [
+    "crates/crap-core",
+    "crates/crap-rs",
+    "crates/crap-go",
+    "crates/crap-ts",
+]
 
 [workspace.package]
 edition = "2024"

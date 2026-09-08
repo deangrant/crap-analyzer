@@ -1,0 +1,5 @@
+# workspace members
+packages:
+  - "packages/**"
+catalog:
+  unused: "1"

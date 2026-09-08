@@ -42,9 +42,9 @@ mod tests {
     use std::path::Path;
 
     fn snippet(src: &str) -> usize {
-        analyze_source(Path::new("t.go"), src, Metric::Cyclomatic)
-            .first()
-            .map_or(0, |f| f.complexity)
+        let parsed = analyze_source(Path::new("t.go"), src, Metric::Cyclomatic);
+        assert!(parsed.is_ok(), "{parsed:?}");
+        parsed.unwrap_or_default().first().map_or(0, |f| f.complexity)
     }
 
     #[test]

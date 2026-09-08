@@ -129,6 +129,30 @@ fn build_tag_skips_file() {
     let _ = fs::remove_dir_all(&root);
 }
 
+#[test]
+fn structurally_invalid_go_file_fails_collect() {
+    let root = temp_dir("struct-bad");
+    write(&root.join("go.mod"), "module example.com/demo\n");
+    write(&root.join("ok.go"), "package main\nfunc Ok() {}\n");
+    write(
+        &root.join("bad.go"),
+        "package main\nfunc Bad() { s := \"oops }\n",
+    );
+    let lang = GoLanguage {
+        workspace: false,
+        packages: Vec::new(),
+        tags: Vec::new(),
+    };
+    let targets = require_ok(lang.resolve_targets(&request(&root)));
+    let err = lang.collect_functions(&targets, Metric::Cyclomatic);
+    let _ = fs::remove_dir_all(&root);
+    assert!(matches!(err, Err(Error::Collect(_))), "{err:?}");
+    let message = format!("{err:?}");
+    assert!(message.contains("failed to parse"), "{message}");
+    assert!(message.contains("bad.go"), "{message}");
+    assert!(message.contains("unclosed string"), "{message}");
+}
+
 #[cfg(unix)]
 mod unix {
     use super::*;

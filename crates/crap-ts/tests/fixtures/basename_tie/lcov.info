@@ -1,0 +1,12 @@
+TN:
+SF:packages/pkg_a/src/util.ts
+DA:1,1
+DA:2,1
+DA:3,1
+end_of_record
+TN:
+SF:packages/pkg_b/src/util.ts
+DA:1,0
+DA:2,0
+DA:3,0
+end_of_record

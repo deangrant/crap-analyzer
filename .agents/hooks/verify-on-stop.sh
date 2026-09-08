@@ -90,8 +90,8 @@ import json, os
 log = os.environ.get("VERIFY_LOG", "")
 msg = (
     "Local verify failed (./scripts/check.sh, llvm-cov --fail-under-lines 100, "
-    "crap-rs --fail-above --threshold strict). Fix the failures, re-run the same "
-    "gates, then stop.\n\n"
+    "crap-rs --all-features --fail-above --threshold strict). Fix the failures, "
+    "re-run the same gates, then stop.\n\n"
     + log
 )
 print(json.dumps({"followup_message": msg}))

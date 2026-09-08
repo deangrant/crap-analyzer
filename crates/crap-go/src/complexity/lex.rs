@@ -22,9 +22,30 @@ fn skip_noise_step(bytes: &[u8], i: usize) -> Option<usize> {
 }
 
 fn skip_comment_start(bytes: &[u8], i: usize) -> Option<usize> {
+    let outcome = try_skip_comment_token(bytes, i)?;
+    if let Ok(next) = outcome {
+        return Some(next);
+    }
+    Some(bytes.len())
+}
+
+/// Tries to skip one comment or string token at `i`.
+///
+/// Returns `None` when `i` is not noise. `Err` means an unclosed literal.
+pub(super) fn try_skip_noise_token(bytes: &[u8], i: usize) -> Option<Result<usize, &'static str>> {
+    if bytes.get(i) == Some(&b'/') {
+        return try_skip_comment_token(bytes, i);
+    }
+    if matches!(bytes.get(i), Some(&b'"' | &b'\'' | &b'`')) {
+        return Some(try_skip_string(bytes, i).ok_or("unclosed string"));
+    }
+    None
+}
+
+fn try_skip_comment_token(bytes: &[u8], i: usize) -> Option<Result<usize, &'static str>> {
     match bytes.get(i + 1) {
-        Some(&b'/') => Some(skip_line_comment(bytes, i)),
-        Some(&b'*') => Some(skip_block_comment(bytes, i)),
+        Some(&b'/') => Some(Ok(skip_line_comment(bytes, i))),
+        Some(&b'*') => Some(try_skip_block_comment(bytes, i).ok_or("unclosed comment")),
         _ => None,
     }
 }
@@ -37,49 +58,57 @@ fn skip_line_comment(bytes: &[u8], mut i: usize) -> usize {
     i
 }
 
-fn skip_block_comment(bytes: &[u8], mut i: usize) -> usize {
-    i += 2;
-    while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
-        i += 1;
+fn try_skip_block_comment(bytes: &[u8], i: usize) -> Option<usize> {
+    let mut j = i + 2;
+    while j + 1 < bytes.len() {
+        if bytes[j] == b'*' && bytes[j + 1] == b'/' {
+            return Some(j + 2);
+        }
+        j += 1;
     }
-    i.saturating_add(2)
+    None
 }
 
 /// Skips a `"..."`, `'...'`, or `` `...` `` literal starting at `start`.
 pub(super) fn skip_string(bytes: &[u8], start: usize) -> usize {
-    let Some(&quote) = bytes.get(start) else {
-        return start;
-    };
-    if quote == b'`' {
-        return skip_raw_string(bytes, start);
-    }
-    skip_quoted_string(bytes, start, quote)
+    try_skip_string(bytes, start).unwrap_or(bytes.len())
 }
 
-fn skip_raw_string(bytes: &[u8], start: usize) -> usize {
+fn try_skip_string(bytes: &[u8], start: usize) -> Option<usize> {
+    let quote = *bytes.get(start)?;
+    if quote == b'`' {
+        return try_skip_raw_string(bytes, start);
+    }
+    try_skip_quoted_string(bytes, start, quote)
+}
+
+fn try_skip_raw_string(bytes: &[u8], start: usize) -> Option<usize> {
     let mut i = start + 1;
-    while i < bytes.len() && bytes[i] != b'`' {
+    while i < bytes.len() {
+        if bytes[i] == b'`' {
+            return Some(i + 1);
+        }
         i += 1;
     }
-    i.saturating_add(1)
+    None
 }
 
-fn skip_quoted_string(bytes: &[u8], start: usize, quote: u8) -> usize {
+fn try_skip_quoted_string(bytes: &[u8], start: usize, quote: u8) -> Option<usize> {
     let mut i = start + 1;
     while i < bytes.len() {
         if bytes[i] == quote {
-            return i + 1;
+            return Some(i + 1);
         }
-        i = after_quoted_byte(bytes, i);
+        i = after_quoted_byte(bytes, i)?;
     }
-    i
+    None
 }
 
-fn after_quoted_byte(bytes: &[u8], i: usize) -> usize {
-    if bytes[i] == b'\\' {
-        return i.saturating_add(2);
+fn after_quoted_byte(bytes: &[u8], i: usize) -> Option<usize> {
+    if bytes[i] != b'\\' {
+        return Some(i + 1);
     }
-    i + 1
+    (i + 1 < bytes.len()).then_some(i + 2)
 }
 
 /// Skips a balanced `open_ch`…`close_ch` pair starting at `open`.

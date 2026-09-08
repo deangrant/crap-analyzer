@@ -14,6 +14,13 @@ enum Mode {
     Count,
 }
 
+/// Per-line accumulation before pessimistic finalize.
+#[derive(Debug, Default, Clone)]
+struct LineAccum {
+    positive: u64,
+    seen_zero: bool,
+}
+
 /// Reads a Go coverprofile from `path`.
 ///
 /// # Errors
@@ -35,19 +42,37 @@ pub fn remap_import_paths<S: BuildHasher>(
     module_root: &Path,
     module_path: &str,
 ) -> HashMap<PathBuf, FileCoverage> {
-    let prefix = format!("{module_path}/");
+    remap_import_paths_all(
+        coverage,
+        &[(module_root.to_path_buf(), module_path.to_owned())],
+    )
+}
+
+/// Remaps import-path keys for every module (longest module path first).
+#[must_use]
+pub fn remap_import_paths_all<S: BuildHasher>(
+    coverage: &HashMap<PathBuf, FileCoverage, S>,
+    modules: &[(PathBuf, String)],
+) -> HashMap<PathBuf, FileCoverage> {
+    let mut ordered: Vec<(PathBuf, String)> = modules.to_vec();
+    ordered.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
     let mut out: HashMap<PathBuf, FileCoverage> = HashMap::new();
     for (path, file) in coverage {
-        let key = remap_one_path(path, module_root, &prefix);
+        let key = remap_against_modules(path, &ordered);
         out.entry(key).or_default().merge_from(file);
     }
     out
 }
 
-fn remap_one_path(path: &Path, module_root: &Path, prefix: &str) -> PathBuf {
+fn remap_against_modules(path: &Path, modules: &[(PathBuf, String)]) -> PathBuf {
     let key = path.to_string_lossy().replace('\\', "/");
-    key.strip_prefix(prefix)
-        .map_or_else(|| path.to_path_buf(), |rel| module_root.join(rel))
+    for (module_root, module_path) in modules {
+        let prefix = format!("{module_path}/");
+        if let Some(rel) = key.strip_prefix(&prefix) {
+            return module_root.join(rel);
+        }
+    }
+    path.to_path_buf()
 }
 
 fn parse_reader<R: BufRead>(reader: R, origin: &Path) -> Result<HashMap<PathBuf, FileCoverage>> {
@@ -68,22 +93,22 @@ fn collect_data_lines<R: BufRead>(
     mode: Mode,
     origin: &Path,
 ) -> Result<(HashMap<PathBuf, FileCoverage>, usize)> {
-    let mut files = HashMap::new();
+    let mut accum: HashMap<PathBuf, HashMap<u32, LineAccum>> = HashMap::new();
     let mut data_lines = 0_usize;
     for raw in lines {
         let raw = raw.map_err(|source| Error::io(origin, source))?;
-        if apply_data_line(raw.trim(), mode, origin, &mut files)? {
+        if apply_data_line(raw.trim(), mode, origin, &mut accum)? {
             data_lines += 1;
         }
     }
-    Ok((files, data_lines))
+    Ok((finalize_files(accum), data_lines))
 }
 
 fn apply_data_line(
     trimmed: &str,
     mode: Mode,
     origin: &Path,
-    files: &mut HashMap<PathBuf, FileCoverage>,
+    files: &mut HashMap<PathBuf, HashMap<u32, LineAccum>>,
 ) -> Result<bool> {
     if trimmed.is_empty() {
         return Ok(false);
@@ -124,26 +149,40 @@ fn apply_block(
     line: &str,
     mode: Mode,
     origin: &Path,
-    files: &mut HashMap<PathBuf, FileCoverage>,
+    files: &mut HashMap<PathBuf, HashMap<u32, LineAccum>>,
 ) -> Result<()> {
     let (path, start, end, hits) = parse_data_line(line, origin)?;
     let file = files.entry(path).or_default();
     for line_no in start..=end {
-        merge_hit(file, line_no, hits, mode);
+        merge_hit(file.entry(line_no).or_default(), hits, mode);
     }
     Ok(())
 }
 
-fn merge_hit(file: &mut FileCoverage, line: u32, hits: u64, mode: Mode) {
-    let slot = file.lines.entry(line).or_insert(0);
-    match mode {
-        Mode::Set => {
-            if hits > 0 {
-                *slot = (*slot).max(1);
-            }
-        }
-        Mode::Count => *slot = slot.saturating_add(hits),
+fn merge_hit(slot: &mut LineAccum, hits: u64, mode: Mode) {
+    if hits == 0 {
+        slot.seen_zero = true;
+        return;
     }
+    match mode {
+        Mode::Set => slot.positive = slot.positive.max(1),
+        Mode::Count => slot.positive = slot.positive.saturating_add(hits),
+    }
+}
+
+fn finalize_files(
+    accum: HashMap<PathBuf, HashMap<u32, LineAccum>>,
+) -> HashMap<PathBuf, FileCoverage> {
+    let mut out = HashMap::new();
+    for (path, lines) in accum {
+        let mut file = FileCoverage::default();
+        for (line_no, slot) in lines {
+            let hits = if slot.seen_zero { 0 } else { slot.positive };
+            file.lines.insert(line_no, hits);
+        }
+        out.insert(path, file);
+    }
+    out
 }
 
 fn parse_data_line(line: &str, origin: &Path) -> Result<(PathBuf, u32, u32, u64)> {

@@ -96,35 +96,23 @@ pub fn parse() -> std::result::Result<Action, String> {
 
 /// Parses an argv vector (binary name first).
 fn parse_args(raw: Vec<String>) -> std::result::Result<Action, String> {
-    if let Some(action) = help_or_version(&raw) {
-        return Ok(action);
+    if let Some(action) = crap_core::help_or_version(&raw) {
+        return Ok(help_or_version_action(action));
     }
+    run_from_clap(raw)
+}
+
+const fn help_or_version_action(action: crap_core::HelpOrVersion) -> Action {
+    match action {
+        crap_core::HelpOrVersion::Help => Action::Help,
+        crap_core::HelpOrVersion::Version => Action::Version,
+    }
+}
+
+fn run_from_clap(raw: Vec<String>) -> std::result::Result<Action, String> {
     let args = Args::try_parse_from(raw).map_err(|err| err.to_string())?;
-    reject_summary_json(&args)?;
+    crap_core::reject_summary_json(args.summary, args.format)?;
     Ok(Action::Run(args))
-}
-
-fn help_or_version(raw: &[String]) -> Option<Action> {
-    // Keep paired with crap-rs::cli::help_or_version.
-    if has_flag(raw, "-h", "--help") {
-        return Some(Action::Help);
-    }
-    if has_flag(raw, "-V", "--version") {
-        return Some(Action::Version);
-    }
-    None
-}
-
-fn has_flag(raw: &[String], short: &str, long: &str) -> bool {
-    raw.iter().skip(1).any(|arg| arg == short || arg == long)
-}
-
-fn reject_summary_json(args: &Args) -> std::result::Result<(), String> {
-    // Keep paired with crap-rs::cli::reject_summary_json.
-    if args.summary && args.format == ReportFormat::Json {
-        return Err("--summary conflicts with --format json".into());
-    }
-    Ok(())
 }
 
 /// Usage and scoring help text.
@@ -164,7 +152,8 @@ OPTIONS:
     --missing <policy>      No coverage data, empty span, or an
                             unresolved path tie: pessimistic (0%,
                             default), optimistic (100%), or skip.
-                            An import path breaks equal basename ties
+                            An import path breaks equal basename ties.
+                            Leftover ties are labeled ambiguous.
     --tags <list>           Build tags treated as enabled
                             (comma-separated)
     -h, --help              Print help
@@ -175,7 +164,8 @@ OPTIONS:
 EXIT CODES:
     0   Analysis finished; no requested gate tripped
     1   Analysis finished; --fail-above tripped
-    2   Usage, input, or analysis error (any source failed to parse)
+    2   Usage, input, or analysis error (unreadable or
+        structurally invalid source)
 ",
         name = env!("CARGO_PKG_NAME"),
         version = env!("CARGO_PKG_VERSION"),

@@ -1,4 +1,4 @@
-use super::{parse_coverprofile, remap_import_paths};
+use super::{parse_coverprofile, remap_import_paths, remap_import_paths_all};
 use crap_core::{Error, FileCoverage};
 use std::collections::HashMap;
 use std::fs;
@@ -81,6 +81,61 @@ fn count_mode_adds_hits() {
     assert_eq!(cov.lines.get(&1), Some(&2));
     assert_eq!(cov.lines.get(&2), Some(&5));
     let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn shared_line_zero_hit_block_is_pessimistic() {
+    let dir = temp_dir("shared");
+    let path = write_profile(
+        &dir,
+        "mode: set\nmain.go:10.1,10.8 1 1\nmain.go:10.10,10.14 1 0\n",
+    );
+    let files = require_ok(parse_coverprofile(&path));
+    let cov = files.get(Path::new("main.go")).cloned().unwrap_or_default();
+    assert_eq!(cov.lines.get(&10), Some(&0));
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn shared_line_zero_then_hit_is_still_pessimistic() {
+    let dir = temp_dir("shared-rev");
+    let path = write_profile(
+        &dir,
+        "mode: set\nmain.go:10.10,10.14 1 0\nmain.go:10.1,10.8 1 1\n",
+    );
+    let files = require_ok(parse_coverprofile(&path));
+    let cov = files.get(Path::new("main.go")).cloned().unwrap_or_default();
+    assert_eq!(cov.lines.get(&10), Some(&0));
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn remap_all_prefers_longest_module_prefix() {
+    let mut coverage = HashMap::new();
+    coverage.insert(
+        PathBuf::from("example.com/demo/nested/x.go"),
+        FileCoverage {
+            lines: std::iter::once((1, 1)).collect(),
+        },
+    );
+    coverage.insert(
+        PathBuf::from("example.com/demo/main.go"),
+        FileCoverage {
+            lines: std::iter::once((1, 1)).collect(),
+        },
+    );
+    let parent = PathBuf::from("/mod");
+    let child = PathBuf::from("/mod/nested");
+    let remapped = remap_import_paths_all(
+        &coverage,
+        &[
+            (parent.clone(), "example.com/demo".into()),
+            (child.clone(), "example.com/demo/nested".into()),
+        ],
+    );
+    assert!(remapped.contains_key(&child.join("x.go")));
+    assert!(remapped.contains_key(&parent.join("main.go")));
+    assert!(!remapped.contains_key(Path::new("example.com/demo/nested/x.go")));
 }
 
 #[test]
@@ -231,4 +286,23 @@ fn remap_merges_when_keys_collapse() {
     let cov = remapped.get(Path::new("/proj/a.go")).cloned().unwrap_or_default();
     assert_eq!(cov.lines.get(&1), Some(&1));
     assert_eq!(cov.lines.get(&2), Some(&2));
+}
+
+#[test]
+fn large_coverprofile_parse_finishes_under_a_second() {
+    use std::fmt::Write;
+
+    let dir = temp_dir("large");
+    let mut body = String::from("mode: set\n");
+    for i in 0..400 {
+        let start = i * 20 + 1;
+        let end = start + 19;
+        let _ = writeln!(body, "pkg/f{i}.go:{start}.1,{end}.2 1 1");
+    }
+    let path = write_profile(&dir, &body);
+    let started = std::time::Instant::now();
+    let files = require_ok(parse_coverprofile(&path));
+    assert!(started.elapsed().as_secs() < 1, "{:?}", started.elapsed());
+    assert_eq!(files.len(), 400);
+    let _ = fs::remove_dir_all(&dir);
 }

@@ -41,7 +41,7 @@ from the failed step (or the top).
 
    ```bash
    cargo run -p crap-rs --locked -- \
-     --coverage lcov.info --path . --workspace \
+     --coverage lcov.info --path . --workspace --all-features \
      --fail-above --threshold strict
    ```
 

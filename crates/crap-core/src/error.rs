@@ -1,4 +1,4 @@
-//! Typed errors for I/O, coverage input, target discovery, and collection.
+//! Typed errors for I/O, coverage input, target discovery, collection, and report.
 
 use std::fmt;
 use std::io;
@@ -20,6 +20,8 @@ pub enum Error {
     Resolve(String),
     /// Source collection failed (one or more files).
     Collect(String),
+    /// Report rendering failed after scoring (for example JSON serialize).
+    Report(String),
 }
 
 /// Result alias for crate operations.
@@ -52,14 +54,21 @@ impl Error {
     pub fn collect(message: impl Into<String>) -> Self {
         Self::Collect(message.into())
     }
+
+    /// Builds a report-render error from `message`.
+    #[must_use]
+    pub fn report(message: impl Into<String>) -> Self {
+        Self::Report(message.into())
+    }
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Coverage(message) | Self::Resolve(message) | Self::Collect(message) => {
-                write!(f, "{message}")
-            }
+            Self::Coverage(message)
+            | Self::Resolve(message)
+            | Self::Collect(message)
+            | Self::Report(message) => write!(f, "{message}"),
             Self::Io { path, source } => write!(f, "{}: {source}", path.display()),
         }
     }
@@ -69,7 +78,7 @@ impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Io { source, .. } => Some(source),
-            Self::Coverage(_) | Self::Resolve(_) | Self::Collect(_) => None,
+            Self::Coverage(_) | Self::Resolve(_) | Self::Collect(_) | Self::Report(_) => None,
         }
     }
 }
@@ -86,6 +95,7 @@ mod tests {
         assert!(StdError::source(&Error::coverage("c")).is_none());
         assert!(StdError::source(&Error::resolve("r")).is_none());
         assert!(StdError::source(&Error::collect("p")).is_none());
+        assert!(StdError::source(&Error::report("j")).is_none());
     }
 
     #[test]
@@ -93,6 +103,7 @@ mod tests {
         assert_eq!(Error::coverage("c").to_string(), "c");
         assert_eq!(Error::resolve("r").to_string(), "r");
         assert_eq!(Error::collect("p").to_string(), "p");
+        assert_eq!(Error::report("j").to_string(), "j");
         assert!(Error::io("x", io::Error::other("e")).to_string().contains('x'));
     }
 }

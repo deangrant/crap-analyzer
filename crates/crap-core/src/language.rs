@@ -73,6 +73,9 @@ pub struct Target {
     pub root: PathBuf,
     /// Language-agnostic package key (Cargo package or Go import path).
     pub crate_name: Option<String>,
+    /// Path-index join key when it differs from [`Self::crate_name`] (e.g. TS
+    /// package directory relative to the workspace root).
+    pub join_key: Option<String>,
     /// Nested roots the walker must not enter.
     pub skip: Vec<PathBuf>,
     /// Enabled switches (Cargo `#[cfg]` features or Go build tags).

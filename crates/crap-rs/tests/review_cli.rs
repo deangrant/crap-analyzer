@@ -251,3 +251,149 @@ fn debug_assertions_gated_fn_uses_missing_when_lcov_omits_it() {
         );
     }
 }
+
+#[test]
+fn ambiguous_basename_lcov_is_pessimistic_and_gates() {
+    let root = temp_root("ambiguous-lib");
+    require_ok(fs::create_dir_all(root.join("src")));
+    let src = root.join("src/lib.rs");
+    require_ok(fs::write(&src, "fn f() {}\n"));
+    // Prepend distinct prefixes so both SF keys end with the walked absolute path.
+    let lcov = root.join("lcov.info");
+    let body = format!(
+        "TN:\nSF:/crate_a{}\nDA:1,1\nend_of_record\nTN:\nSF:/crate_b{}\nDA:1,0\nend_of_record\n",
+        src.display(),
+        src.display(),
+    );
+    require_ok(fs::write(&lcov, body));
+    let (code, stdout, stderr) = output_of(
+        bin()
+            .arg("--lcov")
+            .arg(&lcov)
+            .arg("--path")
+            .arg(&root)
+            .arg("--format")
+            .arg("json")
+            .arg("--fail-above")
+            .arg("--threshold")
+            .arg("1"),
+    );
+    let _ = fs::remove_dir_all(&root);
+    assert_eq!(code, 1, "{stdout}{stderr}");
+    let parsed = serde_json::from_str::<serde_json::Value>(&stdout);
+    assert!(parsed.is_ok(), "{parsed:?}");
+    let value = parsed.unwrap_or_default();
+    let row = value["result"]["functions"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|row| row["identity"]["function"] == "f")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    assert_eq!(row["coverage_join"], "ambiguous");
+    assert_eq!(row["coverage_percent"], 0.0);
+    assert_eq!(value["result"]["gate_failed"], true);
+    assert_eq!(value["result"]["summary"]["ambiguous"], 1);
+}
+
+#[test]
+fn tokio_test_harness_is_omitted_under_fail_above() {
+    let root = temp_root("tokio-omit");
+    require_ok(fs::create_dir_all(&root));
+    require_ok(fs::write(
+        root.join("lib.rs"),
+        concat!(
+            "fn keep() {}\n\n",
+            "#[tokio::test]\n",
+            "fn harness() {\n",
+            "    if true {\n",
+            "        if true {\n",
+            "            if true {\n",
+            "                if true {\n",
+            "                    if true {}\n",
+            "                }\n",
+            "            }\n",
+            "        }\n",
+            "    }\n",
+            "}\n",
+        ),
+    ));
+    let lcov = root.join("lcov.info");
+    require_ok(fs::write(&lcov, "TN:\nSF:lib.rs\nDA:1,1\nend_of_record\n"));
+    let (code, stdout, stderr) = output_of(
+        bin()
+            .arg("--lcov")
+            .arg(&lcov)
+            .arg("--path")
+            .arg(&root)
+            .arg("--fail-above")
+            .arg("--threshold")
+            .arg("5")
+            .arg("--format")
+            .arg("json"),
+    );
+    let _ = fs::remove_dir_all(&root);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    let value = serde_json::from_str::<serde_json::Value>(&stdout).unwrap_or_default();
+    let rows = value["result"]["functions"].as_array().cloned().unwrap_or_default();
+    assert!(rows.iter().any(|row| row["identity"]["function"] == "keep"));
+    assert!(rows.iter().all(|row| row["identity"]["function"] != "harness"));
+}
+
+#[test]
+fn feature_mismatch_uses_missing_when_enabled() {
+    let root = temp_root("feat-mismatch");
+    require_ok(fs::create_dir_all(&root));
+    require_ok(fs::write(
+        root.join("lib.rs"),
+        concat!(
+            "fn keep() {}\n\n",
+            "#[cfg(feature = \"extra\")]\n",
+            "fn gated() {\n",
+            "    let x = 1;\n",
+            "    let _ = x;\n",
+            "}\n",
+        ),
+    ));
+    let lcov = root.join("lcov.info");
+    // Coverage as if built without `extra`: only `keep` has DA lines.
+    require_ok(fs::write(&lcov, "TN:\nSF:lib.rs\nDA:1,1\nend_of_record\n"));
+
+    let (code_off, stdout_off, stderr_off) = output_of(
+        bin()
+            .arg("--lcov")
+            .arg(&lcov)
+            .arg("--path")
+            .arg(&root)
+            .arg("--format")
+            .arg("json"),
+    );
+    assert_eq!(code_off, 0, "{stdout_off}{stderr_off}");
+    let off = serde_json::from_str::<serde_json::Value>(&stdout_off).unwrap_or_default();
+    let off_rows = off["result"]["functions"].as_array().cloned().unwrap_or_default();
+    assert!(off_rows.iter().all(|row| row["identity"]["function"] != "gated"));
+
+    let (code_on, stdout_on, stderr_on) = output_of(
+        bin()
+            .arg("--lcov")
+            .arg(&lcov)
+            .arg("--path")
+            .arg(&root)
+            .arg("--features")
+            .arg("extra")
+            .arg("--missing")
+            .arg("pessimistic")
+            .arg("--format")
+            .arg("json"),
+    );
+    let _ = fs::remove_dir_all(&root);
+    assert_eq!(code_on, 0, "{stdout_on}{stderr_on}");
+    let on = serde_json::from_str::<serde_json::Value>(&stdout_on).unwrap_or_default();
+    let on_rows = on["result"]["functions"].as_array().cloned().unwrap_or_default();
+    let gated = on_rows.iter().find(|row| row["identity"]["function"] == "gated");
+    assert!(gated.is_some(), "{on}");
+    if let Some(row) = gated {
+        assert_eq!(row["coverage_percent"], 0.0);
+        assert_eq!(row["coverage_join"], "missing");
+    }
+}

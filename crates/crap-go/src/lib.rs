@@ -7,7 +7,8 @@ pub mod coverprofile;
 pub(crate) mod module_resolve;
 pub(crate) mod walk;
 
-pub use module_resolve::enclosing_module;
+#[doc(inline)]
+pub use module_resolve::{enclosing_module, modules_for_remap};
 
 use crap_core::{Error, Language, LocatedFn, Metric, Result, ScanRequest, Target};
 use module_resolve::Package;
@@ -52,6 +53,7 @@ impl GoLanguage {
                 root: pkg.root.clone(),
                 // Go import path (language-agnostic package key).
                 crate_name: Some(pkg.name.clone()),
+                join_key: None,
                 skip: module_resolve::nested_module_roots(&pkg.root, packages),
                 // Go build tags treated as enabled.
                 enabled_features: self.tags.clone(),
@@ -80,6 +82,7 @@ impl GoLanguage {
         Target {
             root: request.path.clone(),
             crate_name: None,
+            join_key: None,
             skip: Vec::new(),
             // Go build tags treated as enabled.
             enabled_features: self.tags.clone(),
@@ -177,23 +180,58 @@ fn take_file(
     functions: &mut Vec<LocatedFn>,
     details: &mut Vec<String>,
 ) -> FileOutcome {
-    let source = match std::fs::read_to_string(file) {
-        Ok(text) => text,
-        Err(err) => {
-            details.push(format!("skipping {}: {err}", file.display()));
-            return FileOutcome::Failed;
-        }
+    let Some(source) = read_source(file, details) else {
+        return FileOutcome::Failed;
     };
     if build_tag::skip_file(&source, tags) {
         return FileOutcome::Skipped;
     }
-    for function in complexity::analyze_source(file, &source, metric) {
+    analyze_into(file, &source, crate_name, metric, functions, details)
+}
+
+fn read_source(file: &Path, details: &mut Vec<String>) -> Option<String> {
+    match std::fs::read_to_string(file) {
+        Ok(text) => Some(text),
+        Err(err) => {
+            details.push(format!("skipping {}: {err}", file.display()));
+            None
+        }
+    }
+}
+
+fn analyze_into(
+    file: &Path,
+    source: &str,
+    crate_name: Option<&str>,
+    metric: Metric,
+    functions: &mut Vec<LocatedFn>,
+    details: &mut Vec<String>,
+) -> FileOutcome {
+    match complexity::analyze_source(file, source, metric) {
+        Ok(found) => {
+            push_located(found, crate_name, None, functions);
+            FileOutcome::Ok
+        }
+        Err(err) => {
+            details.push(format!("skipping {}: {err}", file.display()));
+            FileOutcome::Failed
+        }
+    }
+}
+
+fn push_located(
+    found: Vec<crap_core::FunctionComplexity>,
+    crate_name: Option<&str>,
+    join_key: Option<&str>,
+    functions: &mut Vec<LocatedFn>,
+) {
+    for function in found {
         functions.push(LocatedFn {
             function,
             crate_name: crate_name.map(str::to_owned),
+            join_key: join_key.map(str::to_owned),
         });
     }
-    FileOutcome::Ok
 }
 
 #[cfg(test)]

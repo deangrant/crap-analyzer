@@ -4,7 +4,7 @@ mod json;
 
 use crate::error::Result;
 use crate::language::{ReportFormat, ScanRequest};
-use crate::merge::CrapEntry;
+use crate::merge::{CrapEntry, ambiguous_join_warning};
 use crate::run::RunResult;
 use crate::score::{classify_risk, exceeds_threshold};
 use std::env;
@@ -17,7 +17,7 @@ pub use json::render_json;
 ///
 /// # Errors
 ///
-/// Returns [`crate::Error::Collect`] if JSON serialization fails.
+/// Returns [`crate::Error::Report`] if JSON serialization fails.
 pub fn render(
     request: &ScanRequest,
     result: &RunResult,
@@ -58,6 +58,10 @@ pub fn render_table(entries: &[CrapEntry], threshold: f64, color: bool) -> Strin
         lines.push(widths.row(entry, threshold, color));
     }
     lines.push(footer(entries, threshold));
+    let ambiguous = ambiguous_join_warning(entries);
+    if !ambiguous.is_empty() {
+        lines.push(ambiguous);
+    }
     if entries.iter().any(|e| exceeds_threshold(e.crap, threshold)) {
         lines.push(action_line(entries, threshold));
     }
@@ -233,6 +237,7 @@ mod tests {
             end_line: 1,
             complexity: cc,
             coverage: cov,
+            coverage_join: crate::merge::CoverageJoin::Measured,
             crap,
             crate_name: Some("demo".into()),
         }
@@ -245,6 +250,14 @@ mod tests {
                 "missing {needle:?} in {haystack}"
             );
         }
+    }
+
+    #[test]
+    fn table_reports_ambiguous_path_joins() {
+        let mut entries = [entry("tied", 2.0, 1, 0.0)];
+        entries[0].coverage_join = crate::merge::CoverageJoin::Ambiguous;
+        let table = render_table(&entries, 30.0, false);
+        assert!(table.contains("ambiguous coverage paths"));
     }
 
     #[test]

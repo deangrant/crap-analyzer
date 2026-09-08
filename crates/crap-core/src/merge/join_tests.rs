@@ -24,6 +24,28 @@ fn func_in(
             complexity: 1,
         },
         crate_name: crate_name.map(str::to_owned),
+        join_key: None,
+    }
+}
+
+fn func_join(
+    file: &str,
+    name: &str,
+    start: usize,
+    end: usize,
+    crate_name: Option<&str>,
+    join_key: Option<&str>,
+) -> LocatedFn {
+    LocatedFn {
+        function: FunctionComplexity {
+            file: PathBuf::from(file),
+            name: name.into(),
+            start_line: start,
+            end_line: end,
+            complexity: 1,
+        },
+        crate_name: crate_name.map(str::to_owned),
+        join_key: join_key.map(str::to_owned),
     }
 }
 
@@ -107,6 +129,7 @@ fn missing_pessimistic_is_zero() {
     let entries = join(&functions, &HashMap::new(), MissingPolicy::Pessimistic);
     assert_f64_bits_eq(entries[0].coverage, 0.0);
     assert_f64_bits_eq(entries[0].crap, 2.0);
+    assert_eq!(entries[0].coverage_join, CoverageJoin::Missing);
     assert_eq!(entries[0].start_line, 1);
     assert_eq!(entries[0].end_line, 1);
 }
@@ -133,6 +156,40 @@ fn empty_span_is_pessimistic_zero() {
     let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
     assert_f64_bits_eq(entries[0].coverage, 0.0);
     assert_f64_bits_eq(entries[0].crap, 2.0);
+    assert_eq!(entries[0].coverage_join, CoverageJoin::Missing);
+}
+
+#[test]
+fn empty_span_missing_path_and_ambiguous_contrast() {
+    // Empty span and missing SF both label Missing today; Ambiguous is distinct.
+    let empty = join(
+        &[func("src/foo.rs", "empty", 10, 12)],
+        &cov("src/foo.rs", &[(1, 1), (20, 1)]),
+        MissingPolicy::Pessimistic,
+    );
+    let missing = join(
+        &[func("src/gone.rs", "gone", 1, 1)],
+        &HashMap::new(),
+        MissingPolicy::Pessimistic,
+    );
+    let mut tie = cov("/crate_a/src/lib.rs", &[(1, 1)]);
+    tie.insert(
+        PathBuf::from("/crate_b/src/lib.rs"),
+        FileCoverage {
+            lines: std::iter::once((1, 0)).collect(),
+        },
+    );
+    let ambiguous = join(
+        &[func("src/lib.rs", "tie", 1, 1)],
+        &tie,
+        MissingPolicy::Pessimistic,
+    );
+    assert_eq!(empty[0].coverage_join, CoverageJoin::Missing);
+    assert_f64_bits_eq(empty[0].coverage, 0.0);
+    assert_eq!(missing[0].coverage_join, CoverageJoin::Missing);
+    assert_f64_bits_eq(missing[0].coverage, 0.0);
+    assert_eq!(ambiguous[0].coverage_join, CoverageJoin::Ambiguous);
+    assert_f64_bits_eq(ambiguous[0].coverage, 0.0);
 }
 
 #[test]
@@ -177,6 +234,9 @@ fn equal_length_crate_suffixes_are_ambiguous() {
     );
     let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
     assert_f64_bits_eq(entries[0].coverage, 0.0);
+    assert_eq!(entries[0].coverage_join, CoverageJoin::Ambiguous);
+    assert_eq!(ambiguous_join_count(&entries), 1);
+    assert!(ambiguous_join_warning(&entries).contains("ambiguous coverage paths"));
 }
 
 #[test]
@@ -205,6 +265,7 @@ fn crate_name_breaks_equal_length_suffix_tie() {
     );
     let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
     assert_f64_bits_eq(entries[0].coverage, 100.0);
+    assert_eq!(entries[0].coverage_join, CoverageJoin::Measured);
 }
 
 #[test]
@@ -323,6 +384,7 @@ fn equal_length_crate_suffixes_optimistic() {
     let entries = join(&functions, &coverage, MissingPolicy::Optimistic);
     assert_eq!(entries.len(), 1);
     assert_f64_bits_eq(entries[0].coverage, 100.0);
+    assert_eq!(entries[0].coverage_join, CoverageJoin::Ambiguous);
 }
 
 #[test]
@@ -349,11 +411,46 @@ fn parses_and_displays_missing_policy() {
 }
 
 #[test]
+fn coverage_join_display_matches_as_str() {
+    for join in [
+        CoverageJoin::Measured,
+        CoverageJoin::Missing,
+        CoverageJoin::Ambiguous,
+    ] {
+        assert_eq!(join.to_string(), join.as_str());
+    }
+}
+
+#[test]
 fn leading_parent_dir_stays_on_the_stack() {
     let functions = [func("/src/lib.rs", "f", 1, 1)];
     let coverage = cov("../src/lib.rs", &[(1, 1)]);
     let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
     assert_f64_bits_eq(entries[0].coverage, 100.0);
+}
+
+#[test]
+fn ts_join_key_breaks_scoped_npm_basename_tie() {
+    // Scoped npm names are not path segments; join_key is the package dir.
+    let functions = [func_join(
+        "src/util.ts",
+        "f",
+        1,
+        1,
+        Some("@scope/a"),
+        Some("packages/a"),
+    )];
+    let mut coverage = cov("/repo/packages/a/src/util.ts", &[(1, 1)]);
+    coverage.insert(
+        PathBuf::from("/repo/packages/b/src/util.ts"),
+        FileCoverage {
+            lines: std::iter::once((1, 0)).collect(),
+        },
+    );
+    let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
+    assert_eq!(entries[0].coverage_join, CoverageJoin::Measured);
+    assert_f64_bits_eq(entries[0].coverage, 100.0);
+    assert_eq!(entries[0].crate_name.as_deref(), Some("@scope/a"));
 }
 
 #[test]
@@ -375,4 +472,14 @@ fn join_hundreds_of_nested_functions_finishes_under_a_second() {
     let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
     assert!(started.elapsed().as_secs() < 1, "{:?}", started.elapsed());
     assert_eq!(entries.len(), 300);
+}
+
+#[test]
+fn merge_ranges_collapses_overlap_and_adjacent() {
+    assert_eq!(merge_ranges(vec![]), vec![]);
+    assert_eq!(merge_ranges(vec![(3, 5)]), vec![(3, 5)]);
+    assert_eq!(
+        merge_ranges(vec![(10, 12), (1, 4), (3, 6), (8, 9)]),
+        vec![(1, 6), (8, 12)]
+    );
 }

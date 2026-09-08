@@ -74,6 +74,7 @@ mod tests {
             Ok(vec![Target {
                 root: request.path.clone(),
                 crate_name: Some("demo".into()),
+                join_key: None,
                 skip: Vec::new(),
                 enabled_features: Vec::new(),
             }])
@@ -119,6 +120,7 @@ mod tests {
                 complexity,
             },
             crate_name: Some("demo".into()),
+            join_key: None,
         }
     }
 
@@ -176,6 +178,7 @@ mod tests {
                 end_line: 1,
                 complexity: 1,
                 coverage: 100.0,
+                coverage_join: crate::merge::CoverageJoin::Measured,
                 crap: 1.0,
                 crate_name: None,
             }],
@@ -199,6 +202,7 @@ mod tests {
                 end_line: 1,
                 complexity: 1,
                 coverage: 100.0,
+                coverage_join: crate::merge::CoverageJoin::Measured,
                 crap: 1.0,
                 crate_name: Some("demo".into()),
             }],
@@ -222,6 +226,7 @@ mod tests {
                 end_line: 4,
                 complexity: 1,
                 coverage: 100.0,
+                coverage_join: crate::merge::CoverageJoin::Measured,
                 crap: 1.0,
                 crate_name: None,
             }],

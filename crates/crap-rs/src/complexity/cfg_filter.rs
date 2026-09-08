@@ -1,4 +1,4 @@
-//! Skip `#[test]` and inactive `#[cfg]` items when collecting functions.
+//! Skip harness attrs (`#[test]` / `#[bench]` / `#[…::test]`) and inactive `#[cfg]`.
 
 use std::collections::HashSet;
 
@@ -69,12 +69,19 @@ impl CfgUniverse {
     }
 }
 
-fn has_attr(attrs: &[syn::Attribute], name: &str) -> bool {
-    attrs.iter().any(|attr| attr.path().is_ident(name))
+fn is_harness_attr(attr: &syn::Attribute) -> bool {
+    attr.path()
+        .segments
+        .last()
+        .is_some_and(|seg| seg.ident == "test" || seg.ident == "bench")
+}
+
+fn has_harness_attr(attrs: &[syn::Attribute]) -> bool {
+    attrs.iter().any(is_harness_attr)
 }
 
 pub(super) fn skip_item(attrs: &[syn::Attribute], cfg: &CfgUniverse) -> bool {
-    has_attr(attrs, "test") || !cfg.all_cfgs_active(attrs)
+    has_harness_attr(attrs) || !cfg.all_cfgs_active(attrs)
 }
 
 pub(super) fn skip_cfg(attrs: &[syn::Attribute], cfg: &CfgUniverse) -> bool {
@@ -98,35 +105,8 @@ fn lit_str(expr: &syn::Expr) -> Option<String> {
     None
 }
 
-const HOST_OS: &str = if cfg!(target_os = "linux") {
-    "linux"
-} else if cfg!(target_os = "macos") {
-    "macos"
-} else if cfg!(target_os = "windows") {
-    "windows"
-} else if cfg!(target_os = "ios") {
-    "ios"
-} else if cfg!(target_os = "android") {
-    "android"
-} else if cfg!(target_os = "freebsd") {
-    "freebsd"
-} else {
-    ""
-};
-
-const HOST_ARCH: &str = if cfg!(target_arch = "x86_64") {
-    "x86_64"
-} else if cfg!(target_arch = "aarch64") {
-    "aarch64"
-} else if cfg!(target_arch = "x86") {
-    "x86"
-} else if cfg!(target_arch = "wasm32") {
-    "wasm32"
-} else if cfg!(target_arch = "riscv64") {
-    "riscv64"
-} else {
-    ""
-};
+const HOST_OS: &str = std::env::consts::OS;
+const HOST_ARCH: &str = std::env::consts::ARCH;
 
 const HOST_FAMILY: &str = if cfg!(target_family = "unix") {
     "unix"
@@ -192,6 +172,29 @@ mod tests {
         let fns = cyclo("#[test] fn t() { if true {} } fn keep() {}");
         assert_eq!(fns.len(), 1);
         assert_eq!(fns[0].name, "keep");
+    }
+
+    #[test]
+    fn bench_functions_are_skipped() {
+        let fns = cyclo("#[bench] fn b() { if true {} } fn keep() {}");
+        assert_eq!(fns.len(), 1);
+        assert_eq!(fns[0].name, "keep");
+    }
+
+    #[test]
+    fn path_qualified_test_attrs_are_skipped() {
+        let fns = cyclo("#[tokio::test] fn t() { if true {} } fn keep() {}");
+        assert_eq!(fns.len(), 1);
+        assert_eq!(fns[0].name, "keep");
+    }
+
+    #[test]
+    fn ungated_tests_module_helpers_are_scored() {
+        let fns = cyclo("mod tests { fn helper() { if true {} } } fn keep() {}");
+        assert_eq!(fns.len(), 2);
+        let names: Vec<_> = fns.iter().map(|f| f.name.as_str()).collect();
+        assert!(names.contains(&"helper"));
+        assert!(names.contains(&"keep"));
     }
 
     #[test]

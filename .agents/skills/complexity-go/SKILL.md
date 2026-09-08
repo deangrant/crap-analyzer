@@ -34,12 +34,15 @@ empty spans apply after coverprofile is in `FileCoverage`).
 - Data line shape:
   `file.go:startLine.startCol,endLine.endCol stmts hits`.
 - Expand each block across `startLine..=endLine` into `FileCoverage.lines`
-  (per-line map expansion; fine at normal coverprofile scale).
-- `set`: hit → store `max(1)`. `count` / `atomic`: saturating-add hits.
+  (columns are discarded). When multiple blocks touch the same line, the
+  line is **uncovered** if any intersecting block has 0 hits (pessimistic
+  shared-line merge); otherwise `set` uses max(1) and `count`/`atomic`
+  saturating-add positive hits.
 - Normalize `\` to `/` in paths.
-- After parse, remap import-path keys (`module/pkg/file.go`) to filesystem
-  paths under the enclosing `go.mod` via `remap_import_paths` before
-  `run_with_coverage`. Non-module keys stay unchanged.
+- After parse, remap import-path keys for **every** `go.mod` under the
+  analysis root (`modules_for_remap` + `remap_import_paths_all`, longest
+  module path first). If none are under the root, fall back to the
+  enclosing module. Non-module keys stay unchanged.
 
 Empty spans and missing path joins still use `--missing` in core.
 
@@ -49,21 +52,29 @@ Empty spans and missing path joins still use `--missing` in core.
 
 - Evaluate leading `//go:build` (preferred) or legacy `// +build` lines.
 - Skip the whole file when the constraint is false for `--tags` plus host
-  tags (`unix`, `linux`, `windows`, `darwin`).
+  tags (`unix`, common GOOS names such as `linux` / `windows` / `darwin`
+  / BSD family / `android` / `ios` / …). Unlisted OS names still need
+  `--tags`.
 - Unknown custom tags are false unless listed in `--tags`.
 - No constraint → do not skip.
 
 ## Module walk
 
-- Resolve packages from `go.mod` (`module_resolve`).
-- Walk `.go` files; skip `vendor`, `.git`, `testdata`, and nested module
-  roots.
+- Resolve packages from `go.mod` (`module_resolve`), including nested
+  modules (each nested `go.mod` is a separate module root).
+- Walk `.go` files; skip `vendor`, `.git`, `testdata`, and foreign nested
+  module roots on a given target's `skip` list.
 - `--workspace` / `-p` select packages; a module-root `--path` analyzes
-  every package under that module.
+  every package under that module **and** nested modules.
 
 ## Complexity attribution
 
 Custom Rust scanner over source text (not `go/ast`, not tree-sitter).
+
+**Structural integrity** ([`complexity/structure.rs`](../../../crates/crap-go/src/complexity/structure.rs)):
+before attribution, fail the file on unclosed strings/comments or
+unbalanced `{}` / `()` / `[]` (after skipping noise). That is a collect
+error (exit 2), matching the CLI contract.
 
 **Visitor** ([`complexity/visitor.rs`](../../../crates/crap-go/src/complexity/visitor.rs)):
 
@@ -80,6 +91,10 @@ Custom Rust scanner over source text (not `go/ast`, not tree-sitter).
 `else`; a run of the same `&&` or `||` counts once. No per-`case`
 increment.
 
-Limits: approximate by design — text scanner, not `go/ast`. Generics edge
-cases and unusual syntax may under-count. Prefer fixing the Rust visitor
-over adding a Go runtime dependency.
+Limits: approximate by design — accepted product Limit; text scanner, not
+`go/ast`. Scores can diverge from `go/ast`-based tools; treat them as a
+change-risk signal for reviewers, not an authoritative complexity audit.
+Structural failures fail the run; structural balance is not language
+validity — nonsense tokens with balanced braces still collect. Valid
+generics edge cases and unusual syntax may still under-count. Prefer
+fixing the Rust visitor over adding a Go runtime dependency.

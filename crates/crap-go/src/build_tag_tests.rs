@@ -1,4 +1,4 @@
-use super::skip_file;
+use super::{known_os_tag, skip_file};
 
 #[test]
 fn no_constraint_is_kept() {
@@ -86,11 +86,39 @@ fn plus_build_negated_tag() {
 }
 
 #[test]
-fn host_os_tags_are_evaluated() {
+fn foreign_host_os_tags_skip_file() {
     assert!(skip_file("//go:build darwin\n\npackage main\n", &[]));
     assert!(skip_file("//go:build windows\n\npackage main\n", &[]));
-    if cfg!(target_os = "linux") {
-        assert!(!skip_file("//go:build linux\n\npackage main\n", &[]));
-        assert!(!skip_file("//go:build unix\n\npackage main\n", &[]));
-    }
+    #[cfg(not(target_os = "freebsd"))]
+    assert!(skip_file("//go:build freebsd\n\npackage main\n", &[]));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_host_keeps_linux_and_unix_tags() {
+    assert!(!skip_file("//go:build linux\n\npackage main\n", &[]));
+    assert!(!skip_file("//go:build unix\n\npackage main\n", &[]));
+}
+
+#[cfg(target_os = "freebsd")]
+#[test]
+fn freebsd_host_keeps_freebsd_and_unix_tags() {
+    assert!(!skip_file("//go:build freebsd\n\npackage main\n", &[]));
+    assert!(!skip_file("//go:build unix\n\npackage main\n", &[]));
+}
+
+#[test]
+fn known_os_tag_recognizes_primary_goos() {
+    assert_eq!(known_os_tag("linux"), Some(cfg!(target_os = "linux")));
+    assert_eq!(known_os_tag("freebsd"), Some(cfg!(target_os = "freebsd")));
+    assert_eq!(known_os_tag("darwin"), Some(cfg!(target_os = "macos")));
+    assert_eq!(known_os_tag("custom"), None);
+}
+
+#[test]
+fn known_os_tag_recognizes_secondary_and_false_goos() {
+    assert_eq!(known_os_tag("android"), Some(cfg!(target_os = "android")));
+    assert_eq!(known_os_tag("aix"), Some(cfg!(target_os = "aix")));
+    assert_eq!(known_os_tag("js"), Some(false));
+    assert_eq!(known_os_tag("plan9"), Some(false));
 }

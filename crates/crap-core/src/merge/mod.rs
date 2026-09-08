@@ -4,7 +4,7 @@ mod path_index;
 
 use crate::coverage::FileCoverage;
 use crate::score::crap;
-use path_index::PathIndex;
+use path_index::{Lookup, PathIndex};
 use std::collections::HashMap;
 use std::fmt;
 use std::hash::BuildHasher;
@@ -45,6 +45,35 @@ impl fmt::Display for MissingPolicy {
     }
 }
 
+/// How coverage percent was obtained for a joined function.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CoverageJoin {
+    /// Line hits came from a unique LCOV path match.
+    Measured,
+    /// No path match or an empty instrumented span; `--missing` applied.
+    Missing,
+    /// Unresolved equal-rank path tie; `--missing` applied.
+    Ambiguous,
+}
+
+impl CoverageJoin {
+    /// Stable JSON / CLI token for this join outcome.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Measured => "measured",
+            Self::Missing => "missing",
+            Self::Ambiguous => "ambiguous",
+        }
+    }
+}
+
+impl fmt::Display for CoverageJoin {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// One scored function after the coverage join.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CrapEntry {
@@ -60,6 +89,8 @@ pub struct CrapEntry {
     pub complexity: usize,
     /// Coverage percent in `[0, 100]`.
     pub coverage: f64,
+    /// How [`Self::coverage`] was obtained.
+    pub coverage_join: CoverageJoin,
     /// Combined change-risk score.
     pub crap: f64,
     /// Package name when a workspace member was selected.
@@ -86,8 +117,10 @@ pub struct FunctionComplexity {
 pub struct LocatedFn {
     /// Complexity row.
     pub function: FunctionComplexity,
-    /// Package name, if known.
+    /// Package name, if known (report / JSON display).
     pub crate_name: Option<String>,
+    /// Path-index join key when it differs from [`Self::crate_name`].
+    pub join_key: Option<String>,
 }
 
 /// Builds scored entries from `functions` and `coverage`.
@@ -99,9 +132,13 @@ pub fn join<S: BuildHasher>(
 ) -> Vec<CrapEntry> {
     let index = PathIndex::from_coverage(coverage);
     let by_file = functions_by_file(functions);
+    let excludes = precomputed_nested_excludes(&by_file);
     let mut entries = Vec::new();
     for item in functions {
-        let Some(coverage_pct) = coverage_for(&index, item, &by_file, missing) else {
+        let exclude =
+            excludes.get(&std::ptr::from_ref(&item.function)).map_or(&[][..], Vec::as_slice);
+        let Some((coverage_pct, coverage_join)) = coverage_for(&index, item, exclude, missing)
+        else {
             continue;
         };
         let cc = crate::score::to_f64(item.function.complexity);
@@ -112,6 +149,7 @@ pub fn join<S: BuildHasher>(
             end_line: item.function.end_line,
             complexity: item.function.complexity,
             coverage: coverage_pct,
+            coverage_join,
             crap: crap(cc, coverage_pct),
             crate_name: item.crate_name.clone(),
         });
@@ -125,24 +163,71 @@ pub fn join<S: BuildHasher>(
     entries
 }
 
+/// Count of functions scored via `--missing` because of an unresolved path tie.
+#[must_use]
+pub fn ambiguous_join_count(entries: &[CrapEntry]) -> usize {
+    entries
+        .iter()
+        .filter(|entry| entry.coverage_join == CoverageJoin::Ambiguous)
+        .count()
+}
+
+/// Stderr / footer line when any joins were ambiguous; otherwise empty.
+#[must_use]
+pub fn ambiguous_join_warning(entries: &[CrapEntry]) -> String {
+    let count = ambiguous_join_count(entries);
+    if count == 0 {
+        String::new()
+    } else {
+        format!("{count} function(s) used --missing due to ambiguous coverage paths.")
+    }
+}
+
 fn coverage_for(
     index: &PathIndex,
     item: &LocatedFn,
-    by_file: &HashMap<Vec<String>, Vec<&FunctionComplexity>>,
+    exclude: &[(usize, usize)],
     missing: MissingPolicy,
-) -> Option<f64> {
-    let empty = [];
-    let key = path_index::components(&item.function.file);
-    let peers = by_file.get(&key).map_or(&empty[..], Vec::as_slice);
-    let exclude = nested_excludes(peers, &item.function);
-    let found = index.lookup(&item.function.file, item.crate_name.as_deref()).and_then(|file| {
-        file.coverage_in_span_excluding(item.function.start_line, item.function.end_line, &exclude)
-    });
-    found.or(match missing {
-        MissingPolicy::Pessimistic => Some(0.0),
-        MissingPolicy::Optimistic => Some(100.0),
+) -> Option<(f64, CoverageJoin)> {
+    match index.lookup(
+        &item.function.file,
+        item.join_key.as_deref().or(item.crate_name.as_deref()),
+    ) {
+        Lookup::Found(file) => file
+            .coverage_in_span_excluding(item.function.start_line, item.function.end_line, exclude)
+            .map_or_else(
+                || policy_coverage(missing, CoverageJoin::Missing),
+                |pct| Some((pct, CoverageJoin::Measured)),
+            ),
+        Lookup::Ambiguous => policy_coverage(missing, CoverageJoin::Ambiguous),
+        Lookup::Missing => policy_coverage(missing, CoverageJoin::Missing),
+    }
+}
+
+const fn policy_coverage(
+    missing: MissingPolicy,
+    join: CoverageJoin,
+) -> Option<(f64, CoverageJoin)> {
+    match missing {
+        MissingPolicy::Pessimistic => Some((0.0, join)),
+        MissingPolicy::Optimistic => Some((100.0, join)),
         MissingPolicy::Skip => None,
-    })
+    }
+}
+
+fn precomputed_nested_excludes(
+    by_file: &HashMap<Vec<String>, Vec<&FunctionComplexity>>,
+) -> HashMap<*const FunctionComplexity, Vec<(usize, usize)>> {
+    let mut out = HashMap::new();
+    for peers in by_file.values() {
+        for current in peers {
+            out.insert(
+                std::ptr::from_ref(*current),
+                merge_ranges(nested_excludes(peers, current)),
+            );
+        }
+    }
+    out
 }
 
 fn nested_excludes(
@@ -153,6 +238,26 @@ fn nested_excludes(
         .filter(|other| is_nested(current, other))
         .map(|other| (other.start_line, other.end_line))
         .collect()
+}
+
+fn merge_ranges(mut ranges: Vec<(usize, usize)>) -> Vec<(usize, usize)> {
+    if ranges.len() <= 1 {
+        return ranges;
+    }
+    ranges.sort_unstable();
+    let mut merged = Vec::with_capacity(ranges.len());
+    let (mut start, mut end) = ranges[0];
+    for &(next_start, next_end) in &ranges[1..] {
+        if next_start <= end.saturating_add(1) {
+            end = end.max(next_end);
+        } else {
+            merged.push((start, end));
+            start = next_start;
+            end = next_end;
+        }
+    }
+    merged.push((start, end));
+    merged
 }
 
 const fn is_nested(outer: &FunctionComplexity, inner: &FunctionComplexity) -> bool {

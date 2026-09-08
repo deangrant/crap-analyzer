@@ -14,6 +14,7 @@ coverage/
 *.profdata
 lcov.info
 !crates/crap-rs/tests/fixtures/sample/lcov.info
+!crates/crap-ts/tests/fixtures/**/lcov.info
 cobertura.xml
 tarpaulin-report.html
 

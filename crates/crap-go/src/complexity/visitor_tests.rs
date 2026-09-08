@@ -3,14 +3,17 @@ use super::{
     try_parse_func,
 };
 use crate::complexity::lex::skip_string;
-use crap_core::Metric;
+use crap_core::{FunctionComplexity, Metric};
 use std::path::Path;
 
+fn parse(src: &str, metric: Metric) -> Vec<FunctionComplexity> {
+    let parsed = analyze_source(Path::new("t.go"), src, metric);
+    assert!(parsed.is_ok(), "{parsed:?}");
+    parsed.unwrap_or_default()
+}
+
 fn names(src: &str) -> Vec<String> {
-    analyze_source(Path::new("t.go"), src, Metric::Cyclomatic)
-        .into_iter()
-        .map(|f| f.name)
-        .collect()
+    parse(src, Metric::Cyclomatic).into_iter().map(|f| f.name).collect()
 }
 
 #[test]
@@ -20,7 +23,7 @@ package p
 func trivial() { x := 1 }
 func branched(x int) { if x > 0 { x } }
 ";
-    let fns = analyze_source(Path::new("t.go"), src, Metric::Cyclomatic);
+    let fns = parse(src, Metric::Cyclomatic);
     assert_eq!(fns.len(), 2);
     assert_eq!(fns[0].complexity, 1);
     assert_eq!(fns[1].complexity, 2);
@@ -113,7 +116,8 @@ fn odd_result_type_chars_after_params() {
 #[test]
 fn typeish_with_unbalanced_paren() {
     let src = "package p\nfunc F() chan(int {}\n";
-    let _ = names(src);
+    let err = analyze_source(Path::new("t.go"), src, Metric::Cyclomatic);
+    assert!(err.is_err(), "{err:?}");
 }
 
 #[test]
@@ -131,9 +135,17 @@ fn receiver_without_type_name() {
 #[test]
 fn cognitive_metric_via_analyze_source() {
     let src = "package p\nfunc f(x int) { if x > 0 { if x > 1 { x } } }\n";
-    let fns = analyze_source(Path::new("t.go"), src, Metric::Cognitive);
+    let fns = parse(src, Metric::Cognitive);
     assert_eq!(fns.len(), 1);
     assert_eq!(fns[0].complexity, 3);
+}
+
+#[test]
+fn analyze_source_rejects_unclosed_comment() {
+    let src = "package p\n/* open\nfunc F() {}\n";
+    let err = analyze_source(Path::new("t.go"), src, Metric::Cyclomatic);
+    assert!(err.is_err(), "{err:?}");
+    assert!(format!("{err:?}").contains("unclosed comment"), "{err:?}");
 }
 
 #[test]
