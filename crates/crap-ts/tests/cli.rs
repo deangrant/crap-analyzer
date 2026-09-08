@@ -278,6 +278,153 @@ fn structurally_invalid_source_exits_two() {
     assert!(!stdout.contains("\"schema_version\""), "{stdout}");
 }
 
+#[test]
+fn scoped_package_lcov_joins_via_join_key() {
+    let root = temp_root("scoped");
+    require_ok(fs::create_dir_all(&root));
+    require_ok(fs::write(
+        root.join("package.json"),
+        r#"{"name":"root","workspaces":["packages/@scope/*"]}"#,
+    ));
+    let pkg = root.join("packages/@scope/pkg");
+    require_ok(fs::create_dir_all(pkg.join("src")));
+    require_ok(fs::write(
+        pkg.join("package.json"),
+        r#"{"name":"@scope/pkg"}"#,
+    ));
+    require_ok(fs::write(
+        pkg.join("src/index.ts"),
+        "export function Scoped() { return 1; }\n",
+    ));
+    let lcov = root.join("lcov.info");
+    require_ok(fs::write(
+        &lcov,
+        "TN:\nSF:packages/@scope/pkg/src/index.ts\nDA:1,1\nDA:2,1\nend_of_record\n",
+    ));
+    let (code, stdout, stderr) = output_of(
+        bin()
+            .arg("--coverage")
+            .arg(&lcov)
+            .arg("--path")
+            .arg(&root)
+            .arg("--workspace")
+            .arg("--format")
+            .arg("json"),
+    );
+    let _ = fs::remove_dir_all(&root);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    let value = parse_json(&stdout);
+    let row = fn_row(&value, "Scoped");
+    assert_eq!(row["coverage_percent"], 100.0, "{row}");
+    assert_eq!(row["coverage_join"], "measured");
+    assert_eq!(row["identity"]["crate"], "@scope/pkg");
+}
+
+#[test]
+fn leftover_ambiguous_basename_gates_under_fail_above() {
+    let root = temp_root("ambig-tie");
+    require_ok(fs::create_dir_all(&root));
+    require_ok(fs::write(
+        root.join("package.json"),
+        r#"{"name":"root","workspaces":["packages/*"]}"#,
+    ));
+    let sources = write_ambig_packages(&root);
+    let lcov = root.join("lcov.info");
+    require_ok(fs::write(&lcov, ambig_lcov_body(&sources)));
+    let (code, stdout, stderr) = output_of(
+        bin()
+            .arg("--coverage")
+            .arg(&lcov)
+            .arg("--path")
+            .arg(&root)
+            .arg("--workspace")
+            .arg("--format")
+            .arg("json")
+            .arg("--fail-above")
+            .arg("--threshold")
+            .arg("1"),
+    );
+    let _ = fs::remove_dir_all(&root);
+    assert_eq!(code, 1, "{stdout}{stderr}");
+    assert_ambig_gate(&parse_json(&stdout));
+}
+
+fn write_ambig_packages(root: &std::path::Path) -> Vec<PathBuf> {
+    let mut sources = Vec::new();
+    for (pkg, body) in [
+        ("pkg_a", "export function Hot() { return 1; }\n"),
+        ("pkg_b", "export function Cold() { return 0; }\n"),
+    ] {
+        let dir = root.join("packages").join(pkg).join("src");
+        require_ok(fs::create_dir_all(&dir));
+        require_ok(fs::write(
+            root.join("packages").join(pkg).join("package.json"),
+            format!(r#"{{"name":"{pkg}"}}"#),
+        ));
+        let src = dir.join("index.ts");
+        require_ok(fs::write(&src, body));
+        sources.push(src);
+    }
+    sources
+}
+
+fn ambig_lcov_body(sources: &[PathBuf]) -> String {
+    use std::fmt::Write;
+    let mut body = String::new();
+    for src in sources {
+        let _ = write!(
+            body,
+            "TN:\nSF:/vendor/a{}\nDA:1,1\nDA:2,1\nend_of_record\n",
+            src.display()
+        );
+        let _ = write!(
+            body,
+            "TN:\nSF:/vendor/b{}\nDA:1,0\nDA:2,0\nend_of_record\n",
+            src.display()
+        );
+    }
+    body
+}
+
+fn assert_ambig_gate(value: &serde_json::Value) {
+    assert_eq!(value["result"]["gate_failed"], true);
+    let ambiguous = value["result"]["summary"]["ambiguous"].as_u64().unwrap_or(0);
+    assert!(ambiguous >= 1, "{value}");
+    for name in ["Hot", "Cold"] {
+        let row = fn_row(value, name);
+        assert_eq!(row["coverage_join"], "ambiguous", "{name}: {row}");
+        assert_eq!(row["coverage_percent"], 0.0, "{name}: {row}");
+    }
+}
+
+#[test]
+fn nonsense_balanced_source_still_collects() {
+    let root = temp_root("nonsense-ok");
+    require_ok(fs::create_dir_all(root.join("src")));
+    require_ok(fs::write(root.join("package.json"), r#"{"name":"tmp"}"#));
+    require_ok(fs::write(
+        root.join("src/main.ts"),
+        "export function Weird() { notValidTypeScript $$$ { nested } }\n",
+    ));
+    let lcov = root.join("lcov.info");
+    require_ok(fs::write(
+        &lcov,
+        "TN:\nSF:src/main.ts\nDA:1,1\nend_of_record\n",
+    ));
+    let (code, stdout, stderr) = output_of(
+        bin()
+            .arg("--coverage")
+            .arg(&lcov)
+            .arg("--path")
+            .arg(&root)
+            .arg("--format")
+            .arg("json"),
+    );
+    let _ = fs::remove_dir_all(&root);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert!(has_fn(&parse_json(&stdout), "Weird"));
+}
+
 fn require_ok<T: Default + std::fmt::Debug, E: std::fmt::Debug>(
     result: std::result::Result<T, E>,
 ) -> T {

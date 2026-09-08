@@ -155,6 +155,41 @@ fn empty_workspace_globs_error() {
 }
 
 #[test]
+fn empty_workspaces_array_is_single_package() {
+    let root = unique_temp("empty-ws-arr");
+    write_file(
+        &root.join("package.json"),
+        r#"{"name":"solo","workspaces":[]}"#,
+    );
+    let packages = require_ok(all_packages(&root));
+    assert_eq!(packages.len(), 1);
+    assert_eq!(packages[0].name, "solo");
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn jsonc_comments_are_resolve_error() {
+    let root = unique_temp("jsonc");
+    write_file(
+        &root.join("package.json"),
+        "{\n  // not supported\n  \"name\": \"demo\"\n}\n",
+    );
+    assert!(all_packages(&root).is_err());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn duplicate_name_field_is_resolve_error() {
+    let root = unique_temp("dup-name");
+    write_file(
+        &root.join("package.json"),
+        r#"{"name":"first","name":"second"}"#,
+    );
+    assert!(all_packages(&root).is_err());
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn exact_workspace_path_without_star() {
     let root = unique_temp("exact");
     write_file(

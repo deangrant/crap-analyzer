@@ -239,8 +239,10 @@ Decisions inside unexpanded or opaque macros may be missed.
   an accepted product Limit. Scores can diverge from `go/ast`-based
   tools; treat them as a change-risk signal, not an authoritative
   complexity audit. Unclosed literals/comments or unbalanced
-  `{}`/`()`/`[]` fail the run. Valid but unusual syntax (generics edge
-  cases) may still under-count. Coverprofile shared-line statements are
+  `{}`/`()`/`[]` fail the run. Structural balance is not language
+  validity: nonsense tokens with balanced braces still collect.
+  Valid but unusual syntax (generics edge cases) may still under-count.
+  Coverprofile shared-line statements are
   merged pessimistically (any zero-hit block on a line leaves that line
   uncovered). Nested `go.mod` modules are remapped and analyzed with the
   parent module. Host build tags cover common GOOS names (`linux`,
@@ -250,9 +252,12 @@ Decisions inside unexpanded or opaque macros may be missed.
   accepted product Limit. Scores can diverge from `tsc`-based tools
   (under- or over-count on unusual syntax); treat them as a change-risk
   signal, not an authoritative complexity audit. Unclosed
-  literals/comments or unbalanced `{}`/`()`/`[]` fail the run. Valid but
-  unusual syntax (generics, decorators, TSX) may under- or over-count.
-  `package.json` names use full JSON decoding (`serde_json`);
+  literals/comments or unbalanced `{}`/`()`/`[]` fail the run.
+  Structural balance is not language validity: nonsense tokens with
+  balanced braces still collect. Valid but unusual syntax (generics,
+  decorators, TSX) may under- or over-count. `package.json` is strict
+  JSON via `serde_json` (JSONC comments/trailing commas/duplicate fields
+  are unsupported);
   `pnpm-workspace.yaml` entries strip outer quotes only (no escape
   decode). Cover `.ts` / `.tsx` paths in LCOV (source-map remapping when
   needed). Path join uses the package directory relative to the
@@ -269,6 +274,10 @@ Lean pipeline (fmt, Clippy, deny, audit, test, rustdoc):
 Full local vs CI (also 100% lines and CRAP `--threshold strict`):
 [`.agents/skills/verify/SKILL.md`](.agents/skills/verify/SKILL.md), or
 `/verify`.
+
+JSON `result.passed` reflects threshold breaches even without
+`--fail-above`; use `--fail-above` when you need exit 1 /
+`result.gate_failed`.
 
 ## Agents and docs
 

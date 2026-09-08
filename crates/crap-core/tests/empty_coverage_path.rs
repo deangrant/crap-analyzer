@@ -8,6 +8,10 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 fn func(file: &str, crate_name: Option<&str>) -> LocatedFn {
+    func_join(file, crate_name, None)
+}
+
+fn func_join(file: &str, crate_name: Option<&str>, join_key: Option<&str>) -> LocatedFn {
     LocatedFn {
         function: FunctionComplexity {
             file: PathBuf::from(file),
@@ -17,7 +21,7 @@ fn func(file: &str, crate_name: Option<&str>) -> LocatedFn {
             complexity: 1,
         },
         crate_name: crate_name.map(str::to_owned),
-        join_key: None,
+        join_key: join_key.map(str::to_owned),
     }
 }
 
@@ -198,4 +202,47 @@ fn longer_suffix_outranks_basename_only_key() {
     );
     assert_eq!(entries[0].coverage_join, CoverageJoin::Measured);
     assert!((entries[0].coverage - 100.0).abs() < 1e-9);
+}
+
+#[test]
+fn join_key_still_ties_when_absent_from_lcov_paths() {
+    // Inverse of scoped join_key break: LCOV keys lack packages/pkg_a.
+    let coverage = HashMap::from([
+        (PathBuf::from("/vendor/a/src/index.ts"), file(1)),
+        (PathBuf::from("/vendor/b/src/index.ts"), file(0)),
+    ]);
+    let entries = join(
+        &[func_join(
+            "src/index.ts",
+            Some("@scope/a"),
+            Some("packages/pkg_a"),
+        )],
+        &coverage,
+        MissingPolicy::Pessimistic,
+    );
+    assert_eq!(entries[0].coverage_join, CoverageJoin::Ambiguous);
+    assert!((entries[0].coverage - 0.0).abs() < 1e-9);
+}
+
+#[test]
+fn many_same_basename_lcov_join_finishes_under_a_second() {
+    let mut coverage = HashMap::new();
+    for i in 0_u32..80 {
+        coverage.insert(
+            PathBuf::from(format!("/crate_{i}/src/lib.rs")),
+            file(u64::from(i % 2)),
+        );
+    }
+    let functions = [func("src/lib.rs", None)];
+    let started = std::time::Instant::now();
+    let entries = join(&functions, &coverage, MissingPolicy::Pessimistic);
+    assert!(started.elapsed().as_secs() < 1, "{:?}", started.elapsed());
+    assert_eq!(entries[0].coverage_join, CoverageJoin::Ambiguous);
+    let broken = join(
+        &[func("src/lib.rs", Some("crate_3"))],
+        &coverage,
+        MissingPolicy::Pessimistic,
+    );
+    assert_eq!(broken[0].coverage_join, CoverageJoin::Measured);
+    assert!((broken[0].coverage - 100.0).abs() < 1e-9);
 }

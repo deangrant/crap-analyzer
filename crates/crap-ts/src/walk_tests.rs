@@ -83,8 +83,8 @@ fn nested_package_json_without_skip_list_is_skipped() {
 }
 
 #[test]
-fn collect_ts_file_skips_non_ts_and_missing() {
-    let root = temp_dir("collect");
+fn collect_ts_file_skips_when_canonicalize_fails() {
+    let root = temp_dir("canon");
     let mut visited = HashSet::new();
     let mut out = Vec::new();
     let mut walk = Walk {

@@ -306,6 +306,37 @@ fn structurally_invalid_source_exits_two() {
     assert!(!stdout.contains("\"schema_version\""), "{stdout}");
 }
 
+#[test]
+fn nonsense_balanced_source_still_collects() {
+    let root = temp_root("nonsense-ok");
+    require_ok(fs::create_dir_all(&root));
+    require_ok(fs::write(
+        root.join("go.mod"),
+        "module example.com/tmp\n\ngo 1.22\n",
+    ));
+    require_ok(fs::write(
+        root.join("main.go"),
+        "package main\nfunc Weird() { notReal $$$ syntax }\n",
+    ));
+    let cover = root.join("cover.out");
+    require_ok(fs::write(
+        &cover,
+        "mode: set\nexample.com/tmp/main.go:2.13,2.33 1 1\n",
+    ));
+    let (code, stdout, stderr) = output_of(
+        bin()
+            .arg("--coverage")
+            .arg(&cover)
+            .arg("--path")
+            .arg(&root)
+            .arg("--format")
+            .arg("json"),
+    );
+    let _ = fs::remove_dir_all(&root);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert!(has_fn(&parse_json(&stdout), "Weird"));
+}
+
 fn require_ok<T: Default + std::fmt::Debug, E: std::fmt::Debug>(
     result: std::result::Result<T, E>,
 ) -> T {

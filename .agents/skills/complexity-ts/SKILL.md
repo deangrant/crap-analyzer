@@ -39,7 +39,8 @@ SOLID: [rust-style-guide](../rust-style-guide/SKILL.md) and
 ## Package walk
 
 - Resolve packages from `package.json` (`project_resolve`).
-  `package.json` is parsed with `serde_json` (full JSON string decoding).
+  `package.json` is parsed with `serde_json` (full JSON string decoding;
+  JSONC comments, trailing commas, and duplicate fields are unsupported).
 - Without `--workspace` / `-p`, a `package.json` root is that package only
   (workspaces are **not** expanded).
 - `--workspace` expands `workspaces` array or `workspaces.packages` globs
@@ -83,5 +84,6 @@ Limits: approximate by design — accepted product Limit; text scanner, not
 `tsc`. Scores can diverge from `tsc`-based tools; treat them as a
 change-risk signal for reviewers, not an authoritative complexity audit.
 Structural failures fail the run; valid generics, decorators, and unusual
-TSX may still under- or over-count. Prefer fixing the Rust visitor over
-adding a Node or AST-crate dependency.
+TSX may still under- or over-count. Structural balance is not language
+validity — nonsense tokens with balanced braces still collect. Prefer
+fixing the Rust visitor over adding a Node or AST-crate dependency.

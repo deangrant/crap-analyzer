@@ -160,6 +160,39 @@ fn empty_span_is_pessimistic_zero() {
 }
 
 #[test]
+fn empty_span_missing_path_and_ambiguous_contrast() {
+    // Empty span and missing SF both label Missing today; Ambiguous is distinct.
+    let empty = join(
+        &[func("src/foo.rs", "empty", 10, 12)],
+        &cov("src/foo.rs", &[(1, 1), (20, 1)]),
+        MissingPolicy::Pessimistic,
+    );
+    let missing = join(
+        &[func("src/gone.rs", "gone", 1, 1)],
+        &HashMap::new(),
+        MissingPolicy::Pessimistic,
+    );
+    let mut tie = cov("/crate_a/src/lib.rs", &[(1, 1)]);
+    tie.insert(
+        PathBuf::from("/crate_b/src/lib.rs"),
+        FileCoverage {
+            lines: std::iter::once((1, 0)).collect(),
+        },
+    );
+    let ambiguous = join(
+        &[func("src/lib.rs", "tie", 1, 1)],
+        &tie,
+        MissingPolicy::Pessimistic,
+    );
+    assert_eq!(empty[0].coverage_join, CoverageJoin::Missing);
+    assert_f64_bits_eq(empty[0].coverage, 0.0);
+    assert_eq!(missing[0].coverage_join, CoverageJoin::Missing);
+    assert_f64_bits_eq(missing[0].coverage, 0.0);
+    assert_eq!(ambiguous[0].coverage_join, CoverageJoin::Ambiguous);
+    assert_f64_bits_eq(ambiguous[0].coverage, 0.0);
+}
+
+#[test]
 fn empty_span_skip_drops_the_row() {
     let functions = [func("src/foo.rs", "f", 10, 12)];
     let coverage = cov("src/foo.rs", &[(1, 1), (20, 1)]);

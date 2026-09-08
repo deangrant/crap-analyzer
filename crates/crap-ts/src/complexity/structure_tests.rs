@@ -53,3 +53,9 @@ fn template_with_expression_ok() {
     let src = b"function f(x: number) { return `${x}`; }\n";
     assert!(validate_structure(src).is_ok());
 }
+
+#[test]
+fn nonsense_tokens_with_balanced_braces_pass() {
+    let src = b"function f() { notValidTypeScript $$$ { nested } }\n";
+    assert!(validate_structure(src).is_ok());
+}

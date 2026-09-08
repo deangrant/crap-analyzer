@@ -47,3 +47,9 @@ fn extra_closer_fails() {
     let src = b"package p\n}\n";
     assert_eq!(validate_structure(src), Err("unbalanced braces"));
 }
+
+#[test]
+fn nonsense_tokens_with_balanced_braces_pass() {
+    let src = b"package p\nfunc F() { notReal $$$ syntax }\n";
+    assert!(validate_structure(src).is_ok());
+}

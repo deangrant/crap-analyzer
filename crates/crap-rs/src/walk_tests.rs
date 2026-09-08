@@ -155,7 +155,7 @@ fn rust_files_skips_star_tests_rs() {
 }
 
 #[test]
-fn collect_rust_file_skips_non_rust_and_missing() {
+fn collect_rust_file_skips_when_canonicalize_fails() {
     let root = Path::new("/proj");
     let mut visited = HashSet::new();
     let mut out = Vec::new();
