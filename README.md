@@ -1,6 +1,6 @@
-# crap-analyzer
+# crap-score
 
-crap-analyzer scores each function by combining complexity with line
+crap-score scores each function by combining complexity with line
 coverage. The Change Risk Anti-Patterns (CRAP) score is a
 **change-risk signal**: it rises when a function is hard to follow and
 lightly exercised by tests. It is not a quality grade, a programmer
@@ -285,7 +285,7 @@ JSON `result.passed` reflects threshold breaches even without
 | --- | ------- |
 | [`AGENTS.md`](AGENTS.md) | Contributor guidance, skills, and commands |
 | [`.agents/docs/ARCHITECTURE.md`](.agents/docs/ARCHITECTURE.md) | Crate boundaries and analysis pipeline |
-| [DeepWiki](https://deepwiki.com/deangrant/crap-analyzer) | Indexed project wiki |
+| [DeepWiki](https://deepwiki.com/deangrant/crap-score) | Indexed project wiki |
 
 ## License
 

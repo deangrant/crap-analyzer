@@ -14,7 +14,7 @@ symlink or point there for editor integration.
 
 ## Repository at a glance
 
-crap-analyzer is a virtual Cargo workspace that scores functions by combining
+crap-score is a virtual Cargo workspace that scores functions by combining
 complexity with line coverage. The score is a change-risk signal, not a quality
 KPI.
 
@@ -120,7 +120,7 @@ Cross-crate or pipeline changes: read
 - [`clippy.toml`](clippy.toml) — complexity and line thresholds
 - [`rustfmt.toml`](rustfmt.toml) — `max_width` 100
 - [`deny.toml`](deny.toml) — cargo-deny policy
-- [DeepWiki](https://deepwiki.com/deangrant/crap-analyzer) — indexed project wiki for additional architecture, API, and pipeline context
+- [DeepWiki](https://deepwiki.com/deangrant/crap-score) — indexed project wiki for additional architecture, API, and pipeline context
 
 ## Rules
 

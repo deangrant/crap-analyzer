@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 description = "Language-agnostic CRAP scoring, LCOV join, and reporting"
 readme = "../../README.md"
-repository = "https://github.com/deangrant/rust-crap"
+repository = "https://github.com/deangrant/crap-score"
 keywords = ["coverage", "complexity", "metrics"]
 categories = ["development-tools::testing"]
 
