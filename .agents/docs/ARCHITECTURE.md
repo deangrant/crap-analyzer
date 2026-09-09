@@ -1,6 +1,6 @@
 # Architecture document
 
-This document gives the high-level system architecture of the crap-analyzer
+This document gives the high-level system architecture of the crap-score
 workspace. The workspace scores functions by combining complexity with line
 coverage. The score is a **change-risk signal**: it rises when a function is
 hard to follow and lightly exercised by tests. It is not a quality grade, a
