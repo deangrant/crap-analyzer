@@ -1,0 +1,5 @@
+[project]
+name = "nested"
+
+[tool.uv.workspace]
+members = ["packages/*"]

@@ -1,0 +1,26 @@
+[package]
+name = "crap-py"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Score Python functions by combining complexity and test coverage"
+readme = "../../README.md"
+repository = "https://github.com/deangrant/crap-score"
+keywords = ["coverage", "complexity", "metrics", "python"]
+categories = ["development-tools::testing"]
+
+[[bin]]
+name = "crap-py"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+crap-core = { path = "../crap-core", version = "0.1.0" }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+
+[dev-dependencies]
+serde_json = "1"
+
+[lints]
+workspace = true

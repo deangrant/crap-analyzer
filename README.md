@@ -9,7 +9,8 @@ rating, or a management KPI.
 For Rust, produce LCOV with `cargo llvm-cov` and run `crap-rs`. For Go,
 produce a coverprofile with `go test -coverprofile` and run `crap-go`.
 For TypeScript, produce LCOV with vitest, c8, jest, or nyc and run
-`crap-ts`. Frontends share scoring, risk bands, and the pass/fail gate in
+`crap-ts`. For Python, produce LCOV with coverage.py and run `crap-py`.
+Frontends share scoring, risk bands, and the pass/fail gate in
 `crap-core`.
 
 ## Score
@@ -72,6 +73,8 @@ keeps the score over the threshold.
   `crap-go` itself is a Rust binary and does not invoke `go`
 - For TypeScript analysis: a JS test runner that emits LCOV; `crap-ts` is a
   Rust binary and does not invoke Node
+- For Python analysis: coverage.py (or another tool) that emits LCOV;
+  `crap-py` is a Rust binary and does not invoke Python
 
 `crap-core` parses **LCOV only** on disk. `crap-go` parses coverprofile in
 the frontend and passes `FileCoverage` into `run_with_coverage`. Do not add
@@ -83,6 +86,7 @@ a second on-disk parser in core.
 cargo install --path crates/crap-rs
 cargo install --path crates/crap-go
 cargo install --path crates/crap-ts
+cargo install --path crates/crap-py
 ```
 
 ## Usage
@@ -143,19 +147,34 @@ JavaScript). `--workspace` expands npm/yarn `workspaces` globs (`*`, `**`,
 `--workspace`, a `package.json` root is that package only. `.ts` / `.tsx`
 only; hand-rolled Rust visitor (no Node, no tree-sitter).
 
+### Python (`crap-py`)
+
+```bash
+coverage run -m pytest
+coverage lcov -o lcov.info
+crap-py --path . --coverage lcov.info
+crap-py --workspace --fail-above --threshold strict
+```
+
+`--coverage` defaults to `lcov.info`. LCOV `SF:` paths must resolve to
+`.py` sources. `--workspace` expands `[tool.uv.workspace].members` globs
+(`*`, `**`, `!`); without `--workspace`, a `pyproject.toml` root is that
+project only. `.py` only (no `.pyi`); hand-rolled indent-aware Rust
+visitor (no Python runtime, no tree-sitter).
+
 ## Flags
 
 Shared flags work the same on the CLIs unless noted.
 
 | Flag | Role |
 | ---- | ---- |
-| `--coverage <file>` | Coverage file. `crap-rs` / `crap-ts`: LCOV (default `lcov.info`; `crap-rs` alias `--lcov`); must contain at least one `DA:` line-hit record. `crap-go`: coverprofile (default `cover.out`); must contain a `mode:` line and at least one data line. |
-| `--path <dir>` | Walk this tree (default `.`). Rust: a workspace root is analyzed per member; a member package root is that package only. Go: a module root (`go.mod`) is analyzed per package. TypeScript: a `package.json` root is that package only unless `--workspace` / `-p`. |
+| `--coverage <file>` | Coverage file. `crap-rs` / `crap-ts` / `crap-py`: LCOV (default `lcov.info`; `crap-rs` alias `--lcov`); must contain at least one `DA:` line-hit record. `crap-go`: coverprofile (default `cover.out`); must contain a `mode:` line and at least one data line. |
+| `--path <dir>` | Walk this tree (default `.`). Rust: a workspace root is analyzed per member; a member package root is that package only. Go: a module root (`go.mod`) is analyzed per package. TypeScript: a `package.json` root is that package only unless `--workspace` / `-p`. Python: a `pyproject.toml` root is that project only unless `--workspace` / `-p`. |
 | `--metric` | `cyclomatic` (default) or `cognitive` |
 | `--threshold` | Flag scores strictly above this. Number, `strict` (8), or `lenient` (25). Default `15` for both metrics. Independent of the risk band. |
 | `--format` | `text` (default table) or `json` (versioned envelope, `schema_version` 3). `result.passed` is true when no function exceeds `--threshold`; omitting `--fail-above` still reports `passed` / per-function `exceeds` from the threshold, but `result.gate_failed` stays false and the process exits 0. `result.gate_failed` / exit 1 require `--fail-above`. Per-function `coverage_join` is `measured`, `missing`, or `ambiguous`; unresolved path ties also appear in `result.summary.ambiguous` and a stderr / text-footer warning. |
 | `--workspace` | Every workspace/module member |
-| `-p, --package <name>` | One member; repeatable; conflicts with `--workspace`. Go: import path. TypeScript: package `name`. |
+| `-p, --package <name>` | One member; repeatable; conflicts with `--workspace`. Go: import path. TypeScript: package `name`. Python: project name from `pyproject.toml`. |
 | `--summary` | Counts and worst offender; text only; conflicts with `--format json` |
 | `--fail-above` | Exit 1 when any function exceeds the threshold (not the risk band) |
 | `--missing` | No coverage data, an empty span, or an unresolved path tie: `pessimistic` (default, 0%), `optimistic` (100%), or `skip`. Package names strengthen path ranking and break equal basename ties (Cargo/TS `{name}/src` or `lib/…` or a unique path component; Go import-path path suffix). Leftover ties stay scored via this policy but are labeled `ambiguous`. |
@@ -178,10 +197,11 @@ Shared flags work the same on the CLIs unless noted.
 | [`crap-rs`](crates/crap-rs) | Rust discovery, complexity, and the `crap-rs` CLI |
 | [`crap-go`](crates/crap-go) | Go discovery, coverprofile, complexity, and the `crap-go` CLI |
 | [`crap-ts`](crates/crap-ts) | TypeScript discovery, LCOV, complexity, and the `crap-ts` CLI |
+| [`crap-py`](crates/crap-py) | Python discovery, LCOV, complexity, and the `crap-py` CLI |
 
-`crap-rs`, `crap-go`, and `crap-ts` implement `Language`. Rust and
-TypeScript call `crap_core::run` (LCOV on disk). Go parses coverprofile
-and calls `run_with_coverage`.
+`crap-rs`, `crap-go`, `crap-ts`, and `crap-py` implement `Language`. Rust,
+TypeScript, and Python call `crap_core::run` (LCOV on disk). Go parses
+coverprofile and calls `run_with_coverage`.
 
 Module maps and pipeline: [`.agents/docs/ARCHITECTURE.md`](.agents/docs/ARCHITECTURE.md).
 
@@ -262,6 +282,17 @@ Decisions inside unexpanded or opaque macros may be missed.
   decode). Cover `.ts` / `.tsx` paths in LCOV (source-map remapping when
   needed). Path join uses the package directory relative to the
   workspace (`join_key`); reports still show the npm package name.
+- `crap-py` complexity is an approximate indent-aware text scanner (not
+  the CPython AST) — an accepted product Limit. Scores can diverge from
+  AST-based tools; treat them as a change-risk signal, not an
+  authoritative complexity audit. Unclosed literals/comments or
+  unbalanced `{}`/`()`/`[]` fail the run. Structural balance is not
+  language validity. Valid but unusual syntax (line continuations,
+  exotic f-strings) may under- or over-count. `pyproject.toml` names
+  come from `[project].name` or `[tool.poetry].name`. `--workspace`
+  expands `[tool.uv.workspace].members` only. Path join uses the
+  project directory relative to the workspace (`join_key`); reports
+  still show the project name.
 
 ## Develop
 
