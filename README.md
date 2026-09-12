@@ -243,7 +243,14 @@ Decisions inside unexpanded or opaque macros may be missed.
   per file; extreme per-file function counts may be slow.
 - The full LCOV or coverprofile is held in memory for join (Go expands
   coverprofile blocks across every line); large monorepo coverage files
-  can use substantial RAM.
+  can use substantial RAM. Text and JSON reports stream to stdout (one
+  function at a time for JSON); scored entries still live in memory.
+- File and directory symlinks are followed only when the target stays
+  under the walk root; cycles are skipped. The walk root must
+  canonicalize (otherwise the run fails); files that fail canonicalize
+  are skipped. That policy is intentional and tested: residual risk is
+  local filesystem analysis under `--path`, not a sandbox — the same
+  trust class as the host tree itself.
 - Unknown `#[cfg]` predicates skip the item. Skipped items are not gated.
 - `#[cfg]` uses the host (`target_os` / `target_arch` via
   `std::env::consts`, plus `target_family`, `target_pointer_width`,
@@ -251,10 +258,6 @@ Decisions inside unexpanded or opaque macros may be missed.
   skip. Cross-compile LCOV can disagree; there is no `--target` flag.
   Local `/verify` and CI dogfood pair `cargo llvm-cov --all-features`
   with `crap-rs --all-features` so the feature universe matches.
-- File and directory symlinks are followed only when the target stays
-  under the walk root; cycles are skipped. The walk root must
-  canonicalize (otherwise the run fails); files that fail canonicalize
-  are skipped.
 - `$CARGO` is used only when it names an existing file (Cargo’s usual
   override); otherwise `crap-rs` runs `cargo` from `PATH`. That override may
   be any executable path — intentional for Cargo toolchains, accepted under
@@ -310,6 +313,13 @@ Lean pipeline (fmt, Clippy, deny, audit, test, rustdoc):
 Full local vs CI (also 100% lines and CRAP `--threshold strict`):
 [`.agents/skills/verify/SKILL.md`](.agents/skills/verify/SKILL.md), or
 `/verify`.
+
+Fuzz smoke (`fuzz/` + [`.github/workflows/fuzz.yml`](.github/workflows/fuzz.yml))
+uses nightly `cargo-fuzz` and is **outside** the workspace `/verify` loop:
+
+```bash
+cargo +nightly fuzz run lcov_parse -- -max_total_time=30
+```
 
 JSON `result.threshold_cleared` reflects threshold breaches even without
 `--fail-above`; use `--fail-above` when you need exit 1 /

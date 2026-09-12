@@ -4,9 +4,7 @@
 use crate::error::{Error, Result};
 use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
-#[cfg(test)]
-use std::io::Cursor;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Cursor};
 use std::path::{Path, PathBuf};
 
 /// Instrumented line hits for one source file.
@@ -90,10 +88,21 @@ pub fn parse_lcov(path: &Path) -> Result<HashMap<PathBuf, FileCoverage>> {
     Ok(files)
 }
 
+/// Parses LCOV bytes (for tests and fuzzing). Unknown record types are ignored.
+///
+/// # Errors
+///
+/// Returns [`Error::Io`] on invalid UTF-8 line decoding, or [`Error::Coverage`]
+/// when a `DA:` record is malformed. Empty-DA input returns `Ok` with a zero
+/// count so callers can decide whether to reject.
+pub fn parse_lcov_bytes(bytes: &[u8]) -> Result<(HashMap<PathBuf, FileCoverage>, usize)> {
+    parse_lcov_reader(Cursor::new(bytes), Path::new("<bytes>"))
+}
+
 /// Parses LCOV text. Unknown record types are ignored.
 #[cfg(test)]
 fn parse_lcov_text(text: &str) -> Result<(HashMap<PathBuf, FileCoverage>, usize)> {
-    parse_lcov_reader(Cursor::new(text), Path::new("<text>"))
+    parse_lcov_bytes(text.as_bytes())
 }
 
 fn parse_lcov_reader<R: BufRead>(
@@ -105,7 +114,7 @@ fn parse_lcov_reader<R: BufRead>(
     let mut valid_da = 0_usize;
     for raw in reader.lines() {
         let raw = raw.map_err(|source| Error::io(origin, source))?;
-        apply_record(&raw, origin, &mut files, &mut current, &mut valid_da)?;
+        apply_record(raw.trim(), origin, &mut files, &mut current, &mut valid_da)?;
     }
     Ok((files, valid_da))
 }
@@ -122,7 +131,8 @@ fn apply_record(
         return Ok(());
     }
     if let Some(path) = raw.strip_prefix("SF:") {
-        *current = Some(PathBuf::from(path.replace('\\', "/")));
+        let path = path.trim().replace('\\', "/");
+        *current = Some(PathBuf::from(path));
         return Ok(());
     }
     apply_da(raw, origin, files, current.as_ref(), valid_da)
@@ -228,6 +238,19 @@ mod tests {
     #[test]
     fn backslash_sf_paths_are_normalized() {
         let map = parse("SF:src\\foo.rs\nDA:10,1\nend_of_record\n");
+        assert_eq!(map[Path::new("src/foo.rs")].lines[&10], 1);
+    }
+
+    #[test]
+    fn sf_path_whitespace_is_trimmed() {
+        let map = parse("SF:  src/foo.rs  \nDA:10,1\nend_of_record\n");
+        assert_eq!(map[Path::new("src/foo.rs")].lines[&10], 1);
+        assert_eq!(map.len(), 1);
+    }
+
+    #[test]
+    fn padded_record_lines_still_parse() {
+        let map = parse("  SF:src/foo.rs  \n  DA:10,1  \n  end_of_record  \n");
         assert_eq!(map[Path::new("src/foo.rs")].lines[&10], 1);
     }
 

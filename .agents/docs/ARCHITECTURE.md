@@ -317,8 +317,10 @@ Flag reference: [README.md](../../README.md).
 These CLIs are local analysis tools. They do not open network sockets or
 execute untrusted code. Walk follows file and directory symlinks only when
 the resolved target stays under the walk root; cycles and out-of-root links
-are skipped. Residual risk is local filesystem access under the chosen
-`--path`, not remote code execution.
+are skipped (intentional, covered by walk tests). Residual risk is local
+filesystem analysis under the chosen `--path` — not a sandbox; the same
+trust class as the host tree itself. There is no remote code execution
+surface beyond what the operator already trusts on that machine.
 
 `crap-rs` may invoke `$CARGO` when that env var names an existing file
 (Cargo’s usual metadata override). That path is not sandboxed: under local
@@ -336,6 +338,9 @@ Full local vs CI (fmt, Clippy, deny, audit, test, rustdoc, 100% lines, CRAP
 
 Then the coverage gates in [verify](../skills/verify/SKILL.md), or run
 `/verify`. The stop hook runs the same procedure on relevant dirty trees.
+Fuzz targets under [`fuzz/`](../../fuzz/) (nightly `cargo-fuzz`, CI smoke in
+[`.github/workflows/fuzz.yml`](../../.github/workflows/fuzz.yml)) are outside
+that loop.
 
 Agent support lives under `.agents/`:
 

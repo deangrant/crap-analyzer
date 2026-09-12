@@ -1,0 +1,2 @@
+package p
+func F(tx int)  if~x > 0 { ret x } ,

@@ -9,6 +9,8 @@ pub(crate) mod module_resolve;
 pub(crate) mod walk;
 
 #[doc(inline)]
+pub use complexity::analyze_source;
+#[doc(inline)]
 pub use module_resolve::{enclosing_module, modules_for_remap};
 
 use crap_core::{Error, Language, LocatedFn, Metric, Result, ScanRequest, Target};

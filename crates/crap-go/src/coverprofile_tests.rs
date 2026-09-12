@@ -1,5 +1,7 @@
 // dry-rs:ignore-file. intentional parallel language frontend; keep separate.
-use super::{parse_coverprofile, remap_import_paths, remap_import_paths_all};
+use super::{
+    parse_coverprofile, parse_coverprofile_bytes, remap_import_paths, remap_import_paths_all,
+};
 use crap_core::{Error, FileCoverage};
 use std::collections::HashMap;
 use std::fs;
@@ -227,6 +229,7 @@ fn malformed_data_lines_are_rejected() {
         "mode: set\nfile.go:1.1,2.2 1 bad\n",
         "mode: set\nfile.go:0.1,2.2 1 1\n",
         "mode: set\nfile.go:3.1,2.2 1 1\n",
+        "mode: set\nfile.go:1.1,1000001.2 1 1\n",
     ];
     for (i, body) in cases.iter().enumerate() {
         let dir = temp_dir(&format!("bad{i}"));
@@ -306,4 +309,13 @@ fn large_coverprofile_parse_finishes_under_a_second() {
     assert!(started.elapsed().as_secs() < 1, "{:?}", started.elapsed());
     assert_eq!(files.len(), 400);
     let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn parse_coverprofile_bytes_reads_mode_set() {
+    let files = require_ok(parse_coverprofile_bytes(
+        b"mode: set\npkg/a.go:1.1,2.2 1 1\n",
+    ));
+    assert_eq!(files.len(), 1);
+    assert!(files.contains_key(Path::new("pkg/a.go")));
 }

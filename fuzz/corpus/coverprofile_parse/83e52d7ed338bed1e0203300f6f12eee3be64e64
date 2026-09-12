@@ -1,0 +1,4 @@
+mode: set
+example.com/sample/main.go:3.13,6.2 3 1
+examsage:6.13,6.2 3ple.com/sample/main.go:8.2.,13.2 4 1
+example.com/13,18.2 2 1

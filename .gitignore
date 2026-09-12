@@ -5,6 +5,11 @@ target/
 rustc-ice-*.txt
 **/mutants.out*/
 
+# Fuzz (outside workspace verify; keep seed corpora)
+fuzz/target/
+fuzz/artifacts/
+fuzz/coverage/
+
 # Local tools
 .bacon-locations
 .bacon.socket

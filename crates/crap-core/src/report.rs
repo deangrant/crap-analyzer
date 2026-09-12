@@ -3,16 +3,17 @@
 // dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 mod json;
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::language::{ReportFormat, ScanRequest};
 use crate::merge::{CrapEntry, ambiguous_join_warning};
 use crate::run::RunResult;
 use crate::score::{classify_risk, exceeds_threshold};
 use std::env;
+use std::io::Write;
 use std::path::Path;
 
 #[doc(inline)]
-pub use json::render_json;
+pub use json::{render_json, write_json};
 
 /// Formats the report for `result` using `request.format`.
 ///
@@ -25,21 +26,41 @@ pub fn render(
     language: &str,
     color: bool,
 ) -> Result<String> {
+    let mut out = Vec::new();
+    write_report(&mut out, request, result, language, color)?;
+    utf8_report(out, "report write")
+}
+
+fn utf8_report(bytes: Vec<u8>, what: &str) -> Result<String> {
+    String::from_utf8(bytes).map_err(|err| Error::report(format!("{what}: {err}")))
+}
+
+/// Streams the report for `result` to `w`.
+///
+/// # Errors
+///
+/// Returns [`crate::Error::Report`] if writing or JSON serialization fails.
+pub fn write_report(
+    w: &mut impl Write,
+    request: &ScanRequest,
+    result: &RunResult,
+    language: &str,
+    color: bool,
+) -> Result<()> {
     let threshold = request.effective_threshold();
     match request.format {
-        ReportFormat::Json => render_json(
+        ReportFormat::Json => write_json(
+            &mut *w,
             &result.entries,
             threshold,
             request.metric,
             result.gate_failed,
             language,
         ),
-        ReportFormat::Text if request.summary => Ok(render_summary(
-            &result.entries,
-            threshold,
-            uses_packages(result),
-        )),
-        ReportFormat::Text => Ok(render_table(&result.entries, threshold, color)),
+        ReportFormat::Text if request.summary => {
+            write_summary(w, &result.entries, threshold, uses_packages(result))
+        }
+        ReportFormat::Text => write_table(w, &result.entries, threshold, color),
     }
 }
 
@@ -53,31 +74,89 @@ const RESET: &str = "\x1b[0m";
 /// Renders the full table plus footer.
 #[must_use]
 pub fn render_table(entries: &[CrapEntry], threshold: f64, color: bool) -> String {
+    let mut out = Vec::new();
+    let _ = write_table(&mut out, entries, threshold, color);
+    String::from_utf8(out).unwrap_or_default()
+}
+
+fn write_table(
+    w: &mut impl Write,
+    entries: &[CrapEntry],
+    threshold: f64,
+    color: bool,
+) -> Result<()> {
     let widths = Widths::for_entries(entries);
-    let mut lines = vec![widths.header()];
+    write_map_report(w, widths.header().as_bytes())?;
+    write_table_rows(w, entries, threshold, color, &widths)?;
+    write_map_report(w, b"\n")?;
+    write_map_report(w, footer(entries, threshold).as_bytes())?;
+    write_table_extras(w, entries, threshold)
+}
+
+fn write_table_rows(
+    w: &mut impl Write,
+    entries: &[CrapEntry],
+    threshold: f64,
+    color: bool,
+    widths: &Widths,
+) -> Result<()> {
     for entry in entries {
-        lines.push(widths.row(entry, threshold, color));
+        write_map_report(w, b"\n")?;
+        write_map_report(w, widths.row(entry, threshold, color).as_bytes())?;
     }
-    lines.push(footer(entries, threshold));
+    Ok(())
+}
+
+fn write_table_extras(w: &mut impl Write, entries: &[CrapEntry], threshold: f64) -> Result<()> {
     let ambiguous = ambiguous_join_warning(entries);
     if !ambiguous.is_empty() {
-        lines.push(ambiguous);
+        write_map_report(w, b"\n")?;
+        write_map_report(w, ambiguous.as_bytes())?;
     }
-    if entries.iter().any(|e| exceeds_threshold(e.crap, threshold)) {
-        lines.push(action_line(entries, threshold));
+    write_table_action(w, entries, threshold)
+}
+
+fn write_table_action(w: &mut impl Write, entries: &[CrapEntry], threshold: f64) -> Result<()> {
+    if !entries.iter().any(|e| exceeds_threshold(e.crap, threshold)) {
+        return Ok(());
     }
-    lines.join("\n")
+    let action = action_line(entries, threshold);
+    write_map_report(w, b"\n")?;
+    write_map_report(w, action.as_bytes())
 }
 
 /// Renders counts and the worst offender, with optional per-crate lines.
 #[must_use]
 pub fn render_summary(entries: &[CrapEntry], threshold: f64, per_crate: bool) -> String {
-    let mut lines = Vec::new();
+    let mut out = Vec::new();
+    let _ = write_summary(&mut out, entries, threshold, per_crate);
+    String::from_utf8(out).unwrap_or_default()
+}
+
+fn write_summary(
+    w: &mut impl Write,
+    entries: &[CrapEntry],
+    threshold: f64,
+    per_crate: bool,
+) -> Result<()> {
+    let mut first = true;
     if per_crate {
-        lines.extend(crate_summaries(entries, threshold));
+        for line in crate_summaries(entries, threshold) {
+            if !first {
+                write_map_report(w, b"\n")?;
+            }
+            write_map_report(w, line.as_bytes())?;
+            first = false;
+        }
     }
-    lines.push(aggregate_line(entries, threshold));
-    lines.join("\n")
+    if !first {
+        write_map_report(w, b"\n")?;
+    }
+    write_map_report(w, aggregate_line(entries, threshold).as_bytes())
+}
+
+fn write_map_report(w: &mut impl Write, bytes: &[u8]) -> Result<()> {
+    w.write_all(bytes).map_err(|err| Error::report(format!("report write: {err}")))
 }
 
 fn footer(entries: &[CrapEntry], threshold: f64) -> String {
@@ -228,6 +307,7 @@ impl Widths {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::run::RunResult;
     use std::path::PathBuf;
 
     fn entry(name: &str, crap: f64, cc: usize, cov: f64) -> CrapEntry {
@@ -342,5 +422,40 @@ mod tests {
         let table = render_table(&entries, 30.0, true);
         assert!(table.contains("\u{1b}[31m"));
         assert!(table.contains("\u{1b}[0m"));
+    }
+
+    #[test]
+    fn write_report_maps_io_errors() {
+        struct Fail;
+        impl Write for Fail {
+            fn write(&mut self, _buf: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::other("boom"))
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let request = ScanRequest {
+            path: PathBuf::from("."),
+            coverage: PathBuf::from("lcov.info"),
+            metric: crate::Metric::Cyclomatic,
+            threshold: None,
+            summary: false,
+            fail_above: false,
+            missing: crate::MissingPolicy::Pessimistic,
+            format: ReportFormat::Text,
+        };
+        let result = RunResult::default();
+        let mut fail = Fail;
+        let err = write_report(&mut fail, &request, &result, "rust", false);
+        assert!(err.is_err(), "{err:?}");
+        assert!(fail.flush().is_ok());
+    }
+
+    #[test]
+    fn utf8_report_maps_invalid_bytes() {
+        let err = utf8_report(vec![0xff], "report write");
+        assert!(err.is_err(), "{err:?}");
+        assert!(utf8_report(b"ok".to_vec(), "report write").is_ok());
     }
 }

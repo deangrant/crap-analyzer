@@ -1,0 +1,53 @@
+[package]
+name = "crap-score-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+crap-core = { path = "../crates/crap-core" }
+crap-go = { path = "../crates/crap-go" }
+crap-ts = { path = "../crates/crap-ts" }
+crap-py = { path = "../crates/crap-py" }
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "lcov_parse"
+path = "fuzz_targets/lcov_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "coverprofile_parse"
+path = "fuzz_targets/coverprofile_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ts_analyze"
+path = "fuzz_targets/ts_analyze.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "go_analyze"
+path = "fuzz_targets/go_analyze.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "py_analyze"
+path = "fuzz_targets/py_analyze.rs"
+test = false
+doc = false
+bench = false

@@ -6,9 +6,9 @@
 
 use crate::language::ReportFormat;
 use crate::merge::ambiguous_join_warning;
-use crate::report::render;
+use crate::report::write_report;
 use crate::{Error, RunResult, ScanRequest};
-use std::io::IsTerminal;
+use std::io::{self, IsTerminal, Write};
 use std::process::ExitCode;
 
 /// Short-circuit argv result before clap parsing.
@@ -52,25 +52,46 @@ pub fn reject_summary_json(summary: bool, format: ReportFormat) -> std::result::
 #[must_use]
 pub fn finish_run(request: &ScanRequest, result: &RunResult, language: &str) -> ExitCode {
     emit_ambiguous_warning(result);
-    exit_from_render(
-        render(request, result, language, color_enabled()),
-        result.gate_failed,
-    )
+    let written = write_finished_report(request, result, language, color_enabled());
+    exit_from_write(written, result.gate_failed)
 }
 
-fn exit_from_render(rendered: Result<String, Error>, gate_failed: bool) -> ExitCode {
-    match rendered {
-        Ok(text) => finish_ok(&text, gate_failed),
+fn write_finished_report(
+    request: &ScanRequest,
+    result: &RunResult,
+    language: &str,
+    color: bool,
+) -> Result<(), Error> {
+    let mut stdout = io::stdout().lock();
+    write_report_and_flush(&mut stdout, request, result, language, color)
+}
+
+fn write_report_and_flush(
+    w: &mut impl Write,
+    request: &ScanRequest,
+    result: &RunResult,
+    language: &str,
+    color: bool,
+) -> Result<(), Error> {
+    write_report(w, request, result, language, color)?;
+    writeln!(w).map_err(|err| report_write_err(&err))?;
+    w.flush().map_err(|err| report_write_err(&err))
+}
+
+fn report_write_err(err: &io::Error) -> Error {
+    Error::report(format!("report write: {err}"))
+}
+
+fn exit_from_write(written: Result<(), Error>, gate_failed: bool) -> ExitCode {
+    match written {
+        Ok(()) => {
+            if gate_failed {
+                ExitCode::from(1)
+            } else {
+                ExitCode::SUCCESS
+            }
+        }
         Err(err) => print_core_err(&err),
-    }
-}
-
-fn finish_ok(text: &str, gate_failed: bool) -> ExitCode {
-    emit_stdout(text);
-    if gate_failed {
-        ExitCode::from(1)
-    } else {
-        ExitCode::SUCCESS
     }
 }
 
@@ -82,7 +103,14 @@ fn emit_ambiguous_warning(result: &RunResult) {
 }
 
 fn color_enabled() -> bool {
-    std::env::var_os("NO_COLOR").is_none() && std::io::stdout().is_terminal()
+    color_from_env(
+        std::env::var_os("NO_COLOR").is_none(),
+        std::io::stdout().is_terminal(),
+    )
+}
+
+const fn color_from_env(allow_color: bool, is_tty: bool) -> bool {
+    allow_color && is_tty
 }
 
 /// Writes `text` to stdout and returns success.
@@ -151,18 +179,107 @@ mod tests {
     #[test]
     fn render_error_exits_two() {
         let err = Error::report("json report: boom");
-        assert_eq!(exit_from_render(Err(err), false), ExitCode::from(2));
+        assert_eq!(exit_from_write(Err(err), false), ExitCode::from(2));
     }
 
     #[test]
     fn render_ok_respects_the_gate() {
-        assert_eq!(exit_from_render(Ok("ok".into()), false), ExitCode::SUCCESS);
-        assert_eq!(exit_from_render(Ok("ok".into()), true), ExitCode::from(1));
+        assert_eq!(exit_from_write(Ok(()), false), ExitCode::SUCCESS);
+        assert_eq!(exit_from_write(Ok(()), true), ExitCode::from(1));
     }
 
     #[test]
     fn usage_error_exits_two() {
         assert_eq!(print_usage_err("bad flag"), ExitCode::from(2));
+    }
+
+    #[test]
+    fn print_ok_writes_and_succeeds() {
+        assert_eq!(print_ok("ready"), ExitCode::SUCCESS);
+    }
+
+    #[test]
+    fn write_report_and_flush_maps_io_errors() {
+        struct FailAfter {
+            ok_writes: usize,
+            seen: usize,
+            flush_ok: bool,
+        }
+        impl Write for FailAfter {
+            fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+                if self.seen >= self.ok_writes {
+                    return Err(io::Error::other("write boom"));
+                }
+                self.seen += 1;
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                if self.flush_ok {
+                    Ok(())
+                } else {
+                    Err(io::Error::other("flush boom"))
+                }
+            }
+        }
+        let request = summary_request("lcov.info");
+        let result = RunResult::default();
+        let write_err = write_report_and_flush(
+            &mut FailAfter {
+                ok_writes: 0,
+                seen: 0,
+                flush_ok: true,
+            },
+            &request,
+            &result,
+            "rust",
+            false,
+        );
+        assert!(write_err.is_err(), "{write_err:?}");
+        let newline_err = write_report_and_flush(
+            &mut FailAfter {
+                ok_writes: 1,
+                seen: 0,
+                flush_ok: true,
+            },
+            &request,
+            &result,
+            "rust",
+            false,
+        );
+        assert!(newline_err.is_err(), "{newline_err:?}");
+        let flush_err = write_report_and_flush(
+            &mut FailAfter {
+                ok_writes: 32,
+                seen: 0,
+                flush_ok: false,
+            },
+            &request,
+            &result,
+            "rust",
+            false,
+        );
+        assert!(flush_err.is_err(), "{flush_err:?}");
+        let flushed_ok = write_report_and_flush(
+            &mut FailAfter {
+                ok_writes: 32,
+                seen: 0,
+                flush_ok: true,
+            },
+            &request,
+            &result,
+            "rust",
+            false,
+        );
+        assert!(flushed_ok.is_ok(), "{flushed_ok:?}");
+        assert!(report_write_err(&io::Error::other("x")).to_string().contains("report write"));
+    }
+
+    #[test]
+    fn color_from_env_requires_tty_and_no_color_unset() {
+        assert!(color_from_env(true, true));
+        assert!(!color_from_env(true, false));
+        assert!(!color_from_env(false, true));
+        assert!(!color_from_env(false, false));
     }
 
     fn summary_request(coverage: &str) -> ScanRequest {
@@ -181,6 +298,15 @@ mod tests {
     #[test]
     fn finish_run_renders_summary() {
         let request = summary_request("lcov.info");
+        let result = RunResult::default();
+        assert_eq!(finish_run(&request, &result, "rust"), ExitCode::SUCCESS);
+    }
+
+    #[test]
+    fn finish_run_renders_json() {
+        let mut request = summary_request("lcov.info");
+        request.summary = false;
+        request.format = ReportFormat::Json;
         let result = RunResult::default();
         assert_eq!(finish_run(&request, &result, "rust"), ExitCode::SUCCESS);
     }

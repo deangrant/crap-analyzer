@@ -6,6 +6,9 @@ pub(crate) mod complexity;
 pub(crate) mod project_resolve;
 pub(crate) mod walk;
 
+#[doc(inline)]
+pub use complexity::analyze_source;
+
 use crap_core::{Error, Language, LocatedFn, Metric, Result, ScanRequest, Target};
 use project_resolve::Package;
 use std::path::{Component, Path};
