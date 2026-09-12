@@ -43,15 +43,19 @@ enum WorkspacesField {
 /// Returns [`Error::Resolve`] if manifests are missing or malformed, or
 /// [`Error::Io`] if directories cannot be read.
 pub fn all_packages(root: &Path) -> Result<Vec<Package>> {
-    let manifest = read_package_json(root)?;
-    let patterns = workspace_patterns(root, &manifest)?;
-    let packages = if patterns.is_empty() {
-        vec![package_from_manifest(root, &manifest)]
-    } else {
-        discover_workspace_packages(root, &patterns)?
-    };
+    let packages = packages_for_root(root)?;
     ensure_unique_names(&packages)?;
     Ok(packages)
+}
+
+fn packages_for_root(root: &Path) -> Result<Vec<Package>> {
+    let manifest = read_package_json(root)?;
+    let patterns = workspace_patterns(root, &manifest)?;
+    if patterns.is_empty() {
+        Ok(vec![package_from_manifest(root, &manifest)])
+    } else {
+        discover_workspace_packages(root, &patterns)
+    }
 }
 
 /// Loads only the package defined by `package.json` at `root` (no workspace expand).

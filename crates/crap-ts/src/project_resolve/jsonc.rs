@@ -15,15 +15,27 @@ pub(super) fn strip_jsonc(input: &str) -> String {
 }
 
 fn push_jsonc_byte(bytes: &[u8], i: usize, out: &mut String) -> usize {
+    if let Some(next) = try_comment(bytes, i) {
+        return next;
+    }
     match bytes[i] {
         b'"' => push_string(bytes, i, out),
-        b'/' if bytes.get(i + 1) == Some(&b'/') => skip_line_comment(bytes, i),
-        b'/' if bytes.get(i + 1) == Some(&b'*') => skip_block_comment(bytes, i),
         b',' => push_comma(bytes, i, out),
         b => {
             out.push(char::from(b));
             i + 1
         }
+    }
+}
+
+fn try_comment(bytes: &[u8], i: usize) -> Option<usize> {
+    if bytes[i] != b'/' {
+        return None;
+    }
+    match bytes.get(i + 1) {
+        Some(&b'/') => Some(skip_line_comment(bytes, i)),
+        Some(&b'*') => Some(skip_block_comment(bytes, i)),
+        _ => None,
     }
 }
 

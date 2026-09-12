@@ -34,16 +34,24 @@ pub(super) fn discover_nested_package_dirs(root: &Path) -> Result<Vec<PathBuf>> 
 fn walk_for_projects(dir: &Path, found: &mut Vec<PathBuf>) -> Result<()> {
     let entries = fs::read_dir(dir).map_err(|source| Error::io(dir, source))?;
     for entry in entries {
-        let path = path_glob::dir_entry_path(dir, entry)?;
-        if !path.is_dir() || is_skipped_dir(&path) {
-            continue;
-        }
-        if is_python_project(&path) {
-            found.push(path.clone());
-        }
-        walk_for_projects(&path, found)?;
+        visit_project_child(dir, entry, found)?;
     }
     Ok(())
+}
+
+fn visit_project_child(
+    dir: &Path,
+    entry: std::io::Result<fs::DirEntry>,
+    found: &mut Vec<PathBuf>,
+) -> Result<()> {
+    let path = path_glob::dir_entry_path(dir, entry)?;
+    if !path.is_dir() || is_skipped_dir(&path) {
+        return Ok(());
+    }
+    if is_python_project(&path) {
+        found.push(path.clone());
+    }
+    walk_for_projects(&path, found)
 }
 
 fn is_python_project(dir: &Path) -> bool {

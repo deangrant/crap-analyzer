@@ -61,15 +61,19 @@ struct PoetryTable {
 /// Returns [`Error::Resolve`] if manifests are missing or malformed, names
 /// collide, or [`Error::Io`] if directories cannot be read.
 pub fn all_packages(root: &Path) -> Result<Vec<Package>> {
-    let manifest = read_pyproject(root)?;
-    let patterns = workspace_patterns(&manifest);
-    let packages = if patterns.is_empty() {
-        discover_nested_or_single(root, &manifest)?
-    } else {
-        discover_workspace_packages(root, &patterns)?
-    };
+    let packages = packages_for_root(root)?;
     ensure_unique_names(&packages)?;
     Ok(packages)
+}
+
+fn packages_for_root(root: &Path) -> Result<Vec<Package>> {
+    let manifest = read_pyproject(root)?;
+    let patterns = workspace_patterns(&manifest);
+    if patterns.is_empty() {
+        discover_nested_or_single(root, &manifest)
+    } else {
+        discover_workspace_packages(root, &patterns)
+    }
 }
 
 /// Loads only the project defined by `pyproject.toml` at `root`.

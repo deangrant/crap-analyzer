@@ -100,12 +100,24 @@ fn write_json_envelope(
 
 fn write_json_functions(w: &mut impl Write, entries: &[CrapEntry], threshold: f64) -> Result<()> {
     for (index, entry) in entries.iter().enumerate() {
-        let sep: &[u8] = if index == 0 { b"\n" } else { b",\n" };
-        write_map_err(w, sep)?;
-        write_pretty_value(w, &function_doc(entry, threshold), 6)?;
+        write_one_function(w, index, entry, threshold)?;
     }
-    let closer: &[u8] = if entries.is_empty() { b"]" } else { b"\n    ]" };
-    write_map_err(w, closer)
+    write_map_err(w, functions_closer(entries.is_empty()))
+}
+
+fn write_one_function(
+    w: &mut impl Write,
+    index: usize,
+    entry: &CrapEntry,
+    threshold: f64,
+) -> Result<()> {
+    let sep: &[u8] = if index == 0 { b"\n" } else { b",\n" };
+    write_map_err(w, sep)?;
+    write_pretty_value(w, &function_doc(entry, threshold), 6)
+}
+
+const fn functions_closer(empty: bool) -> &'static [u8] {
+    if empty { b"]" } else { b"\n    ]" }
 }
 
 fn write_pretty_value(w: &mut impl Write, value: &impl Serialize, indent: usize) -> Result<()> {

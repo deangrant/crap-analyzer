@@ -22,12 +22,17 @@ pub struct Package {
 /// [`Error::Io`] if directories cannot be read.
 pub fn all_packages(root: &Path) -> Result<Vec<Package>> {
     let _ = read_module_path(root)?;
+    let mut packages = collect_all_packages(root)?;
+    packages.sort_by(|a, b| a.name.cmp(&b.name));
+    ensure_unique_names(&packages)?;
+    Ok(packages)
+}
+
+fn collect_all_packages(root: &Path) -> Result<Vec<Package>> {
     let mut packages = Vec::new();
     for (module_root, module_path) in discover_modules_under(root)? {
         packages.extend(discover_packages(&module_root, &module_path)?);
     }
-    packages.sort_by(|a, b| a.name.cmp(&b.name));
-    ensure_unique_names(&packages)?;
     Ok(packages)
 }
 

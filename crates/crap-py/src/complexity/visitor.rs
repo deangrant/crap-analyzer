@@ -217,23 +217,50 @@ fn qualify_name(class_stack: &[(usize, String)], indent: usize, name: &str) -> S
 }
 
 fn find_def_colon(bytes: &[u8], start: usize) -> Option<usize> {
-    let mut i = start;
-    let mut depth = 0_usize;
-    while i < bytes.len() {
-        i = skip_noise(bytes, i);
-        if i >= bytes.len() {
-            return None;
+    let mut cursor = SigCursor { i: start, depth: 0 };
+    while cursor.i < bytes.len() {
+        match cursor.advance(bytes) {
+            Advance::Found(at) => return Some(at),
+            Advance::Stop => return None,
+            Advance::Cont => {}
         }
-        match sig_byte(bytes[i], depth) {
-            SigAction::Found => return Some(i),
-            SigAction::Stop => return None,
-            SigAction::Open => depth += 1,
-            SigAction::Close => depth = depth.saturating_sub(1),
-            SigAction::Other => {}
-        }
-        i += 1;
     }
     None
+}
+
+struct SigCursor {
+    i: usize,
+    depth: usize,
+}
+
+enum Advance {
+    Found(usize),
+    Stop,
+    Cont,
+}
+
+impl SigCursor {
+    fn advance(&mut self, bytes: &[u8]) -> Advance {
+        self.i = skip_noise(bytes, self.i);
+        if self.i >= bytes.len() {
+            return Advance::Stop;
+        }
+        let at = self.i;
+        let step = step_sig(bytes[at], &mut self.depth);
+        self.i += 1;
+        match step {
+            SigStep::Found => Advance::Found(at),
+            SigStep::Stop => Advance::Stop,
+            SigStep::Cont => Advance::Cont,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum SigStep {
+    Found,
+    Stop,
+    Cont,
 }
 
 #[derive(Clone, Copy)]
@@ -245,10 +272,42 @@ enum SigAction {
     Other,
 }
 
+const fn step_sig(b: u8, depth: &mut usize) -> SigStep {
+    match sig_byte(b, *depth) {
+        SigAction::Found => SigStep::Found,
+        SigAction::Stop => SigStep::Stop,
+        action => {
+            bump_depth(action, depth);
+            SigStep::Cont
+        }
+    }
+}
+
+const fn bump_depth(action: SigAction, depth: &mut usize) {
+    match action {
+        SigAction::Open => *depth += 1,
+        SigAction::Close => *depth = depth.saturating_sub(1),
+        _ => {}
+    }
+}
+
 const fn sig_byte(b: u8, depth: usize) -> SigAction {
+    if depth == 0 {
+        return sig_byte_top(b);
+    }
+    sig_byte_nested(b)
+}
+
+const fn sig_byte_top(b: u8) -> SigAction {
     match b {
-        b':' if depth == 0 => SigAction::Found,
-        b'\n' if depth == 0 => SigAction::Stop,
+        b':' => SigAction::Found,
+        b'\n' => SigAction::Stop,
+        _ => sig_byte_nested(b),
+    }
+}
+
+const fn sig_byte_nested(b: u8) -> SigAction {
+    match b {
         b'(' | b'[' => SigAction::Open,
         b')' | b']' => SigAction::Close,
         _ => SigAction::Other,

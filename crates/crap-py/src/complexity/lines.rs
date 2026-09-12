@@ -21,32 +21,66 @@ pub(super) fn leading_indent(
     start: usize,
     end: usize,
 ) -> Result<(usize, usize), &'static str> {
-    let mut i = start;
-    let mut indent = 0_usize;
-    let mut seen_space = false;
-    let mut seen_tab = false;
-    while i < end && i < bytes.len() {
-        match bytes[i] {
-            b' ' => {
-                if seen_tab {
-                    return Err("mixed tabs and spaces in indentation");
-                }
-                seen_space = true;
-                indent += 1;
-                i += 1;
-            }
-            b'\t' => {
-                if seen_space {
-                    return Err("mixed tabs and spaces in indentation");
-                }
-                seen_tab = true;
-                indent = next_tab_stop(indent);
-                i += 1;
-            }
-            _ => break,
+    let mut scan = IndentScan::new(start);
+    scan.run(bytes, end)?;
+    Ok((scan.indent, scan.i))
+}
+
+struct IndentScan {
+    i: usize,
+    indent: usize,
+    seen_space: bool,
+    seen_tab: bool,
+}
+
+impl IndentScan {
+    const fn new(start: usize) -> Self {
+        Self {
+            i: start,
+            indent: 0,
+            seen_space: false,
+            seen_tab: false,
         }
     }
-    Ok((indent, i))
+
+    fn run(&mut self, bytes: &[u8], end: usize) -> Result<(), &'static str> {
+        while self.keeps_going(bytes, end) {
+            self.advance(bytes)?;
+        }
+        Ok(())
+    }
+
+    fn keeps_going(&self, bytes: &[u8], end: usize) -> bool {
+        self.i < end && self.i < bytes.len() && matches!(bytes[self.i], b' ' | b'\t')
+    }
+
+    fn advance(&mut self, bytes: &[u8]) -> Result<(), &'static str> {
+        if bytes[self.i] == b' ' {
+            self.apply_space()
+        } else {
+            self.apply_tab()
+        }
+    }
+
+    const fn apply_space(&mut self) -> Result<(), &'static str> {
+        if self.seen_tab {
+            return Err("mixed tabs and spaces in indentation");
+        }
+        self.seen_space = true;
+        self.indent += 1;
+        self.i += 1;
+        Ok(())
+    }
+
+    const fn apply_tab(&mut self) -> Result<(), &'static str> {
+        if self.seen_space {
+            return Err("mixed tabs and spaces in indentation");
+        }
+        self.seen_tab = true;
+        self.indent = next_tab_stop(self.indent);
+        self.i += 1;
+        Ok(())
+    }
 }
 
 const fn next_tab_stop(indent: usize) -> usize {

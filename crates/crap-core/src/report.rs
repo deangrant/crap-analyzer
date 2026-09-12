@@ -139,20 +139,26 @@ fn write_summary(
     threshold: f64,
     per_crate: bool,
 ) -> Result<()> {
-    let mut first = true;
-    if per_crate {
-        for line in crate_summaries(entries, threshold) {
-            if !first {
-                write_map_report(w, b"\n")?;
-            }
-            write_map_report(w, line.as_bytes())?;
-            first = false;
-        }
-    }
-    if !first {
+    if per_crate && write_crate_summaries(w, entries, threshold)? {
         write_map_report(w, b"\n")?;
     }
     write_map_report(w, aggregate_line(entries, threshold).as_bytes())
+}
+
+fn write_crate_summaries(
+    w: &mut impl Write,
+    entries: &[CrapEntry],
+    threshold: f64,
+) -> Result<bool> {
+    let mut wrote = false;
+    for line in crate_summaries(entries, threshold) {
+        if wrote {
+            write_map_report(w, b"\n")?;
+        }
+        write_map_report(w, line.as_bytes())?;
+        wrote = true;
+    }
+    Ok(wrote)
 }
 
 fn write_map_report(w: &mut impl Write, bytes: &[u8]) -> Result<()> {

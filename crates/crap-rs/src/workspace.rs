@@ -180,7 +180,15 @@ fn workspace_from_metadata(json: &Value) -> Result<Workspace> {
 fn packages_from_metadata(json: &Value) -> Result<Vec<Package>> {
     let members = string_ids(json, "workspace_members")?;
     let (out, matched) = collect_packages(packages_array(json)?, &members)?;
-    require_matched_members(&members, &matched)?;
+    finish_packages(out, &members, &matched)
+}
+
+fn finish_packages(
+    out: Vec<Package>,
+    members: &[String],
+    matched: &[String],
+) -> Result<Vec<Package>> {
+    require_matched_members(members, matched)?;
     ensure_unique_names(&out)?;
     Ok(out)
 }
