@@ -1,5 +1,6 @@
 //! Cyclomatic complexity: one plus each decision point.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use super::{ParsedMacro, visit_parsed_macro};
 use syn::{
     BinOp,

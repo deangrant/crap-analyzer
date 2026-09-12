@@ -279,3 +279,7 @@ fn functions_by_file(functions: &[LocatedFn]) -> HashMap<Vec<String>, Vec<&Funct
 #[cfg(test)]
 #[path = "join_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "join_path_tests.rs"]
+mod path_tests;

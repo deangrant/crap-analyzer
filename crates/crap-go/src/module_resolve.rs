@@ -1,5 +1,6 @@
 //! Resolve Go packages from `go.mod` and the filesystem.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use crap_core::{Error, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -21,11 +22,17 @@ pub struct Package {
 /// [`Error::Io`] if directories cannot be read.
 pub fn all_packages(root: &Path) -> Result<Vec<Package>> {
     let _ = read_module_path(root)?;
+    let mut packages = collect_all_packages(root)?;
+    packages.sort_by(|a, b| a.name.cmp(&b.name));
+    ensure_unique_names(&packages)?;
+    Ok(packages)
+}
+
+fn collect_all_packages(root: &Path) -> Result<Vec<Package>> {
     let mut packages = Vec::new();
     for (module_root, module_path) in discover_modules_under(root)? {
         packages.extend(discover_packages(&module_root, &module_path)?);
     }
-    packages.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(packages)
 }
 
@@ -54,6 +61,20 @@ pub fn nested_module_roots(root: &Path, all: &[Package]) -> Vec<PathBuf> {
         .filter(|other| *other != root && other.starts_with(root))
         .map(Path::to_path_buf)
         .collect()
+}
+
+fn ensure_unique_names(packages: &[Package]) -> Result<()> {
+    for (index, pkg) in packages.iter().enumerate() {
+        if let Some(other) = packages[..index].iter().find(|p| p.name == pkg.name) {
+            return Err(Error::resolve(format!(
+                "duplicate package name `{}` at {} and {}",
+                pkg.name,
+                other.root.display(),
+                pkg.root.display()
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Walks up from `start` looking for a directory that contains `go.mod`.

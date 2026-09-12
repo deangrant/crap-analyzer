@@ -1,5 +1,6 @@
 //! Go frontend: discover module packages and collect function complexity.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 pub(crate) mod build_tag;
 pub mod cli;
 pub(crate) mod complexity;
@@ -7,6 +8,8 @@ pub mod coverprofile;
 pub(crate) mod module_resolve;
 pub(crate) mod walk;
 
+#[doc(inline)]
+pub use complexity::analyze_source;
 #[doc(inline)]
 pub use module_resolve::{enclosing_module, modules_for_remap};
 

@@ -1,5 +1,6 @@
 //! Workspace metadata and feature-graph tests.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use super::*;
 
 fn require_ok<T: Default + std::fmt::Debug, E: std::fmt::Debug>(
@@ -316,4 +317,12 @@ fn cargo_override_requires_an_existing_file() {
     assert_eq!(cargo_from_override(None), PathBuf::from("cargo"));
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
     assert_eq!(cargo_from_override(Some(&manifest)), manifest);
+}
+
+#[test]
+fn duplicate_package_names_are_resolve_error() {
+    let pkgs = [empty_pkg("dup", "/tmp/a"), empty_pkg("dup", "/tmp/b")];
+    let err = ensure_unique_names(&pkgs);
+    assert!(err.is_err(), "{err:?}");
+    assert!(format!("{err:?}").contains("duplicate package name"));
 }

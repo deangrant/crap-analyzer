@@ -1,0 +1,10 @@
+TN:
+SF:packages/pkg_a/util.py
+DA:1,1
+DA:2,1
+end_of_record
+TN:
+SF:packages/pkg_b/util.py
+DA:1,0
+DA:2,0
+end_of_record

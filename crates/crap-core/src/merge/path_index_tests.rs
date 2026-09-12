@@ -1,5 +1,6 @@
 //! Path index lookup and package-hit tests.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use super::*;
 
 fn file(hits: u64) -> FileCoverage {

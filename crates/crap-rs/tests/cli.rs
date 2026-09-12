@@ -177,18 +177,18 @@ fn fixture_json_fail_above_sets_gate_failed() {
     let parsed = serde_json::from_str::<serde_json::Value>(&stdout);
     assert!(parsed.is_ok(), "{parsed:?}");
     let value = parsed.unwrap_or_default();
-    assert_eq!(value["schema_version"], 3);
-    assert_eq!(value["result"]["passed"], false);
+    assert_eq!(value["schema_version"], 4);
+    assert_eq!(value["result"]["threshold_cleared"], false);
     assert_eq!(value["result"]["gate_failed"], true);
     let exceeding = value["result"]["summary"]["exceeding"].as_u64().unwrap_or(0);
     assert!(exceeding >= 1, "{exceeding}");
 }
 
 fn assert_fixture_gate(value: &serde_json::Value) {
-    // Without --fail-above: passed/exceeds still reflect the threshold;
+    // Without --fail-above: threshold_cleared/exceeds still reflect the threshold;
     // gate_failed stays false and the process exits 0.
-    assert_eq!(value["schema_version"], 3);
-    assert_eq!(value["result"]["passed"], false);
+    assert_eq!(value["schema_version"], 4);
+    assert_eq!(value["result"]["threshold_cleared"], false);
     assert_eq!(value["result"]["gate_failed"], false);
     let exceeding = value["result"]["summary"]["exceeding"].as_u64().unwrap_or(0);
     assert!(exceeding >= 1, "{exceeding}");

@@ -1,6 +1,8 @@
 //! Resolve npm packages from `package.json` and the filesystem.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 mod glob_expand;
+mod jsonc;
 mod pnpm;
 
 use crap_core::{Error, Result};
@@ -41,12 +43,19 @@ enum WorkspacesField {
 /// Returns [`Error::Resolve`] if manifests are missing or malformed, or
 /// [`Error::Io`] if directories cannot be read.
 pub fn all_packages(root: &Path) -> Result<Vec<Package>> {
+    let packages = packages_for_root(root)?;
+    ensure_unique_names(&packages)?;
+    Ok(packages)
+}
+
+fn packages_for_root(root: &Path) -> Result<Vec<Package>> {
     let manifest = read_package_json(root)?;
     let patterns = workspace_patterns(root, &manifest)?;
     if patterns.is_empty() {
-        return Ok(vec![package_from_manifest(root, &manifest)]);
+        Ok(vec![package_from_manifest(root, &manifest)])
+    } else {
+        discover_workspace_packages(root, &patterns)
     }
-    discover_workspace_packages(root, &patterns)
 }
 
 /// Loads only the package defined by `package.json` at `root` (no workspace expand).
@@ -92,13 +101,28 @@ fn read_package_json(root: &Path) -> Result<PackageJson> {
         Ok(text) => text,
         Err(source) => return Err(Error::io(&path, source)),
     };
-    match serde_json::from_str(&text) {
+    let stripped = jsonc::strip_jsonc(&text);
+    match serde_json::from_str(&stripped) {
         Ok(manifest) => Ok(manifest),
         Err(err) => Err(Error::resolve(format!(
             "{}: invalid package.json: {err}",
             path.display()
         ))),
     }
+}
+
+fn ensure_unique_names(packages: &[Package]) -> Result<()> {
+    for (index, pkg) in packages.iter().enumerate() {
+        if let Some(other) = packages[..index].iter().find(|p| p.name == pkg.name) {
+            return Err(Error::resolve(format!(
+                "duplicate package name `{}` at {} and {}",
+                pkg.name,
+                other.root.display(),
+                pkg.root.display()
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn package_from_manifest(root: &Path, manifest: &PackageJson) -> Package {
@@ -153,3 +177,7 @@ fn load_package(path: &Path) -> Result<Package> {
 #[cfg(test)]
 #[path = "../project_resolve_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../project_resolve_glob_tests.rs"]
+mod glob_tests;

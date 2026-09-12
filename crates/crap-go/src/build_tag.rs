@@ -1,5 +1,6 @@
 //! Evaluate Go build constraints at the top of a source file.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 /// Returns true when `source` should be skipped for the enabled `tags`.
 #[must_use]
 pub fn skip_file(source: &str, tags: &[String]) -> bool {

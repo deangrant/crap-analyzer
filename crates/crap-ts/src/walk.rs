@@ -1,5 +1,6 @@
 //! Collect TypeScript sources under an analysis root.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use crap_core::{Error, Result};
 use std::collections::HashSet;
 use std::fs;

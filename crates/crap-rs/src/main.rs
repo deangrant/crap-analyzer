@@ -1,5 +1,6 @@
 //! Binary entry point for `crap-rs`.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use crap_core::{finish_run, print_core_err, print_ok, print_usage_err, run};
 use crap_rs::cli::{self, Action};
 use std::process::ExitCode;

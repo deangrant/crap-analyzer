@@ -1,0 +1,52 @@
+name: fuzz
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: fuzz-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz-smoke:
+    name: Fuzz smoke (30s each)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
+        with:
+          toolchain: nightly
+          components: llvm-tools-preview
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: Fuzz lcov_parse
+        working-directory: fuzz
+        run: cargo +nightly fuzz run lcov_parse -- -max_total_time=30
+
+      - name: Fuzz coverprofile_parse
+        working-directory: fuzz
+        run: cargo +nightly fuzz run coverprofile_parse -- -max_total_time=30
+
+      - name: Fuzz ts_analyze
+        working-directory: fuzz
+        run: cargo +nightly fuzz run ts_analyze -- -max_total_time=30
+
+      - name: Fuzz go_analyze
+        working-directory: fuzz
+        run: cargo +nightly fuzz run go_analyze -- -max_total_time=30
+
+      - name: Fuzz py_analyze
+        working-directory: fuzz
+        run: cargo +nightly fuzz run py_analyze -- -max_total_time=30

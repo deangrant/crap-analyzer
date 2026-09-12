@@ -15,7 +15,7 @@ This file covers:
 
 - Workspace crate roles
 - End-to-end analysis flow
-- `crap-core`, `crap-rs`, `crap-go`, and `crap-ts` module maps
+- `crap-core`, `crap-rs`, `crap-go`, `crap-ts`, and `crap-py` module maps
 - Hard invariants
 - Verification and agent layout
 
@@ -29,6 +29,8 @@ This file does **not** cover:
   [complexity-go](../skills/complexity-go/SKILL.md)
 - TypeScript LCOV, package walk, and visitor limits — see
   [complexity-ts](../skills/complexity-ts/SKILL.md)
+- Python LCOV, project walk, and visitor limits — see
+  [complexity-py](../skills/complexity-py/SKILL.md)
 - Full local vs CI steps — see [verify](../skills/verify/SKILL.md) and
   [AGENTS.md](../../AGENTS.md)
 
@@ -39,15 +41,15 @@ You produce coverage with the language toolchain (`cargo llvm-cov` → LCOV,
 frontend reads that file and the sources, then calls `crap-core` to join,
 score, and render.
 
-- `crap-rs` and `crap-ts` use `crap_core::run`, which parses LCOV from disk.
+- `crap-rs`, `crap-ts`, and `crap-py` use `crap_core::run`, which parses LCOV from disk.
 - `crap-go` parses coverprofile in the frontend, then calls
   `crap_core::run_with_coverage` with `FileCoverage` maps.
 
 Runtime bar:
 
 - Rust toolchain **1.94.0** ([`rust-toolchain.toml`](../../rust-toolchain.toml))
-- Virtual workspace members: `crap-core`, `crap-rs`, `crap-go`, and `crap-ts`
-  ([`Cargo.toml`](../../Cargo.toml))
+- Virtual workspace members: `crap-core`, `crap-rs`, `crap-go`, `crap-ts`, and
+  `crap-py` ([`Cargo.toml`](../../Cargo.toml))
 - `crap-core` parses **LCOV only** on disk. Frontends may load a native
   format into `FileCoverage` and call `run_with_coverage`.
 
@@ -65,6 +67,10 @@ flowchart LR
   SourcesTs[TS_TSX_sources] --> CrapTs[crap_ts]
   LcovTs --> CrapTs
   CrapTs --> Core
+  covPy[coverage_py] --> LcovPy[lcov_info_py]
+  SourcesPy[Python_sources] --> CrapPy[crap_py]
+  LcovPy --> CrapPy
+  CrapPy --> Core
   Core --> Report[text_or_json_report]
 ```
 
@@ -76,11 +82,12 @@ flowchart LR
 | [`crates/crap-rs`](../../crates/crap-rs) | Rust frontend: Cargo targets, source walk, complexity, and the `crap-rs` CLI |
 | [`crates/crap-go`](../../crates/crap-go) | Go frontend: modules, coverprofile, complexity, and the `crap-go` CLI |
 | [`crates/crap-ts`](../../crates/crap-ts) | TypeScript frontend: packages, LCOV, complexity, and the `crap-ts` CLI |
+| [`crates/crap-py`](../../crates/crap-py) | Python frontend: projects, LCOV, complexity, and the `crap-py` CLI |
 
-`crap-rs`, `crap-go`, and `crap-ts` depend on `crap-core`. Each implements
-[`Language`](../../crates/crap-core/src/language.rs). Rust and TypeScript use
-[`crap_core::run`](../../crates/crap-core/src/run.rs); Go uses
-[`crap_core::run_with_coverage`](../../crates/crap-core/src/run.rs) after
+`crap-rs`, `crap-go`, `crap-ts`, and `crap-py` depend on `crap-core`. Each
+implements [`Language`](../../crates/crap-core/src/language.rs). Rust,
+TypeScript, and Python use [`crap_core::run`](../../crates/crap-core/src/run.rs);
+Go uses [`crap_core::run_with_coverage`](../../crates/crap-core/src/run.rs) after
 parsing coverprofile locally.
 
 A later `crap` meta-binary could dispatch on `--lang`. The workspace does not
@@ -96,7 +103,7 @@ A frontend run proceeds as follows:
 1. Parse argv into `ScanRequest` and the language struct
    (frontend `cli` + thin `main`; shared short-circuits via `crap_core::process`).
 2. Load coverage into `HashMap<PathBuf, FileCoverage>`:
-   - `crap-rs` / `crap-ts`: `parse_lcov` inside `crap_core::run`
+   - `crap-rs` / `crap-ts` / `crap-py`: `parse_lcov` inside `crap_core::run`
    - `crap-go`: `parse_coverprofile`, remap import-path keys via
      modules under the analysis root, then `run_with_coverage`
 3. `Language::resolve_targets` selects package roots and nested skip paths.
@@ -106,7 +113,7 @@ A frontend run proceeds as follows:
 6. Score each function and sort worst-first. `--fail-above` trips when any
    score is strictly above the threshold.
 7. `crap_core::finish_run` renders via `report::render` (language tag
-   `"rust"`, `"go"`, or `"typescript"`) and maps the gate to exit codes.
+   `"rust"`, `"go"`, `"typescript"`, or `"python"`) and maps the gate to exit codes.
 
 ```mermaid
 flowchart TD
@@ -141,9 +148,10 @@ Pipeline entry: [`run`](../../crates/crap-core/src/run.rs) /
 
 **Risk bands** (Low / Acceptable / Moderate / High) classify the score. The
 **gate** (`--threshold`, `--fail-above`) is a separate pass/fail line. Do not
-read a Moderate band as “exceeds threshold.” JSON `result.passed` tracks
-threshold exceedances (`schema_version` 3); `gate_failed` / exit 1 still need
-`--fail-above`. Detail: [crap-scoring](../skills/crap-scoring/SKILL.md).
+read a Moderate band as “exceeds threshold.” JSON `result.threshold_cleared`
+tracks threshold exceedances (`schema_version` 4; renamed from `passed`);
+`gate_failed` / exit 1 still need `--fail-above`. Detail:
+[crap-scoring](../skills/crap-scoring/SKILL.md).
 
 ## `crap-rs` module map
 
@@ -155,7 +163,7 @@ Composition: [`main.rs`](../../crates/crap-rs/src/main.rs) parses CLI, calls
 | ---- | ---- | ---- |
 | CLI | [`cli.rs`](../../crates/crap-rs/src/cli.rs) | Flags → `ScanRequest` + `RustLanguage` (`--coverage` default `lcov.info`, alias `--lcov`) |
 | Workspace | [`workspace.rs`](../../crates/crap-rs/src/workspace.rs) | `cargo metadata`, members, feature graphs |
-| Walk | [`walk.rs`](../../crates/crap-rs/src/walk.rs) | `.rs` files; skip `target` / `.git`; package-root `tests` / `benches` / `examples`; nested members |
+| Walk | [`walk.rs`](../../crates/crap-rs/src/walk.rs) | `.rs` files; skip `target` / `.git`; package-root `tests` / `benches` / `examples`; `*_tests.rs` / `tests.rs`; nested members. Visitor also omits inline `mod tests` / `mod test`. |
 | Visitor | [`complexity/visitor.rs`](../../crates/crap-rs/src/complexity/visitor.rs) | Function spans and names |
 | Cyclomatic | [`complexity/cyclomatic.rs`](../../crates/crap-rs/src/complexity/cyclomatic.rs) | Decision-point count |
 | Cognitive | [`complexity/cognitive.rs`](../../crates/crap-rs/src/complexity/cognitive.rs) | Nesting-weighted count |
@@ -183,7 +191,7 @@ analyzer is Rust-only; no Go toolchain and no tree-sitter.
 | Area | Path | Role |
 | ---- | ---- | ---- |
 | CLI | [`cli.rs`](../../crates/crap-go/src/cli.rs) | Flags → `ScanRequest` + `GoLanguage` (`--coverage` default `cover.out`) |
-| Coverprofile | [`coverprofile.rs`](../../crates/crap-go/src/coverprofile.rs) | Go coverprofile → `FileCoverage`; remap import paths via `go.mod` |
+| Coverprofile | [`coverprofile.rs`](../../crates/crap-go/src/coverprofile.rs) | Go coverprofile → `FileCoverage` (`startLine..=endLine` fill; columns discarded); remap import paths via `go.mod` |
 | Module resolve | [`module_resolve.rs`](../../crates/crap-go/src/module_resolve.rs) | `go.mod` packages, enclosing module, and nested module skips |
 | Walk | [`walk.rs`](../../crates/crap-go/src/walk.rs) | `.go` files; skip `vendor`, `.git`, `testdata`, nested modules |
 | Build tags | [`build_tag.rs`](../../crates/crap-go/src/build_tag.rs) | Leading `//go:build` / `// +build` skip |
@@ -236,6 +244,48 @@ flowchart TB
 
 Detail: [complexity-ts](../skills/complexity-ts/SKILL.md).
 
+## `crap-py` module map
+
+Composition: [`main.rs`](../../crates/crap-py/src/main.rs) parses CLI, calls
+`crap_core::run`, then `crap_core::finish_run` with language `"python"`.
+[`PyLanguage`](../../crates/crap-py/src/lib.rs) implements `Language`. The
+analyzer is Rust-only; no Python runtime and no tree-sitter.
+
+| Area | Path | Role |
+| ---- | ---- | ---- |
+| CLI | [`cli.rs`](../../crates/crap-py/src/cli.rs) | Flags → `ScanRequest` + `PyLanguage` (`--coverage` default `lcov.info`) |
+| Project resolve | [`project_resolve/`](../../crates/crap-py/src/project_resolve/mod.rs) | `pyproject.toml` projects and uv workspace globs |
+| Walk | [`walk.rs`](../../crates/crap-py/src/walk.rs) | `.py`; skip venvs / caches / nested projects |
+| Visitor | [`complexity/visitor.rs`](../../crates/crap-py/src/complexity/visitor.rs) | Named defs / methods and indent suites |
+| Cyclomatic | [`complexity/cyclomatic.rs`](../../crates/crap-py/src/complexity/cyclomatic.rs) | Decision-point count |
+| Cognitive | [`complexity/cognitive.rs`](../../crates/crap-py/src/complexity/cognitive.rs) | Nesting-weighted count |
+
+```mermaid
+flowchart TB
+  Main[main] --> Cli[cli]
+  Cli --> Lang[PyLanguage]
+  Lang --> Project[project_resolve]
+  Lang --> Walk[walk]
+  Lang --> Visitor[complexity_visitor]
+  Main --> Run[crap_core_run]
+  Lang --> Run
+```
+
+Detail: [complexity-py](../skills/complexity-py/SKILL.md).
+
+## Frontend alignment checklist
+
+`crap-rs`, `crap-go`, `crap-ts`, and `crap-py` keep parallel walk / collect /
+CLI stacks on purpose (`dry-rs:ignore-file`). Do **not** extract a shared
+frontend crate to “dedupe” them. When you change one of the following in a
+single frontend, manually verify the same contract in the other three:
+
+- Walk roots, skip lists, and nested-project exclusion
+- Symlink follow rules (stay under walk root; skip cycles / out-of-root)
+- Fail-closed collect (one unreadable or structurally invalid file aborts)
+- Public CLI flag surface and defaults (`--coverage`, `--missing`,
+  `--fail-above`, `--threshold`, `--workspace` / `-p`)
+
 ## Hard invariants
 
 | Invariant | Why |
@@ -244,7 +294,7 @@ Detail: [complexity-ts](../skills/complexity-ts/SKILL.md).
 | Frontends implement `Language`; scoring stays in `crap-core` | A language crate must not fork the formula |
 | Risk bands never change the gate | Labels classify; `--fail-above` decides pass/fail |
 | Empty spans and missing paths use `--missing` | Do not treat a missing join as 100% coverage |
-| Workspace members are `crap-core`, `crap-rs`, `crap-go`, and `crap-ts` only | Do not add `cargo-crap` or other on-disk leftovers |
+| Workspace members are `crap-core`, `crap-rs`, `crap-go`, `crap-ts`, and `crap-py` only | Do not add `cargo-crap` or other on-disk leftovers |
 | No `#[allow]`; use `#[expect(..., reason = "...")]` | Matches workspace lints; see [rust-style-guide](../skills/rust-style-guide/SKILL.md) |
 
 ## Exit codes
@@ -253,7 +303,12 @@ Detail: [complexity-ts](../skills/complexity-ts/SKILL.md).
 | ---- | ------- |
 | `0` | Analysis finished; the gate did not trip |
 | `1` | Analysis finished; `--fail-above` tripped |
-| `2` | Usage, I/O, metadata, collect, or report error. Unreadable or structurally invalid source is a collect error: one failed file aborts the whole run for Rust, Go, and TypeScript. JSON serialize failures are a report error. |
+| `2` | Usage, I/O, metadata, collect, or report error. Unreadable or structurally invalid source is a collect error: one failed file aborts the whole run for Rust, Go, TypeScript, and Python. JSON serialize failures are a report error. |
+
+Fail-closed collect is intentional for CI: a broken or generated file must
+not be silently skipped. For large trees with partial breakage, narrow
+`--path` / `-p` and rely on walk skip lists (venvs, `node_modules`,
+`vendor`, nested package roots). There is no `--continue-on-collect-error`.
 
 Flag reference: [README.md](../../README.md).
 
@@ -262,8 +317,15 @@ Flag reference: [README.md](../../README.md).
 These CLIs are local analysis tools. They do not open network sockets or
 execute untrusted code. Walk follows file and directory symlinks only when
 the resolved target stays under the walk root; cycles and out-of-root links
-are skipped. Residual risk is local filesystem access under the chosen
-`--path`, not remote code execution.
+are skipped (intentional, covered by walk tests). Residual risk is local
+filesystem analysis under the chosen `--path` — not a sandbox; the same
+trust class as the host tree itself. There is no remote code execution
+surface beyond what the operator already trusts on that machine.
+
+`crap-rs` may invoke `$CARGO` when that env var names an existing file
+(Cargo’s usual metadata override). That path is not sandboxed: under local
+trust it can be any executable, so a hostile `$CARGO` runs at
+`cargo metadata` time — the same trust class as the build host itself.
 
 ## Verification and agent layout
 
@@ -276,6 +338,10 @@ Full local vs CI (fmt, Clippy, deny, audit, test, rustdoc, 100% lines, CRAP
 
 Then the coverage gates in [verify](../skills/verify/SKILL.md), or run
 `/verify`. The stop hook runs the same procedure on relevant dirty trees.
+Fuzz targets under [`fuzz/`](../../fuzz/) (nightly `cargo-fuzz`, CI smoke in
+[`.github/workflows/fuzz.yml`](../../.github/workflows/fuzz.yml)) are outside
+that loop. Auto-grown `fuzz/corpus/` is gitignored; smoke does not need
+checked-in seeds.
 
 Agent support lives under `.agents/`:
 

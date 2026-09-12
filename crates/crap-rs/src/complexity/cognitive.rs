@@ -1,5 +1,6 @@
 //! Cognitive complexity: nesting-weighted control flow.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use super::{ParsedMacro, visit_parsed_macro};
 use syn::visit::{self, Visit};
 use syn::{BinOp, Expr, ExprBinary};

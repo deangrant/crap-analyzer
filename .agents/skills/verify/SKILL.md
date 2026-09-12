@@ -45,9 +45,29 @@ from the failed step (or the top).
      --fail-above --threshold strict
    ```
 
+4. Frontend fixture gates (CI always runs these; optional locally):
+
+   ```bash
+   cargo run -p crap-go --locked -- \
+     --coverage crates/crap-go/tests/fixtures/sample/cover.out \
+     --path crates/crap-go/tests/fixtures/sample \
+     --fail-above --threshold strict
+   cargo run -p crap-ts --locked -- \
+     --coverage crates/crap-ts/tests/fixtures/sample/lcov.info \
+     --path crates/crap-ts/tests/fixtures/sample \
+     --fail-above --threshold strict
+   cargo run -p crap-py --locked -- \
+     --coverage crates/crap-py/tests/fixtures/sample/lcov.info \
+     --path crates/crap-py/tests/fixtures/sample \
+     --fail-above --threshold strict
+   ```
+
+   Workspace `/verify` stays Rust-centric (steps 1–3). Step 4 mirrors CI
+   frontend sample gates and is non-blocking for the stop hook.
+
 ## Rules
 
-- Do not claim the change is done until all three steps exit 0.
+- Do not claim the change is done until steps 1–3 exit 0.
 - Do not skip coverage because `check.sh` is green.
 - Do not change `--fail-under-lines` or `--threshold` to pass.
 - If llvm-cov is missing, install it; do not invent a weaker substitute.

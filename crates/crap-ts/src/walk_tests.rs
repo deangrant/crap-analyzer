@@ -1,3 +1,4 @@
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use super::{
     Walk, collect_ts_file, take_symlink, take_typed_entry, ts_files, visit_subdir, walk_entries,
 };

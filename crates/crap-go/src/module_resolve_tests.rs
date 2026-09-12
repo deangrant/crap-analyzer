@@ -1,11 +1,13 @@
 use super::{
-    all_packages, enclosing_module, import_path, modules_for_remap, nested_module_roots,
-    push_dir_entry, selected_packages, take_package_dir,
+    Package, all_packages, enclosing_module, ensure_unique_names, import_path, modules_for_remap,
+    nested_module_roots, push_dir_entry, selected_packages, take_package_dir,
 };
 use crap_core::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+// dry-rs:ignore-file. shared test temp helpers; parallel shape is intentional.
 
 fn require_ok<T: Default + std::fmt::Debug, E: std::fmt::Debug>(
     result: std::result::Result<T, E>,
@@ -195,4 +197,21 @@ mod unix {
         let _ = fs::remove_dir_all(&root);
         assert!(matches!(err, Err(Error::Io { .. })), "{err:?}");
     }
+}
+
+#[test]
+fn duplicate_package_names_are_resolve_error() {
+    let pkgs = [
+        Package {
+            name: "example.com/dup".into(),
+            root: PathBuf::from("/tmp/a"),
+        },
+        Package {
+            name: "example.com/dup".into(),
+            root: PathBuf::from("/tmp/b"),
+        },
+    ];
+    let err = ensure_unique_names(&pkgs);
+    assert!(err.is_err(), "{err:?}");
+    assert!(format!("{err:?}").contains("duplicate package name"));
 }

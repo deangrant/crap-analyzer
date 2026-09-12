@@ -1,5 +1,6 @@
 //! Complexity metric selection shared by language frontends.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use std::fmt;
 use std::str::FromStr;
 

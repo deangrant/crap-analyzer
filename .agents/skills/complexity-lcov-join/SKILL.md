@@ -42,12 +42,17 @@ Known failure modes from this project's history. Read before editing
 - Trait default methods: omit even when LCOV has line hits (visitor never
   emits them; llvm-cov often has no usable span).
 - Harness attrs: skip when the last path segment is `test` or `bench`
-  (including `#[tokio::test]`). Criterion / custom harnesses are not
-  detected.
+  (including `#[tokio::test]`). Inline `mod tests` / `mod test` subtrees
+  are also omitted (aligned with skipping `*_tests.rs` / `tests.rs` at
+  walk time). Criterion / custom harnesses are not detected; other
+  ungated helper modules can still be scored.
 - `#[cfg]`: skip unless the feature/host predicate is enabled. Unknown
-  predicates skip the item. Host `target_os` / `target_arch` use
-  `std::env::consts`; `debug_assertions` follows host `cfg!`, same as
-  `unix` / `windows`. No `--target` flag.
+  predicates skip the item. Host keys: `target_os`, `target_arch`,
+  `target_family`, `target_pointer_width`, `target_endian`, `target_env`,
+  `target_vendor` (compile-time host values; `target_os` / `target_arch`
+  use `std::env::consts`). Bare `unix` / `windows` / `debug_assertions`
+  follow host `cfg!`. Bare `test` / `proc_macro` stay false. No `--target`
+  flag.
 
 ## Empty instrumented spans
 
@@ -73,6 +78,9 @@ LCOV `SF:` paths and source paths may be absolute or relative.
   `crate_name` display name).
 - Absolute and relative spellings of the same suffix merge for join and
   nested-exclude grouping.
+- Nested-span exclusion is O(peers²) per file (each function vs peers on
+  that file); Go/TS/Python `masked_body` clones and blank-fills nested
+  ranges. Accepted for typical file sizes; monorepo walks stay sequential.
 - Leftover unresolved ties still apply `--missing`, but are marked
   `coverage_join: ambiguous` (JSON schema 3) and warned on stderr / in
   the text footer — distinct from ordinary missing coverage.

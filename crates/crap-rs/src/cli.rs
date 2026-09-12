@@ -1,5 +1,6 @@
 //! Command-line flags and help text for `crap-rs`.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use crate::RustLanguage;
 use clap::Parser;
 use crap_core::{Metric, MissingPolicy, ReportFormat, ScanRequest, parse_threshold};

@@ -7,7 +7,7 @@ import sys
 import tomllib
 from pathlib import Path
 
-SKIP_DIRS = {".git", "target"}
+SKIP_DIRS = {".git", "target", "fuzz"}
 
 
 def main() -> int:

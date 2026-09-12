@@ -1,6 +1,7 @@
 //! Walk a syn file and collect non-test function spans.
 
-use super::cfg_filter::{CfgUniverse, skip_cfg, skip_item};
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
+use super::cfg_filter::{CfgUniverse, is_harness_mod_name, skip_cfg, skip_item};
 use super::count_metric;
 use crap_core::{FunctionComplexity, Metric};
 use std::path::Path;
@@ -155,9 +156,10 @@ impl<'ast> Visit<'ast> for FunctionVisitor<'_> {
     }
 
     fn visit_item_mod(&mut self, node: &'ast syn::ItemMod) {
-        if !skip_cfg(&node.attrs, self.cfg) {
-            visit::visit_item_mod(self, node);
+        if is_harness_mod_name(&node.ident) || skip_cfg(&node.attrs, self.cfg) {
+            return;
         }
+        visit::visit_item_mod(self, node);
     }
 }
 

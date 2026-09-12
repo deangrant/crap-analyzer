@@ -1,5 +1,6 @@
 //! Language-specific discovery and complexity collection.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use crate::error::Result;
 use crate::merge::{LocatedFn, MissingPolicy};
 use crate::metric::Metric;

@@ -5,6 +5,12 @@ target/
 rustc-ice-*.txt
 **/mutants.out*/
 
+# Fuzz (outside workspace verify; corpus is local libFuzzer growth)
+fuzz/target/
+fuzz/artifacts/
+fuzz/coverage/
+fuzz/corpus/
+
 # Local tools
 .bacon-locations
 .bacon.socket
@@ -15,6 +21,7 @@ coverage/
 lcov.info
 !crates/crap-rs/tests/fixtures/sample/lcov.info
 !crates/crap-ts/tests/fixtures/**/lcov.info
+!crates/crap-py/tests/fixtures/**/lcov.info
 cobertura.xml
 tarpaulin-report.html
 

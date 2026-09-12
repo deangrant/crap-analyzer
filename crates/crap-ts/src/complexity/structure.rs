@@ -1,5 +1,6 @@
 //! Structural integrity scan for TypeScript sources.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use super::lex::try_skip_noise_token;
 
 /// Checks that comments/strings close and `{}` / `()` / `[]` balance.

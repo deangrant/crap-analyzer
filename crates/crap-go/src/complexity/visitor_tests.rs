@@ -1,3 +1,4 @@
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use super::{
     analyze_source, match_braces, skip_balanced, skip_noise, skip_signature, skip_typeish,
     try_parse_func,

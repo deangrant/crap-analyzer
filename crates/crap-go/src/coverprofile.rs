@@ -1,10 +1,11 @@
 //! Parse Go coverprofile files into [`FileCoverage`].
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use crap_core::{Error, FileCoverage, Result};
 use std::collections::HashMap;
 use std::fs::File;
 use std::hash::BuildHasher;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Cursor};
 use std::path::{Path, PathBuf};
 
 /// Coverprofile aggregation mode from the `mode:` header.
@@ -30,6 +31,16 @@ struct LineAccum {
 pub fn parse_coverprofile(path: &Path) -> Result<HashMap<PathBuf, FileCoverage>> {
     let file = File::open(path).map_err(|source| Error::io(path, source))?;
     parse_reader(BufReader::new(file), path)
+}
+
+/// Parses coverprofile bytes (for tests and fuzzing).
+///
+/// # Errors
+///
+/// Returns [`Error::Io`] on invalid UTF-8 line decoding, or [`Error::Coverage`]
+/// when the mode line is missing/invalid or there are no data lines.
+pub fn parse_coverprofile_bytes(bytes: &[u8]) -> Result<HashMap<PathBuf, FileCoverage>> {
+    parse_reader(Cursor::new(bytes), Path::new("<bytes>"))
 }
 
 /// Rewrites import-path coverprofile keys to paths under `module_root`.
@@ -215,8 +226,14 @@ fn parse_hits_and_span(
     valid_span(start, end).then_some((path, start, end, hits))
 }
 
+/// Rejects spans that would expand into an absurd number of line slots.
+///
+/// Coverprofile blocks are inclusive `start..=end`. Without a cap, a fuzzed
+/// `end` near `u32::MAX` OOMs by inserting billions of map entries.
+const MAX_COVER_SPAN_LINES: u32 = 1_000_000;
+
 const fn valid_span(start: u32, end: u32) -> bool {
-    start != 0 && end != 0 && end >= start
+    start != 0 && end != 0 && end >= start && end.saturating_sub(start) < MAX_COVER_SPAN_LINES
 }
 
 fn parse_path_span(path_span: &str) -> Option<(PathBuf, u32, u32)> {

@@ -5,6 +5,7 @@ pub mod error;
 pub mod language;
 pub mod merge;
 pub mod metric;
+pub mod path_glob;
 pub mod process;
 pub mod report;
 pub mod score;
@@ -13,7 +14,7 @@ pub mod threshold;
 mod run;
 
 #[doc(inline)]
-pub use coverage::FileCoverage;
+pub use coverage::{FileCoverage, parse_lcov, parse_lcov_bytes};
 #[doc(inline)]
 pub use error::{Error, Result};
 #[doc(inline)]
@@ -31,7 +32,7 @@ pub use process::{
     reject_summary_json,
 };
 #[doc(inline)]
-pub use report::render;
+pub use report::{render, write_report};
 #[doc(inline)]
 pub use run::{RunResult, run, run_with_coverage};
 #[doc(inline)]

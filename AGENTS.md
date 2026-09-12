@@ -24,16 +24,17 @@ KPI.
 | Rust frontend | `crates/crap-rs` | Cargo targets, walk, complexity, and the `crap-rs` CLI |
 | Go frontend | `crates/crap-go` | Go modules, coverprofile, complexity, and the `crap-go` CLI |
 | TypeScript frontend | `crates/crap-ts` | package.json, LCOV, complexity, and the `crap-ts` CLI |
+| Python frontend | `crates/crap-py` | pyproject.toml, LCOV, complexity, and the `crap-py` CLI |
 
 **Hard invariants (never violate):**
 
 - `crap-core` parses LCOV only on disk. Frontends may load their native format into
-  `FileCoverage` via `run_with_coverage` (`crap-rs` / `crap-ts` LCOV via `run`,
+  `FileCoverage` via `run_with_coverage` (`crap-rs` / `crap-ts` / `crap-py` LCOV via `run`,
   `crap-go` coverprofile).
 - Frontends implement `Language`; scoring stays in `crap-core`.
 - Risk bands classify the score. They never change the `--fail-above` gate.
 - Empty spans and missing paths use `--missing`. Do not treat a missing join as 100% coverage.
-- Workspace members are `crap-core`, `crap-rs`, `crap-go`, and `crap-ts` only.
+- Workspace members are `crap-core`, `crap-rs`, `crap-go`, `crap-ts`, and `crap-py` only.
 - No `#[allow]`. Suppressions must be `#[expect(..., reason = "...")]`.
 
 **Runtime:** Rust toolchain `1.94.0`. Lean pipeline: `./scripts/check.sh`. Full local vs
@@ -76,6 +77,10 @@ you opt them in. This file tells you **when to load** skills and docs; rules sta
 - Adding a coverprofile (or other non-LCOV) parser in `crap-core`, or documenting on-disk leftovers such as `cargo-crap`.
 - Using `#[allow]` or silencing Clippy complexity instead of shrinking the function.
 - Claiming `/verify` or CI passed without running the commands.
+- Changing walk, symlink, skip-list, fail-closed collect, or CLI surface in
+  one frontend without checking the same contract in the others — see the
+  [Frontend alignment checklist](.agents/docs/ARCHITECTURE.md#frontend-alignment-checklist)
+  (`dry-rs:ignore-file` ports stay separate on purpose).
 
 ## Workflow
 
@@ -105,6 +110,7 @@ Read the matching skill **before** editing that area. Load only what the task ne
 | Visitor, empty spans, path ranking, LCOV join | [`complexity-lcov-join`](.agents/skills/complexity-lcov-join/) |
 | Go coverprofile, visitor, build tags, module walk | [`complexity-go`](.agents/skills/complexity-go/) |
 | TypeScript LCOV, visitor, package.json walk | [`complexity-ts`](.agents/skills/complexity-ts/) |
+| Python LCOV, visitor, pyproject.toml walk | [`complexity-py`](.agents/skills/complexity-py/) |
 | Rust style, docs, naming, API conventions | [`rust-style-guide`](.agents/skills/rust-style-guide/) |
 | Traits, modules, dependency direction | [`rust-solid-design`](.agents/skills/rust-solid-design/) |
 | Local vs CI verify or a stop-hook follow-up | [`verify`](.agents/skills/verify/) |
@@ -153,6 +159,7 @@ task-specific guidance and should not be loaded unless relevant.
 - [`.agents/skills/complexity-lcov-join/`](.agents/skills/complexity-lcov-join/) — visitor attribution, empty spans, path ranking
 - [`.agents/skills/complexity-go/`](.agents/skills/complexity-go/) — Go coverprofile, visitor, build tags, module walk
 - [`.agents/skills/complexity-ts/`](.agents/skills/complexity-ts/) — TypeScript LCOV, visitor, package.json walk
+- [`.agents/skills/complexity-py/`](.agents/skills/complexity-py/) — Python LCOV, visitor, pyproject.toml walk
 
 ## Commands
 

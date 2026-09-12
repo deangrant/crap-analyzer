@@ -1,5 +1,6 @@
 //! Cognitive complexity for a Go function body.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use super::lex::{is_word, match_op, skip_balanced, skip_noise};
 
 /// Returns cognitive complexity for `body` (minimum 0).

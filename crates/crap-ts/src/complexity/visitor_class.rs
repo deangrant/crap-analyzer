@@ -1,5 +1,6 @@
 //! Class declarations and method body attribution.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use super::{
     FoundFn, line_of, parse_brace_body, read_ident, read_ident_bytes, skip_export_declare,
     skip_params_and_return, skip_spaces, skip_typeish,

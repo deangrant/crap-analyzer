@@ -34,7 +34,10 @@ empty spans apply after coverprofile is in `FileCoverage`).
 - Data line shape:
   `file.go:startLine.startCol,endLine.endCol stmts hits`.
 - Expand each block across `startLine..=endLine` into `FileCoverage.lines`
-  (columns are discarded). When multiple blocks touch the same line, the
+  (columns are discarded). Intermediate non-statement lines inside a
+  block become instrumented; that can inflate or dilute function coverage
+  versus statement-accurate tools — accepted product Limit; treat scores
+  as a change-risk signal. When multiple blocks touch the same line, the
   line is **uncovered** if any intersecting block has 0 hits (pessimistic
   shared-line merge); otherwise `set` uses max(1) and `count`/`atomic`
   saturating-add positive hits.
@@ -93,8 +96,9 @@ increment.
 
 Limits: approximate by design — accepted product Limit; text scanner, not
 `go/ast`. Scores can diverge from `go/ast`-based tools; treat them as a
-change-risk signal for reviewers, not an authoritative complexity audit.
-Structural failures fail the run; structural balance is not language
-validity — nonsense tokens with balanced braces still collect. Valid
-generics edge cases and unusual syntax may still under-count. Prefer
+change-risk signal for reviewers, not an audit-grade complexity metric.
+Structural failures fail the run (one bad file aborts the collect); scope
+large trees with `--path` / `-p` and walk skip lists. Structural balance is
+not language validity — nonsense tokens with balanced braces still collect.
+Valid generics edge cases and unusual syntax may still under-count. Prefer
 fixing the Rust visitor over adding a Go runtime dependency.
