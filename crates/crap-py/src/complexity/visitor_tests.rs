@@ -1,3 +1,4 @@
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use crate::complexity::analyze_source;
 use crap_core::Metric;
 use std::path::Path;

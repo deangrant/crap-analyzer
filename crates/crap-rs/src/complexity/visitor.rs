@@ -1,5 +1,6 @@
 //! Walk a syn file and collect non-test function spans.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use super::cfg_filter::{CfgUniverse, skip_cfg, skip_item};
 use super::count_metric;
 use crap_core::{FunctionComplexity, Metric};

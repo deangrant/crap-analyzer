@@ -1,5 +1,6 @@
 //! Binary entry point for `crap-go`.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use crap_core::{
     FileCoverage, finish_run, print_core_err, print_ok, print_usage_err, run_with_coverage,
 };

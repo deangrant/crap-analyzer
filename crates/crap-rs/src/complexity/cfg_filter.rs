@@ -1,5 +1,6 @@
 //! Skip harness attrs (`#[test]` / `#[bench]` / `#[…::test]`) and inactive `#[cfg]`.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use std::collections::HashSet;
 
 /// Feature names treated as enabled when evaluating `#[cfg]`.

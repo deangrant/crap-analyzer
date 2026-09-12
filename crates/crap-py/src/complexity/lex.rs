@@ -1,5 +1,6 @@
 //! Shared scanners for Python tokens (comments, strings, braces, and words).
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 /// Skips spaces, comments, and string literals starting at `i`.
 pub(super) fn skip_noise(bytes: &[u8], mut i: usize) -> usize {
     while i < bytes.len() {

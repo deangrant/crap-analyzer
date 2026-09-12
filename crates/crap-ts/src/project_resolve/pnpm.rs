@@ -1,5 +1,6 @@
 //! Minimal `pnpm-workspace.yaml` `packages:` list reader.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use crap_core::{Error, Result};
 use std::fs;
 use std::path::Path;

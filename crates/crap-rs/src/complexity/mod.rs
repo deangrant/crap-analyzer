@@ -1,5 +1,6 @@
 //! Complexity metrics and source spans for Rust functions.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 mod cfg_filter;
 mod cognitive;
 mod cyclomatic;

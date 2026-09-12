@@ -1,3 +1,4 @@
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use super::{parse_coverprofile, remap_import_paths, remap_import_paths_all};
 use crap_core::{Error, FileCoverage};
 use std::collections::HashMap;

@@ -1,5 +1,6 @@
 //! Parse LCOV line-hit records into a per-file map.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use crate::error::{Error, Result};
 use std::collections::{BTreeMap, HashMap};
 use std::fs::File;

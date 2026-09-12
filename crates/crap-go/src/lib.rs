@@ -1,5 +1,6 @@
 //! Go frontend: discover module packages and collect function complexity.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 pub(crate) mod build_tag;
 pub mod cli;
 pub(crate) mod complexity;

@@ -5,6 +5,7 @@ pub mod error;
 pub mod language;
 pub mod merge;
 pub mod metric;
+pub mod path_glob;
 pub mod process;
 pub mod report;
 pub mod score;

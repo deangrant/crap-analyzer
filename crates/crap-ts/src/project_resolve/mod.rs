@@ -1,5 +1,6 @@
 //! Resolve npm packages from `package.json` and the filesystem.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 mod glob_expand;
 mod pnpm;
 

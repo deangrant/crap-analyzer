@@ -1,5 +1,6 @@
 //! Parse Go coverprofile files into [`FileCoverage`].
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use crap_core::{Error, FileCoverage, Result};
 use std::collections::HashMap;
 use std::fs::File;

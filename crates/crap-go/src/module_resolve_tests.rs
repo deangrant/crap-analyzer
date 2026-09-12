@@ -7,6 +7,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+// dry-rs:ignore-file. shared test temp helpers; parallel shape is intentional.
+
 fn require_ok<T: Default + std::fmt::Debug, E: std::fmt::Debug>(
     result: std::result::Result<T, E>,
 ) -> T {

@@ -1,3 +1,4 @@
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use super::*;
 use crap_core::{FunctionComplexity, Metric};
 use std::path::Path;

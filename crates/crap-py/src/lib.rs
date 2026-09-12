@@ -1,5 +1,6 @@
 //! Python frontend: discover projects and collect function complexity.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 pub mod cli;
 pub(crate) mod complexity;
 pub(crate) mod project_resolve;

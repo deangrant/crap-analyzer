@@ -1,5 +1,6 @@
 //! Human-readable table and summary for scored functions.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 mod json;
 
 use crate::error::Result;

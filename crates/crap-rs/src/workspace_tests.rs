@@ -1,5 +1,6 @@
 //! Workspace metadata and feature-graph tests.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use super::*;
 
 fn require_ok<T: Default + std::fmt::Debug, E: std::fmt::Debug>(

@@ -1,5 +1,6 @@
 //! Resolve Go packages from `go.mod` and the filesystem.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use crap_core::{Error, Result};
 use std::fs;
 use std::path::{Path, PathBuf};

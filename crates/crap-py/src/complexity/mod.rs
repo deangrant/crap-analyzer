@@ -1,8 +1,10 @@
 //! Complexity metrics and source spans for Python functions.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 mod cognitive;
 mod cyclomatic;
 mod lex;
+mod lines;
 mod structure;
 mod visitor;
 

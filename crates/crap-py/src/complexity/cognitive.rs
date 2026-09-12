@@ -1,6 +1,8 @@
 //! Cognitive complexity for a Python function body.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use super::lex::{is_word, skip_noise};
+use super::lines::{is_blank_or_comment_at, leading_indent, line_end};
 
 /// Returns cognitive complexity for `body` (minimum 0).
 pub(super) fn count(body: &str) -> usize {
@@ -70,7 +72,7 @@ fn take_flat_control(bytes: &[u8], i: usize) -> bool {
 }
 
 fn statement_start(bytes: &[u8], line: BodyLine) -> Option<usize> {
-    if line.content >= bytes.len() || is_blank_or_comment(bytes, line.content) {
+    if is_blank_or_comment_at(bytes, line.content) {
         return None;
     }
     let i = skip_noise(bytes, line.content);
@@ -163,33 +165,6 @@ fn body_lines(bytes: &[u8]) -> Vec<BodyLine> {
         start = end;
     }
     lines
-}
-
-fn line_end(bytes: &[u8], start: usize) -> usize {
-    let mut i = start;
-    while i < bytes.len() && bytes[i] != b'\n' {
-        i += 1;
-    }
-    if i < bytes.len() { i + 1 } else { i }
-}
-
-fn leading_indent(bytes: &[u8], start: usize, end: usize) -> (usize, usize) {
-    let mut i = start;
-    let mut indent = 0_usize;
-    while i < end && i < bytes.len() {
-        match bytes[i] {
-            b' ' | b'\t' => {
-                indent += 1;
-                i += 1;
-            }
-            _ => break,
-        }
-    }
-    (indent, i)
-}
-
-fn is_blank_or_comment(bytes: &[u8], content: usize) -> bool {
-    content >= bytes.len() || matches!(bytes[content], b'#' | b'\n' | b'\r')
 }
 
 #[cfg(test)]

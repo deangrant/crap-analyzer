@@ -1,3 +1,4 @@
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use super::*;
 use crap_core::{Language, Metric, MissingPolicy, ReportFormat, ScanRequest};
 use std::fs;

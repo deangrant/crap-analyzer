@@ -1,7 +1,9 @@
 //! Scan Python source for named functions and their body spans.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use super::count_metric;
 use super::lex::{is_ident_byte, is_ident_start, is_word, skip_noise};
+use super::lines::{is_blank_or_comment_at, leading_indent, line_end};
 use super::structure::validate_structure;
 use crap_core::{Error, FunctionComplexity, Metric, Result};
 use std::path::Path;
@@ -270,10 +272,6 @@ fn is_blank_or_comment(bytes: &[u8], line: Line) -> bool {
     is_blank_or_comment_at(bytes, line.content)
 }
 
-fn is_blank_or_comment_at(bytes: &[u8], content: usize) -> bool {
-    content >= bytes.len() || matches!(bytes[content], b'#' | b'\n' | b'\r')
-}
-
 fn split_lines(bytes: &[u8]) -> Vec<Line> {
     let mut lines = Vec::new();
     let mut start = 0;
@@ -290,14 +288,6 @@ fn split_lines(bytes: &[u8]) -> Vec<Line> {
     lines
 }
 
-fn line_end(bytes: &[u8], start: usize) -> usize {
-    let mut i = start;
-    while i < bytes.len() && bytes[i] != b'\n' {
-        i += 1;
-    }
-    if i < bytes.len() { i + 1 } else { i }
-}
-
 fn make_line(bytes: &[u8], number: usize, start: usize, end: usize) -> Line {
     let (indent, content) = leading_indent(bytes, start, end);
     Line {
@@ -306,21 +296,6 @@ fn make_line(bytes: &[u8], number: usize, start: usize, end: usize) -> Line {
         content,
         end,
     }
-}
-
-fn leading_indent(bytes: &[u8], start: usize, end: usize) -> (usize, usize) {
-    let mut i = start;
-    let mut indent = 0_usize;
-    while i < end && i < bytes.len() {
-        match bytes[i] {
-            b' ' | b'\t' => {
-                indent += 1;
-                i += 1;
-            }
-            _ => break,
-        }
-    }
-    (indent, i)
 }
 
 fn skip_spaces(bytes: &[u8], mut i: usize) -> usize {

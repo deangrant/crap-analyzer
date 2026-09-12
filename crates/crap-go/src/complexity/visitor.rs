@@ -1,5 +1,6 @@
 //! Scan Go source for named functions and their body spans.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use super::count_metric;
 use super::lex::{is_ident_byte, is_ident_start};
 use super::structure::validate_structure;

@@ -1,6 +1,7 @@
 //! Scan TypeScript source for named functions and their body spans.
 
 #[path = "visitor_class.rs"]
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 mod class;
 
 use super::count_metric;

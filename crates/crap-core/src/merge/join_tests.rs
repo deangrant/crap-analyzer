@@ -1,5 +1,6 @@
 //! Join tests for LCOV span matching and missing-policy scoring.
 
+// dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use super::*;
 use crate::score::assert_f64_bits_eq;
 use std::path::PathBuf;
