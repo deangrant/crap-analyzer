@@ -315,7 +315,9 @@ Full local vs CI (also 100% lines and CRAP `--threshold strict`):
 `/verify`.
 
 Fuzz smoke (`fuzz/` + [`.github/workflows/fuzz.yml`](.github/workflows/fuzz.yml))
-uses nightly `cargo-fuzz` and is **outside** the workspace `/verify` loop:
+uses nightly `cargo-fuzz` and is **outside** the workspace `/verify` loop.
+LibFuzzer corpus growth under `fuzz/corpus/` is local and gitignored; CI smoke
+does not rely on checked-in seeds:
 
 ```bash
 cargo +nightly fuzz run lcov_parse -- -max_total_time=30

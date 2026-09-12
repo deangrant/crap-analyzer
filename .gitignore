@@ -5,10 +5,11 @@ target/
 rustc-ice-*.txt
 **/mutants.out*/
 
-# Fuzz (outside workspace verify; keep seed corpora)
+# Fuzz (outside workspace verify; corpus is local libFuzzer growth)
 fuzz/target/
 fuzz/artifacts/
 fuzz/coverage/
+fuzz/corpus/
 
 # Local tools
 .bacon-locations

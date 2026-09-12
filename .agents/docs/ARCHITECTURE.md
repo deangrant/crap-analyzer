@@ -340,7 +340,8 @@ Then the coverage gates in [verify](../skills/verify/SKILL.md), or run
 `/verify`. The stop hook runs the same procedure on relevant dirty trees.
 Fuzz targets under [`fuzz/`](../../fuzz/) (nightly `cargo-fuzz`, CI smoke in
 [`.github/workflows/fuzz.yml`](../../.github/workflows/fuzz.yml)) are outside
-that loop.
+that loop. Auto-grown `fuzz/corpus/` is gitignored; smoke does not need
+checked-in seeds.
 
 Agent support lives under `.agents/`:
 

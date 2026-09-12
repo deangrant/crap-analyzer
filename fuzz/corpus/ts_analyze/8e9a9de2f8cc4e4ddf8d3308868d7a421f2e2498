@@ -1,1 +1,0 @@
-funcino f(x: number) { if ( ) { return x; } }
