@@ -88,7 +88,20 @@ fn class_without_name_is_ignored() {
 fn def_without_name_or_colon_is_ignored() {
     assert!(names("def \n").is_empty());
     assert!(names("def foo\n").is_empty());
+    assert!(names("def foo").is_empty());
     assert!(names("def foo #").is_empty());
+}
+
+#[test]
+fn find_def_colon_stray_closer_at_depth_zero() {
+    assert_eq!(super::find_def_colon(b"]:", 0), Some(1));
+}
+
+#[test]
+fn line_index_at_past_eof_uses_last_line() {
+    let lines = super::split_lines(b"def f():\n    pass\n");
+    let last = lines.len() - 1;
+    assert_eq!(super::line_index_at(&lines, usize::MAX), last);
 }
 
 #[test]
@@ -100,6 +113,41 @@ fn typed_params_and_brackets_in_signature() {
 #[test]
 fn type_params_brackets_in_signature() {
     let src = "def f[T](x: T) -> T:\n    pass\n";
+    assert_eq!(names(src), vec!["f".to_owned()]);
+}
+
+#[test]
+fn multiline_signature_emits_row_and_suite_span() {
+    let src = concat!("def foo(\n", "    a,\n", ") -> None:\n", "    pass\n",);
+    let parsed = analyze_source(Path::new("t.py"), src, Metric::Cyclomatic);
+    assert!(parsed.is_ok(), "{parsed:?}");
+    let f = &parsed.unwrap_or_default()[0];
+    assert_eq!(f.name, "foo");
+    assert_eq!(f.start_line, 1);
+    assert_eq!(f.end_line, 4);
+}
+
+#[test]
+fn multiline_async_method_under_class() {
+    let src = concat!(
+        "class Box:\n",
+        "    async def method(\n",
+        "        self,\n",
+        "        x: int,\n",
+        "    ) -> int:\n",
+        "        return x\n",
+    );
+    let parsed = analyze_source(Path::new("t.py"), src, Metric::Cyclomatic);
+    assert!(parsed.is_ok(), "{parsed:?}");
+    let f = &parsed.unwrap_or_default()[0];
+    assert_eq!(f.name, "Box.method");
+    assert_eq!(f.start_line, 2);
+    assert_eq!(f.end_line, 6);
+}
+
+#[test]
+fn multiline_type_params_in_signature() {
+    let src = concat!("def f[T](\n", "    x: T,\n", ") -> T:\n", "    return x\n");
     assert_eq!(names(src), vec!["f".to_owned()]);
 }
 

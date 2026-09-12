@@ -171,7 +171,7 @@ fn try_take_def(
         return false;
     };
     let qualified = qualify_name(class_stack, line.indent, &name);
-    let (end_line, body_hi) = suite_end(bytes, lines, index, line.indent, colon + 1);
+    let (end_line, body_hi) = suite_end(bytes, lines, line.indent, colon + 1);
     out.push(FoundFn {
         name: qualified,
         start_line: line.number,
@@ -189,7 +189,7 @@ fn parse_def_header(source: &str, bytes: &[u8], line: Line) -> Option<(usize, St
     }
     let after_kw = skip_def_keyword(bytes, j)?;
     let (name, after_name) = read_ident(source, bytes, after_kw)?;
-    let colon = find_def_colon(bytes, after_name, line.end)?;
+    let colon = find_def_colon(bytes, after_name)?;
     Some((j, name, colon))
 }
 
@@ -212,44 +212,59 @@ fn qualify_name(class_stack: &[(usize, String)], indent: usize, name: &str) -> S
     format!("{class_name}.{name}")
 }
 
-fn find_def_colon(bytes: &[u8], start: usize, line_end: usize) -> Option<usize> {
+fn find_def_colon(bytes: &[u8], start: usize) -> Option<usize> {
     let mut i = start;
-    let end = line_end.min(bytes.len());
-    while i < end {
+    let mut depth = 0_usize;
+    while i < bytes.len() {
         i = skip_noise(bytes, i);
-        if i >= end {
+        if i >= bytes.len() {
             return None;
         }
-        if bytes[i] == b':' {
-            return Some(i);
+        match sig_byte(bytes[i], depth) {
+            SigAction::Found => return Some(i),
+            SigAction::Stop => return None,
+            SigAction::Open => depth += 1,
+            SigAction::Close => depth = depth.saturating_sub(1),
+            SigAction::Other => {}
         }
-        i = skip_signature_group(bytes, i);
+        i += 1;
     }
     None
 }
 
-fn skip_signature_group(bytes: &[u8], i: usize) -> usize {
-    match bytes[i] {
-        b'(' => super::lex::skip_balanced(bytes, i, b'(', b')').unwrap_or(i + 1),
-        b'[' => super::lex::skip_balanced(bytes, i, b'[', b']').unwrap_or(i + 1),
-        _ => i + 1,
+#[derive(Clone, Copy)]
+enum SigAction {
+    Found,
+    Stop,
+    Open,
+    Close,
+    Other,
+}
+
+const fn sig_byte(b: u8, depth: usize) -> SigAction {
+    match b {
+        b':' if depth == 0 => SigAction::Found,
+        b'\n' if depth == 0 => SigAction::Stop,
+        b'(' | b'[' => SigAction::Open,
+        b')' | b']' => SigAction::Close,
+        _ => SigAction::Other,
     }
 }
 
 fn suite_end(
     bytes: &[u8],
     lines: &[Line],
-    def_index: usize,
     def_indent: usize,
     after_colon: usize,
 ) -> (usize, usize) {
-    let def_line = lines[def_index];
-    if has_inline_suite(bytes, after_colon, def_line.end) {
-        return (def_line.number, def_line.end.min(bytes.len()));
+    let colon_index = line_index_at(lines, after_colon - 1);
+    let colon_line = lines[colon_index];
+    if has_inline_suite(bytes, after_colon, colon_line.end) {
+        return (colon_line.number, colon_line.end.min(bytes.len()));
     }
-    let mut end_line = def_line.number;
-    let mut body_hi = def_line.end.min(bytes.len());
-    for line in lines.iter().skip(def_index + 1) {
+    let mut end_line = colon_line.number;
+    let mut body_hi = colon_line.end.min(bytes.len());
+    for line in lines.iter().skip(colon_index + 1) {
         if is_blank_or_comment(bytes, *line) {
             body_hi = line.end.min(bytes.len());
             continue;
@@ -261,6 +276,13 @@ fn suite_end(
         body_hi = line.end.min(bytes.len());
     }
     (end_line, body_hi)
+}
+
+fn line_index_at(lines: &[Line], offset: usize) -> usize {
+    lines
+        .iter()
+        .position(|line| offset < line.end)
+        .unwrap_or_else(|| lines.len().saturating_sub(1))
 }
 
 fn has_inline_suite(bytes: &[u8], after_colon: usize, line_end: usize) -> bool {

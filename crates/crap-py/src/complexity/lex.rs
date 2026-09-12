@@ -133,42 +133,6 @@ fn after_quoted_byte(bytes: &[u8], i: usize) -> Option<usize> {
     (i + 1 < bytes.len()).then_some(i + 2)
 }
 
-/// Skips a balanced `open_ch`…`close_ch` pair starting at `open`.
-pub(super) fn skip_balanced(bytes: &[u8], open: usize, open_ch: u8, close_ch: u8) -> Option<usize> {
-    if bytes.get(open) != Some(&open_ch) {
-        return None;
-    }
-    scan_balanced(bytes, open, open_ch, close_ch)
-}
-
-fn scan_balanced(bytes: &[u8], open: usize, open_ch: u8, close_ch: u8) -> Option<usize> {
-    let mut depth = 0_i32;
-    let mut i = open;
-    while i < bytes.len() {
-        i = skip_noise(bytes, i);
-        if i >= bytes.len() {
-            return None;
-        }
-        if let Some(end) = step_balance(&mut depth, bytes[i], open_ch, close_ch, i) {
-            return Some(end);
-        }
-        i += 1;
-    }
-    None
-}
-
-fn step_balance(depth: &mut i32, b: u8, open_ch: u8, close_ch: u8, i: usize) -> Option<usize> {
-    if b == open_ch {
-        *depth += 1;
-        return None;
-    }
-    if b != close_ch {
-        return None;
-    }
-    *depth -= 1;
-    (*depth == 0).then_some(i + 1)
-}
-
 /// Returns whether `word` is a whole identifier at `i`.
 pub(super) fn is_word(bytes: &[u8], i: usize, word: &[u8]) -> bool {
     bytes.get(i..i + word.len()) == Some(word)

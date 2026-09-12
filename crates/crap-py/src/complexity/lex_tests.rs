@@ -39,14 +39,6 @@ fn try_skip_unclosed_string_errors() {
 }
 
 #[test]
-fn skip_balanced_parens() {
-    assert_eq!(skip_balanced(b"(a(b))", 0, b'(', b')'), Some(6));
-    assert_eq!(skip_balanced(b"(a", 0, b'(', b')'), None);
-    assert_eq!(skip_balanced(b"x", 0, b'(', b')'), None);
-    assert_eq!(skip_balanced(b"(#", 0, b'(', b')'), None);
-}
-
-#[test]
 fn skip_string_prefix_without_quote_reaches_eof() {
     assert_eq!(skip_string(b"rx", 0), 2);
 }
