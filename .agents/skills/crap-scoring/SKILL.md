@@ -64,5 +64,7 @@ component); Go import-path path suffix.
 
 1. `cargo llvm-cov … --fail-under-lines 100`
 2. `crap-rs --coverage lcov.info --path . --workspace --all-features --fail-above --threshold strict`
+3. Fixture CRAP gates (`--fail-above --threshold strict`) on each frontend
+   sample under `crates/crap-{go,ts,py}/tests/fixtures/sample`
 
 Do not weaken those flags to green a job. Remediate coverage or complexity.

@@ -3,7 +3,7 @@
 // dry-rs:ignore-file. intentional parallel language frontend; keep separate.
 use super::count_metric;
 use super::lex::{is_ident_byte, is_ident_start, is_word, skip_noise};
-use super::lines::{is_blank_or_comment_at, leading_indent, line_end};
+use super::lines::{is_blank_or_comment_at, leading_indent, line_end, validate_indents};
 use super::structure::validate_structure;
 use crap_core::{Error, FunctionComplexity, Metric, Result};
 use std::path::Path;
@@ -23,7 +23,7 @@ pub(super) struct FoundFn {
 struct Line {
     /// One-based line number.
     number: usize,
-    /// Leading whitespace width (spaces; tab counts as 1 for simplicity).
+    /// Leading whitespace width (spaces; tabs expand to width 8).
     indent: usize,
     /// Byte offset of the first non-whitespace byte, or line end.
     content: usize,
@@ -36,13 +36,17 @@ struct Line {
 /// # Errors
 ///
 /// Returns [`Error::Collect`] when the source fails the structural integrity
-/// scan (unclosed literals/comments or unbalanced braces).
+/// scan (unclosed literals/comments or unbalanced braces) or mixes tabs and
+/// spaces in leading indentation.
 pub fn analyze_source(
     path: &Path,
     source: &str,
     metric: Metric,
 ) -> Result<Vec<FunctionComplexity>> {
     if let Err(reason) = validate_structure(source.as_bytes()) {
+        return Err(Error::collect(format!("{}: {reason}", path.display())));
+    }
+    if let Err(reason) = validate_indents(source.as_bytes()) {
         return Err(Error::collect(format!("{}: {reason}", path.display())));
     }
     let found = find_functions(source);
@@ -311,7 +315,7 @@ fn split_lines(bytes: &[u8]) -> Vec<Line> {
 }
 
 fn make_line(bytes: &[u8], number: usize, start: usize, end: usize) -> Line {
-    let (indent, content) = leading_indent(bytes, start, end);
+    let (indent, content) = leading_indent(bytes, start, end).unwrap_or((0, start));
     Line {
         number,
         indent,

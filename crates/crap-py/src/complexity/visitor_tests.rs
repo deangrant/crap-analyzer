@@ -152,11 +152,24 @@ fn multiline_type_params_in_signature() {
 }
 
 #[test]
-fn tabs_count_as_indent() {
+fn tabs_expand_to_width_eight() {
     let src = "def f():\n\treturn 1\n";
     let parsed = analyze_source(Path::new("t.py"), src, Metric::Cyclomatic);
     assert!(parsed.is_ok(), "{parsed:?}");
     assert_eq!(parsed.unwrap_or_default()[0].end_line, 2);
+}
+
+#[test]
+fn mixed_leading_indent_is_collect_error() {
+    let src = "def f():\n \tpass\n";
+    let err = analyze_source(Path::new("bad.py"), src, Metric::Cyclomatic);
+    assert!(err.is_err(), "{err:?}");
+}
+
+#[test]
+fn tab_indented_method_qualifies_under_class() {
+    let src = "class Box:\n\tdef method(self):\n\t\tpass\n";
+    assert_eq!(names(src), vec!["Box.method".to_owned()]);
 }
 
 #[test]

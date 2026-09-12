@@ -60,8 +60,9 @@ defines suites.
 
 **Structural integrity** ([`complexity/structure.rs`](../../../crates/crap-py/src/complexity/structure.rs)):
 before attribution, fail the file on unclosed strings/comments or
-unbalanced `{}` / `()` / `[]` (after skipping noise). That is a collect
-error (exit 2), matching the CLI contract.
+unbalanced `{}` / `()` / `[]` (after skipping noise), or mixed tabs/spaces
+in leading indentation. That is a collect error (exit 2), matching the
+CLI contract.
 
 **Visitor** ([`complexity/visitor.rs`](../../../crates/crap-py/src/complexity/visitor.rs)):
 
@@ -71,6 +72,9 @@ error (exit 2), matching the CLI contract.
 - Lambdas are **not** separate rows.
 - Skip comments and string literals (including prefixes / triples) while
   scanning.
+- Indent width: spaces count 1; tabs expand to the next multiple of 8
+  (PEP 8). Mixing tabs and spaces in leading whitespace is a collect
+  error.
 
 **Cyclomatic** (base 1): `if`, `elif`, `for`, `while`, `except`, `case`,
 `and`, `or`. Do not count `try` / `with` / `match` / `else` themselves.

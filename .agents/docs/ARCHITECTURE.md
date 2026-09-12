@@ -190,7 +190,7 @@ analyzer is Rust-only; no Go toolchain and no tree-sitter.
 | Area | Path | Role |
 | ---- | ---- | ---- |
 | CLI | [`cli.rs`](../../crates/crap-go/src/cli.rs) | Flags → `ScanRequest` + `GoLanguage` (`--coverage` default `cover.out`) |
-| Coverprofile | [`coverprofile.rs`](../../crates/crap-go/src/coverprofile.rs) | Go coverprofile → `FileCoverage`; remap import paths via `go.mod` |
+| Coverprofile | [`coverprofile.rs`](../../crates/crap-go/src/coverprofile.rs) | Go coverprofile → `FileCoverage` (`startLine..=endLine` fill; columns discarded); remap import paths via `go.mod` |
 | Module resolve | [`module_resolve.rs`](../../crates/crap-go/src/module_resolve.rs) | `go.mod` packages, enclosing module, and nested module skips |
 | Walk | [`walk.rs`](../../crates/crap-go/src/walk.rs) | `.go` files; skip `vendor`, `.git`, `testdata`, nested modules |
 | Build tags | [`build_tag.rs`](../../crates/crap-go/src/build_tag.rs) | Leading `//go:build` / `// +build` skip |
@@ -271,6 +271,19 @@ flowchart TB
 ```
 
 Detail: [complexity-py](../skills/complexity-py/SKILL.md).
+
+## Frontend alignment checklist
+
+`crap-rs`, `crap-go`, `crap-ts`, and `crap-py` keep parallel walk / collect /
+CLI stacks on purpose (`dry-rs:ignore-file`). Do **not** extract a shared
+frontend crate to “dedupe” them. When you change one of the following in a
+single frontend, manually verify the same contract in the other three:
+
+- Walk roots, skip lists, and nested-project exclusion
+- Symlink follow rules (stay under walk root; skip cycles / out-of-root)
+- Fail-closed collect (one unreadable or structurally invalid file aborts)
+- Public CLI flag surface and defaults (`--coverage`, `--missing`,
+  `--fail-above`, `--threshold`, `--workspace` / `-p`)
 
 ## Hard invariants
 

@@ -34,7 +34,10 @@ empty spans apply after coverprofile is in `FileCoverage`).
 - Data line shape:
   `file.go:startLine.startCol,endLine.endCol stmts hits`.
 - Expand each block across `startLine..=endLine` into `FileCoverage.lines`
-  (columns are discarded). When multiple blocks touch the same line, the
+  (columns are discarded). Intermediate non-statement lines inside a
+  block become instrumented; that can inflate or dilute function coverage
+  versus statement-accurate tools — accepted product Limit; treat scores
+  as a change-risk signal. When multiple blocks touch the same line, the
   line is **uncovered** if any intersecting block has 0 hits (pessimistic
   shared-line merge); otherwise `set` uses max(1) and `count`/`atomic`
   saturating-add positive hits.

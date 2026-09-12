@@ -58,3 +58,19 @@ jobs:
           cargo run -p crap-rs --locked -- \
             --coverage lcov.info --path . --workspace --all-features \
             --fail-above --threshold strict
+
+      - name: Frontend fixture CRAP gates (strict / 8)
+        if: steps.pkgs.outputs.count != '0'
+        run: |
+          cargo run -p crap-go --locked -- \
+            --coverage crates/crap-go/tests/fixtures/sample/cover.out \
+            --path crates/crap-go/tests/fixtures/sample \
+            --fail-above --threshold strict
+          cargo run -p crap-ts --locked -- \
+            --coverage crates/crap-ts/tests/fixtures/sample/lcov.info \
+            --path crates/crap-ts/tests/fixtures/sample \
+            --fail-above --threshold strict
+          cargo run -p crap-py --locked -- \
+            --coverage crates/crap-py/tests/fixtures/sample/lcov.info \
+            --path crates/crap-py/tests/fixtures/sample \
+            --fail-above --threshold strict

@@ -61,6 +61,8 @@ impl CfgUniverse {
     }
 
     fn eval_flag(name: &str) -> bool {
+        // Bare `test` / `proc_macro` stay false: this analyzer is not a rustc
+        // test or proc-macro build. Unknown flags are also false.
         match name {
             "unix" => cfg!(unix),
             "windows" => cfg!(windows),
@@ -127,6 +129,42 @@ const HOST_POINTER_WIDTH: &str = if cfg!(target_pointer_width = "64") {
     ""
 };
 
+const HOST_ENDIAN: &str = if cfg!(target_endian = "little") {
+    "little"
+} else if cfg!(target_endian = "big") {
+    "big"
+} else {
+    ""
+};
+
+const HOST_ENV: &str = if cfg!(target_env = "gnu") {
+    "gnu"
+} else if cfg!(target_env = "musl") {
+    "musl"
+} else if cfg!(target_env = "msvc") {
+    "msvc"
+} else if cfg!(target_env = "sgx") {
+    "sgx"
+} else if cfg!(target_env = "uclibc") {
+    "uclibc"
+} else if cfg!(target_env = "newlib") {
+    "newlib"
+} else {
+    ""
+};
+
+const HOST_VENDOR: &str = if cfg!(target_vendor = "apple") {
+    "apple"
+} else if cfg!(target_vendor = "pc") {
+    "pc"
+} else if cfg!(target_vendor = "unknown") {
+    "unknown"
+} else if cfg!(target_vendor = "fortanix") {
+    "fortanix"
+} else {
+    ""
+};
+
 fn host_cfg_value(path: &syn::Path, value: &str) -> bool {
     if path.is_ident("target_os") {
         return host_eq(HOST_OS, value);
@@ -143,6 +181,19 @@ fn host_cfg_width(path: &syn::Path, value: &str) -> bool {
     }
     if path.is_ident("target_pointer_width") {
         return host_eq(HOST_POINTER_WIDTH, value);
+    }
+    host_cfg_extra(path, value)
+}
+
+fn host_cfg_extra(path: &syn::Path, value: &str) -> bool {
+    if path.is_ident("target_endian") {
+        return host_eq(HOST_ENDIAN, value);
+    }
+    if path.is_ident("target_env") {
+        return HOST_ENV == value;
+    }
+    if path.is_ident("target_vendor") {
+        return HOST_VENDOR == value;
     }
     false
 }
@@ -402,5 +453,46 @@ mod tests {
         assert!(!super::HOST_POINTER_WIDTH.is_empty());
         assert_eq!(fns.len(), 1);
         assert_eq!(fns[0].name, "f");
+    }
+
+    #[test]
+    fn cfg_target_endian_host_is_kept() {
+        let src = format!(
+            "#[cfg(target_endian = \"{endian}\")] fn f() {{}}",
+            endian = super::HOST_ENDIAN
+        );
+        let fns = cyclo(&src);
+        assert!(!super::HOST_ENDIAN.is_empty());
+        assert_eq!(fns.len(), 1);
+        assert_eq!(fns[0].name, "f");
+    }
+
+    #[test]
+    fn cfg_target_env_host_is_kept() {
+        let src = format!(
+            "#[cfg(target_env = \"{env}\")] fn f() {{}}",
+            env = super::HOST_ENV
+        );
+        let fns = cyclo(&src);
+        assert_eq!(fns.len(), 1);
+        assert_eq!(fns[0].name, "f");
+    }
+
+    #[test]
+    fn cfg_target_vendor_host_is_kept() {
+        let src = format!(
+            "#[cfg(target_vendor = \"{vendor}\")] fn f() {{}}",
+            vendor = super::HOST_VENDOR
+        );
+        let fns = cyclo(&src);
+        assert_eq!(fns.len(), 1);
+        assert_eq!(fns[0].name, "f");
+    }
+
+    #[test]
+    fn cfg_proc_macro_flag_is_skipped() {
+        let fns = cyclo("#[cfg(proc_macro)] fn f() {} fn keep() {}");
+        assert_eq!(fns.len(), 1);
+        assert_eq!(fns[0].name, "keep");
     }
 }

@@ -77,6 +77,10 @@ you opt them in. This file tells you **when to load** skills and docs; rules sta
 - Adding a coverprofile (or other non-LCOV) parser in `crap-core`, or documenting on-disk leftovers such as `cargo-crap`.
 - Using `#[allow]` or silencing Clippy complexity instead of shrinking the function.
 - Claiming `/verify` or CI passed without running the commands.
+- Changing walk, symlink, skip-list, fail-closed collect, or CLI surface in
+  one frontend without checking the same contract in the others — see the
+  [Frontend alignment checklist](.agents/docs/ARCHITECTURE.md#frontend-alignment-checklist)
+  (`dry-rs:ignore-file` ports stay separate on purpose).
 
 ## Workflow
 

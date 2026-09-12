@@ -153,7 +153,7 @@ fn body_lines(bytes: &[u8]) -> Vec<BodyLine> {
     let mut start = 0;
     while start <= bytes.len() {
         let end = line_end(bytes, start);
-        let (indent, content) = leading_indent(bytes, start, end);
+        let (indent, content) = leading_indent(bytes, start, end).unwrap_or((0, start));
         lines.push(BodyLine {
             indent,
             content,
