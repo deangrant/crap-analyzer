@@ -96,6 +96,46 @@ fn workspace_without_members_is_single() {
 }
 
 #[test]
+fn workspace_discovers_nested_without_uv_members() {
+    let root = unique_temp("nested-poetry");
+    write_file(&root.join("pyproject.toml"), "[project]\nname = \"root\"\n");
+    write_file(
+        &root.join("packages/a/pyproject.toml"),
+        "[tool.poetry]\nname = \"a\"\n",
+    );
+    write_file(
+        &root.join("packages/b/pyproject.toml"),
+        "[project]\nname = \"b\"\n",
+    );
+    let packages = require_ok(all_packages(&root));
+    assert_eq!(packages.len(), 3);
+    let names: Vec<_> = packages.iter().map(|p| p.name.as_str()).collect();
+    assert!(names.contains(&"root"));
+    assert!(names.contains(&"a"));
+    assert!(names.contains(&"b"));
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn duplicate_project_names_are_resolve_error() {
+    let root = unique_temp("dup-names");
+    write_file(&root.join("pyproject.toml"), "[project]\nname = \"root\"\n");
+    write_file(
+        &root.join("packages/a/pyproject.toml"),
+        "[project]\nname = \"same\"\n",
+    );
+    write_file(
+        &root.join("packages/b/pyproject.toml"),
+        "[project]\nname = \"same\"\n",
+    );
+    let err = all_packages(&root);
+    assert!(err.is_err(), "{err:?}");
+    let msg = format!("{err:?}");
+    assert!(msg.contains("duplicate package name"), "{msg}");
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn workspace_double_star_finds_nested() {
     let root = unique_temp("doublestar");
     write_file(

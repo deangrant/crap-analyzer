@@ -169,13 +169,30 @@ fn empty_workspaces_array_is_single_package() {
 }
 
 #[test]
-fn jsonc_comments_are_resolve_error() {
+fn jsonc_comments_and_trailing_commas_are_accepted() {
     let root = unique_temp("jsonc");
     write_file(
         &root.join("package.json"),
-        "{\n  // not supported\n  \"name\": \"demo\"\n}\n",
+        "{\n  // workspace note\n  \"name\": \"demo\",\n}\n",
     );
-    assert!(all_packages(&root).is_err());
+    let packages = require_ok(all_packages(&root));
+    assert_eq!(packages.len(), 1);
+    assert_eq!(packages[0].name, "demo");
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn duplicate_package_names_are_resolve_error() {
+    let root = unique_temp("dup-pkgs");
+    write_file(
+        &root.join("package.json"),
+        r#"{"name":"root","workspaces":["packages/*"]}"#,
+    );
+    write_file(&root.join("packages/a/package.json"), r#"{"name":"same"}"#);
+    write_file(&root.join("packages/b/package.json"), r#"{"name":"same"}"#);
+    let err = all_packages(&root);
+    assert!(err.is_err(), "{err:?}");
+    assert!(format!("{err:?}").contains("duplicate package name"));
     let _ = fs::remove_dir_all(&root);
 }
 

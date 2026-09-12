@@ -318,3 +318,11 @@ fn cargo_override_requires_an_existing_file() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
     assert_eq!(cargo_from_override(Some(&manifest)), manifest);
 }
+
+#[test]
+fn duplicate_package_names_are_resolve_error() {
+    let pkgs = [empty_pkg("dup", "/tmp/a"), empty_pkg("dup", "/tmp/b")];
+    let err = ensure_unique_names(&pkgs);
+    assert!(err.is_err(), "{err:?}");
+    assert!(format!("{err:?}").contains("duplicate package name"));
+}

@@ -96,8 +96,9 @@ increment.
 
 Limits: approximate by design — accepted product Limit; text scanner, not
 `go/ast`. Scores can diverge from `go/ast`-based tools; treat them as a
-change-risk signal for reviewers, not an authoritative complexity audit.
-Structural failures fail the run; structural balance is not language
-validity — nonsense tokens with balanced braces still collect. Valid
-generics edge cases and unusual syntax may still under-count. Prefer
+change-risk signal for reviewers, not an audit-grade complexity metric.
+Structural failures fail the run (one bad file aborts the collect); scope
+large trees with `--path` / `-p` and walk skip lists. Structural balance is
+not language validity — nonsense tokens with balanced braces still collect.
+Valid generics edge cases and unusual syntax may still under-count. Prefer
 fixing the Rust visitor over adding a Go runtime dependency.

@@ -181,7 +181,22 @@ fn packages_from_metadata(json: &Value) -> Result<Vec<Package>> {
     let members = string_ids(json, "workspace_members")?;
     let (out, matched) = collect_packages(packages_array(json)?, &members)?;
     require_matched_members(&members, &matched)?;
+    ensure_unique_names(&out)?;
     Ok(out)
+}
+
+fn ensure_unique_names(packages: &[Package]) -> Result<()> {
+    for (index, pkg) in packages.iter().enumerate() {
+        if let Some(other) = packages[..index].iter().find(|p| p.name == pkg.name) {
+            return Err(Error::resolve(format!(
+                "duplicate package name `{}` at {} and {}",
+                pkg.name,
+                other.root.display(),
+                pkg.root.display()
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn collect_packages(array: &[Value], members: &[String]) -> Result<(Vec<Package>, Vec<String>)> {

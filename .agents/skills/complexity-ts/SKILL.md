@@ -39,15 +39,17 @@ SOLID: [rust-style-guide](../rust-style-guide/SKILL.md) and
 ## Package walk
 
 - Resolve packages from `package.json` (`project_resolve`).
-  `package.json` is parsed with `serde_json` (full JSON string decoding;
-  JSONC comments, trailing commas, and duplicate fields are unsupported).
+  `package.json` allows JSONC `//` / `/* */` comments and trailing commas
+  (stripped before `serde_json`). Duplicate object keys are a resolve
+  error.
 - Without `--workspace` / `-p`, a `package.json` root is that package only
   (workspaces are **not** expanded).
 - `--workspace` expands `workspaces` array or `workspaces.packages` globs
   (`*`, `**`, exact paths, and `!` exclusions). If `package.json` has no
   workspaces, falls back to `pnpm-workspace.yaml` `packages`.
   YAML list entries strip matching outer quotes only; escapes inside
-  quoted paths are not decoded.
+  quoted paths are not decoded. Duplicate package `name` values across
+  members are a resolve error.
 - `-p` selects by package `name`.
 - Walk `.ts` / `.tsx`; skip `node_modules`, `.git`, `dist`, `build`,
   `coverage`, and nested `package.json` roots in `Target.skip`.
@@ -82,8 +84,10 @@ ternary `?`, `&&`, `||`, `??`. Do not count `switch` / `try` themselves.
 
 Limits: approximate by design — accepted product Limit; text scanner, not
 `tsc`. Scores can diverge from `tsc`-based tools; treat them as a
-change-risk signal for reviewers, not an authoritative complexity audit.
-Structural failures fail the run; valid generics, decorators, and unusual
-TSX may still under- or over-count. Structural balance is not language
-validity — nonsense tokens with balanced braces still collect. Prefer
-fixing the Rust visitor over adding a Node or AST-crate dependency.
+change-risk signal for reviewers, not an audit-grade complexity metric.
+Structural failures fail the run (one bad file aborts the collect); scope
+large trees with `--path` / `-p` and walk skip lists. Valid generics,
+decorators, and unusual TSX may still under- or over-count. Structural
+balance is not language validity — nonsense tokens with balanced braces
+still collect. Prefer fixing the Rust visitor over adding a Node or
+AST-crate dependency.

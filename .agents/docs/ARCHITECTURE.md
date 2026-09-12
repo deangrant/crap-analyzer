@@ -304,6 +304,11 @@ single frontend, manually verify the same contract in the other three:
 | `1` | Analysis finished; `--fail-above` tripped |
 | `2` | Usage, I/O, metadata, collect, or report error. Unreadable or structurally invalid source is a collect error: one failed file aborts the whole run for Rust, Go, TypeScript, and Python. JSON serialize failures are a report error. |
 
+Fail-closed collect is intentional for CI: a broken or generated file must
+not be silently skipped. For large trees with partial breakage, narrow
+`--path` / `-p` and rely on walk skip lists (venvs, `node_modules`,
+`vendor`, nested package roots). There is no `--continue-on-collect-error`.
+
 Flag reference: [README.md](../../README.md).
 
 ## Trust boundary

@@ -43,11 +43,14 @@ SOLID: [rust-style-guide](../rust-style-guide/SKILL.md) and
 - Name from `[project].name` (PEP 621); fall back to
   `[tool.poetry].name`.
 - Without `--workspace` / `-p`, a `pyproject.toml` root is that project
-  only (uv workspaces are **not** expanded).
+  only (uv workspaces and nested projects are **not** expanded).
 - `--workspace` expands `[tool.uv.workspace].members` globs (`*`, `**`,
-  exact paths, and `!` exclusions). If there is no members table,
-  returns the root project only.
-- `-p` selects by project name.
+  exact paths, and `!` exclusions) when present. Poetry has no workspace
+  `members` table; without uv members, `--workspace` discovers nested
+  `pyproject.toml` projects under the root (skipping venvs / build dirs).
+  Prefer explicit uv `members` when available. Duplicate project names
+  are a resolve error.
+- `-p` selects by project name (after the same discovery rules).
 - Walk `.py`; skip `.venv`, `venv`, `__pycache__`, `.git`, `dist`,
   `build`, `.tox`, `htmlcov`, `coverage`, `.eggs`, `*.egg-info`, and
   nested `pyproject.toml` roots in `Target.skip`.
@@ -85,7 +88,9 @@ CLI contract.
 
 Limits: approximate by design — accepted product Limit; text scanner, not
 CPython AST. Scores can diverge from AST-based tools; treat them as a
-change-risk signal for reviewers, not an authoritative complexity audit.
-Structural failures fail the run; valid line continuations and unusual
-f-strings may still under- or over-count. Prefer fixing the Rust visitor
-over adding a Python runtime or AST-crate dependency.
+change-risk signal for reviewers, not an audit-grade complexity metric.
+Structural failures fail the run (one bad file aborts the collect); scope
+large trees with `--path` / `-p` and walk skip lists. Valid line
+continuations and unusual f-strings may still under- or over-count. Prefer
+fixing the Rust visitor over adding a Python runtime or AST-crate
+dependency.

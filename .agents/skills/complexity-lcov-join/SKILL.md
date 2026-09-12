@@ -76,6 +76,9 @@ LCOV `SF:` paths and source paths may be absolute or relative.
   `crate_name` display name).
 - Absolute and relative spellings of the same suffix merge for join and
   nested-exclude grouping.
+- Nested-span exclusion is O(peers²) per file (each function vs peers on
+  that file); Go/TS/Python `masked_body` clones and blank-fills nested
+  ranges. Accepted for typical file sizes; monorepo walks stay sequential.
 - Leftover unresolved ties still apply `--missing`, but are marked
   `coverage_join: ambiguous` (JSON schema 3) and warned on stderr / in
   the text footer — distinct from ordinary missing coverage.

@@ -52,19 +52,24 @@ struct PoetryTable {
 /// Loads every project under the workspace or single project at `root`.
 ///
 /// When `pyproject.toml` lists `[tool.uv.workspace].members`, expands those
-/// globs. Otherwise returns the single project at `root`.
+/// globs. Otherwise discovers nested `pyproject.toml` projects under `root`
+/// (Poetry-style monorepos); a tree with only the root manifest stays one
+/// project.
 ///
 /// # Errors
 ///
-/// Returns [`Error::Resolve`] if manifests are missing or malformed, or
-/// [`Error::Io`] if directories cannot be read.
+/// Returns [`Error::Resolve`] if manifests are missing or malformed, names
+/// collide, or [`Error::Io`] if directories cannot be read.
 pub fn all_packages(root: &Path) -> Result<Vec<Package>> {
     let manifest = read_pyproject(root)?;
     let patterns = workspace_patterns(&manifest);
-    if patterns.is_empty() {
-        return Ok(vec![package_from_manifest(root, &manifest)]);
-    }
-    discover_workspace_packages(root, &patterns)
+    let packages = if patterns.is_empty() {
+        discover_nested_or_single(root, &manifest)?
+    } else {
+        discover_workspace_packages(root, &patterns)?
+    };
+    ensure_unique_names(&packages)?;
+    Ok(packages)
 }
 
 /// Loads only the project defined by `pyproject.toml` at `root`.
@@ -167,6 +172,33 @@ fn discover_workspace_packages(root: &Path, patterns: &[String]) -> Result<Vec<P
     }
     packages.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(packages)
+}
+
+fn discover_nested_or_single(root: &Path, manifest: &PyProject) -> Result<Vec<Package>> {
+    let dirs = glob_expand::discover_nested_package_dirs(root)?;
+    if dirs.len() <= 1 {
+        return Ok(vec![package_from_manifest(root, manifest)]);
+    }
+    let mut packages = Vec::with_capacity(dirs.len());
+    for dir in dirs {
+        packages.push(load_package(&dir)?);
+    }
+    packages.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(packages)
+}
+
+fn ensure_unique_names(packages: &[Package]) -> Result<()> {
+    for (index, pkg) in packages.iter().enumerate() {
+        if let Some(other) = packages[..index].iter().find(|p| p.name == pkg.name) {
+            return Err(Error::resolve(format!(
+                "duplicate package name `{}` at {} and {}",
+                pkg.name,
+                other.root.display(),
+                pkg.root.display()
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn load_package(path: &Path) -> Result<Package> {
