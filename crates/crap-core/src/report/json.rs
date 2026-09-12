@@ -22,12 +22,12 @@ pub fn render_json(
     let exceeding = entries.iter().filter(|e| exceeds_threshold(e.crap, threshold)).count();
     let scores: Vec<f64> = entries.iter().map(|e| e.crap).collect();
     let doc = ReportDoc {
-        schema_version: 3,
+        schema_version: 4,
         language,
         metric: metric.to_string(),
         threshold,
         result: ResultDoc {
-            passed: exceeding == 0,
+            threshold_cleared: exceeding == 0,
             gate_failed,
             summary: SummaryDoc {
                 functions: entries.len(),
@@ -58,7 +58,7 @@ struct ReportDoc<'a> {
 
 #[derive(Serialize)]
 struct ResultDoc {
-    passed: bool,
+    threshold_cleared: bool,
     gate_failed: bool,
     summary: SummaryDoc,
     functions: Vec<FunctionDoc>,
@@ -238,11 +238,11 @@ mod tests {
         assert_fields(
             &value,
             &[
-                ("/schema_version", Value::from(3)),
+                ("/schema_version", Value::from(4)),
                 ("/language", Value::from("rust")),
                 ("/metric", Value::from("cyclomatic")),
                 ("/threshold", Value::from(15.0)),
-                ("/result/passed", Value::from(false)),
+                ("/result/threshold_cleared", Value::from(false)),
                 ("/result/gate_failed", Value::from(false)),
                 ("/result/summary/functions", Value::from(2)),
                 ("/result/summary/exceeding", Value::from(1)),
@@ -289,7 +289,7 @@ mod tests {
         assert_fields(
             &value,
             &[
-                ("/result/passed", Value::from(true)),
+                ("/result/threshold_cleared", Value::from(true)),
                 ("/result/summary/functions", Value::from(0)),
                 ("/result/summary/exceeding", Value::from(0)),
                 ("/result/summary/ambiguous", Value::from(0)),
@@ -314,7 +314,7 @@ mod tests {
     fn moderate_does_not_imply_exceeds() {
         let entries = [entry("mid", 20.0, 10, 50.0, Some("demo"), 20)];
         let value = json(&entries, 25.0, Metric::Cyclomatic, false);
-        assert_eq!(value["result"]["passed"], true);
+        assert_eq!(value["result"]["threshold_cleared"], true);
         assert_eq!(value["result"]["functions"][0]["exceeds"], false);
         assert_eq!(value["result"]["functions"][0]["risk"], "moderate");
     }
@@ -329,14 +329,14 @@ mod tests {
         ];
         let value = json(&entries, 15.0, Metric::Cyclomatic, false);
         assert_eq!(value["result"]["summary"]["median_crap"], 5.0);
-        assert_eq!(value["result"]["passed"], true);
+        assert_eq!(value["result"]["threshold_cleared"], true);
         assert_eq!(value["result"]["gate_failed"], false);
     }
 
     #[test]
-    fn passed_tracks_exceedances_not_the_gate_flag() {
+    fn threshold_cleared_tracks_exceedances_not_the_gate_flag() {
         let value = json(&mixed_entries(), 15.0, Metric::Cyclomatic, true);
-        assert_eq!(value["result"]["passed"], false);
+        assert_eq!(value["result"]["threshold_cleared"], false);
         assert_eq!(value["result"]["gate_failed"], true);
         assert_eq!(value["result"]["summary"]["exceeding"], 1);
     }

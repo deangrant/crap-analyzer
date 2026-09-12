@@ -36,12 +36,13 @@ These are two axes. Do not conflate them.
 A function **exceeds** when its score is **strictly above** the active
 threshold. Moderate (score 20) can still pass a lenient gate (25).
 
-JSON (`schema_version` 3): `result.passed` is `exceeding == 0` (score vs
-threshold only). `result.gate_failed` is true only when `--fail-above` is set
-and any score exceeds. Each function has `coverage_join` (`measured` /
-`missing` / `ambiguous`); `result.summary.ambiguous` counts unresolved path
-ties. Automations that care about scores should use `passed` / `exceeding`;
-CI exit 1 still requires `--fail-above`.
+JSON (`schema_version` 4): `result.threshold_cleared` is `exceeding == 0`
+(score vs threshold only; renamed from `passed` in schema 3).
+`result.gate_failed` is true only when `--fail-above` is set and any score
+exceeds. Each function has `coverage_join` (`measured` / `missing` /
+`ambiguous`); `result.summary.ambiguous` counts unresolved path ties.
+Automations that care about scores should use `threshold_cleared` /
+`exceeding`; CI exit 1 still requires `--fail-above`.
 
 ## `--missing`
 

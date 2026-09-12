@@ -172,7 +172,7 @@ Shared flags work the same on the CLIs unless noted.
 | `--path <dir>` | Walk this tree (default `.`). Rust: a workspace root is analyzed per member; a member package root is that package only. Go: a module root (`go.mod`) is analyzed per package. TypeScript: a `package.json` root is that package only unless `--workspace` / `-p`. Python: a `pyproject.toml` root is that project only unless `--workspace` / `-p`. |
 | `--metric` | `cyclomatic` (default) or `cognitive` |
 | `--threshold` | Flag scores strictly above this. Number, `strict` (8), or `lenient` (25). Default `15` for both metrics. Independent of the risk band. |
-| `--format` | `text` (default table) or `json` (versioned envelope, `schema_version` 3). `result.passed` is true when no function exceeds `--threshold`; omitting `--fail-above` still reports `passed` / per-function `exceeds` from the threshold, but `result.gate_failed` stays false and the process exits 0. `result.gate_failed` / exit 1 require `--fail-above`. Per-function `coverage_join` is `measured`, `missing`, or `ambiguous`; unresolved path ties also appear in `result.summary.ambiguous` and a stderr / text-footer warning. |
+| `--format` | `text` (default table) or `json` (versioned envelope, `schema_version` 4). `result.threshold_cleared` is true when no function exceeds `--threshold` (renamed from `passed` in schema 3); omitting `--fail-above` still reports `threshold_cleared` / per-function `exceeds` from the threshold, but `result.gate_failed` stays false and the process exits 0. `result.gate_failed` / exit 1 require `--fail-above`. Per-function `coverage_join` is `measured`, `missing`, or `ambiguous`; unresolved path ties also appear in `result.summary.ambiguous` and a stderr / text-footer warning. |
 | `--workspace` | Every workspace/module member |
 | `-p, --package <name>` | One member; repeatable; conflicts with `--workspace`. Go: import path. TypeScript: package `name`. Python: project name from `pyproject.toml`. |
 | `--summary` | Counts and worst offender; text only; conflicts with `--format json` |
@@ -233,8 +233,10 @@ Decisions inside unexpanded or opaque macros may be missed.
   trait item (llvm-cov often has no usable span; the visitor never emits
   them).
 - Harness attrs whose last path segment is `test` or `bench` (including
-  `#[tokio::test]`) are skipped. Criterion and custom libtest harnesses are
-  not detected; ungated helpers in `src/tests/` can still be scored.
+  `#[tokio::test]`) are skipped. Inline `mod tests` / `mod test` helpers are
+  also omitted (same intent as skipping `*_tests.rs` / `tests.rs` filenames).
+  Criterion and custom libtest harnesses are not detected; other ungated
+  helper modules (for example `mod helpers`) can still be scored.
 - One unreadable or unparseable source file fails the whole collect (exit
   2), same fail-closed contract for Rust, Go, and TypeScript.
 - Nested coverage exclude cost grows with functions and instrumented lines
@@ -254,7 +256,10 @@ Decisions inside unexpanded or opaque macros may be missed.
   canonicalize (otherwise the run fails); files that fail canonicalize
   are skipped.
 - `$CARGO` is used only when it names an existing file (Cargo’s usual
-  override); otherwise `crap-rs` runs `cargo` from `PATH`.
+  override); otherwise `crap-rs` runs `cargo` from `PATH`. That override may
+  be any executable path — intentional for Cargo toolchains, accepted under
+  **local trust**, not a sandbox. A hostile `$CARGO` can run arbitrary code
+  at `cargo metadata` time (same class as trusting the build host).
 - `crap-go` complexity is an approximate text scanner (not `go/ast`) —
   an accepted product Limit. Scores can diverge from `go/ast`-based
   tools; treat them as a change-risk signal, not an authoritative
@@ -306,7 +311,7 @@ Full local vs CI (also 100% lines and CRAP `--threshold strict`):
 [`.agents/skills/verify/SKILL.md`](.agents/skills/verify/SKILL.md), or
 `/verify`.
 
-JSON `result.passed` reflects threshold breaches even without
+JSON `result.threshold_cleared` reflects threshold breaches even without
 `--fail-above`; use `--fail-above` when you need exit 1 /
 `result.gate_failed`.
 

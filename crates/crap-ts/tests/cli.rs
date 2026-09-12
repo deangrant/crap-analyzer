@@ -160,7 +160,7 @@ fn intentional_miss_is_skipped() {
 }
 
 #[test]
-fn json_without_fail_above_reports_passed_false() {
+fn json_without_fail_above_reports_threshold_not_cleared() {
     let root = fixture_root("nested");
     let (code, stdout, stderr) = output_of(
         bin()
@@ -176,7 +176,7 @@ fn json_without_fail_above_reports_passed_false() {
     );
     assert_eq!(code, 0, "stderr={stderr}\nstdout={stdout}");
     let value = parse_json(&stdout);
-    assert_eq!(value["result"]["passed"], false);
+    assert_eq!(value["result"]["threshold_cleared"], false);
     assert_eq!(value["result"]["gate_failed"], false);
 }
 

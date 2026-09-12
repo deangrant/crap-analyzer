@@ -1,6 +1,12 @@
 //! Shared scanners for TypeScript tokens (comments, strings, braces, and words).
 
 // dry-rs:ignore-file. intentional parallel language frontend; keep separate.
+mod jsx;
+mod regex;
+
+use jsx::{looks_like_jsx_tag, skip_jsx_tag};
+use regex::{can_start_regex, skip_regex};
+
 /// Skips spaces, comments, and string / template / regex literals starting at `i`.
 pub(super) fn skip_noise(bytes: &[u8], mut i: usize) -> usize {
     while i < bytes.len() {
@@ -157,64 +163,7 @@ fn after_quoted_byte(bytes: &[u8], i: usize) -> Option<usize> {
     (i + 1 < bytes.len()).then_some(i + 2)
 }
 
-fn can_start_regex(bytes: &[u8], i: usize) -> bool {
-    let Some(prev) = prev_code_byte(bytes, i) else {
-        return true;
-    };
-    if is_regex_prev_punct(prev) {
-        return true;
-    }
-    is_ident_byte(prev) && precedes_regex_keyword(bytes, i)
-}
-
-const fn is_regex_prev_punct(b: u8) -> bool {
-    matches!(
-        b,
-        b'(' | b'['
-            | b'{'
-            | b'='
-            | b':'
-            | b','
-            | b';'
-            | b'!'
-            | b'&'
-            | b'|'
-            | b'?'
-            | b'+'
-            | b'-'
-            | b'*'
-            | b'%'
-            | b'~'
-            | b'^'
-            | b'\n'
-            | b'\r'
-    )
-}
-
-fn precedes_regex_keyword(bytes: &[u8], i: usize) -> bool {
-    let end = prev_non_ws(bytes, i);
-    let start = ident_start_before(bytes, end);
-    REGEX_KEYWORDS.contains(&&bytes[start..end])
-}
-
-const REGEX_KEYWORDS: &[&[u8]] = &[
-    b"return",
-    b"throw",
-    b"case",
-    b"else",
-    b"typeof",
-    b"void",
-    b"delete",
-    b"new",
-    b"await",
-    b"yield",
-    b"in",
-    b"of",
-    b"instanceof",
-    b"do",
-];
-
-fn prev_code_byte(bytes: &[u8], i: usize) -> Option<u8> {
+pub(super) fn prev_code_byte(bytes: &[u8], i: usize) -> Option<u8> {
     let mut j = i;
     while j > 0 {
         j -= 1;
@@ -224,134 +173,7 @@ fn prev_code_byte(bytes: &[u8], i: usize) -> Option<u8> {
     }
     None
 }
-
-fn skip_regex(bytes: &[u8], start: usize) -> Option<usize> {
-    let mut i = start + 1;
-    let mut in_class = false;
-    while i < bytes.len() {
-        match step_regex(bytes, i, &mut in_class) {
-            RegexStep::Continue(next) => i = next,
-            RegexStep::Done(end) => return Some(end),
-            RegexStep::Fail => return None,
-        }
-    }
-    None
-}
-
-enum RegexStep {
-    Continue(usize),
-    Done(usize),
-    Fail,
-}
-
-fn step_regex(bytes: &[u8], i: usize, in_class: &mut bool) -> RegexStep {
-    if let Some(step) = class_or_escape(bytes, i, in_class) {
-        return step;
-    }
-    end_or_continue(bytes, i, *in_class)
-}
-
-fn class_or_escape(bytes: &[u8], i: usize, in_class: &mut bool) -> Option<RegexStep> {
-    let b = bytes[i];
-    if b == b'\\' {
-        return Some(RegexStep::Continue(i.saturating_add(2)));
-    }
-    if b == b'[' {
-        *in_class = true;
-        return Some(RegexStep::Continue(i + 1));
-    }
-    if b == b']' {
-        *in_class = false;
-        return Some(RegexStep::Continue(i + 1));
-    }
-    None
-}
-
-fn end_or_continue(bytes: &[u8], i: usize, in_class: bool) -> RegexStep {
-    let b = bytes[i];
-    if b == b'\n' {
-        return RegexStep::Fail;
-    }
-    if is_regex_close(b, in_class) {
-        return RegexStep::Done(after_regex_flags(bytes, i + 1));
-    }
-    RegexStep::Continue(i + 1)
-}
-
-const fn is_regex_close(b: u8, in_class: bool) -> bool {
-    b == b'/' && !in_class
-}
-
-fn after_regex_flags(bytes: &[u8], mut i: usize) -> usize {
-    while i < bytes.len() && matches!(bytes[i], b'g' | b'i' | b'm' | b's' | b'u' | b'y' | b'd') {
-        i += 1;
-    }
-    i
-}
-
-fn looks_like_jsx_tag(bytes: &[u8], i: usize) -> bool {
-    bytes.get(i) == Some(&b'<') && can_start_jsx(bytes, i) && jsx_tag_follows(bytes, i)
-}
-
-fn jsx_tag_follows(bytes: &[u8], i: usize) -> bool {
-    let Some(&b) = bytes.get(i + 1) else {
-        return false;
-    };
-    jsx_second_byte(bytes, b, i)
-}
-
-fn jsx_second_byte(bytes: &[u8], b: u8, i: usize) -> bool {
-    if b == b'/' {
-        return closing_jsx_name(bytes, i);
-    }
-    b == b'>' || is_ident_start(b)
-}
-
-fn closing_jsx_name(bytes: &[u8], i: usize) -> bool {
-    bytes.get(i + 2).is_some_and(|&c| is_ident_start(c))
-}
-
-fn can_start_jsx(bytes: &[u8], i: usize) -> bool {
-    let Some(prev) = prev_code_byte(bytes, i) else {
-        return true;
-    };
-    if is_jsx_prev_punct(prev) {
-        return true;
-    }
-    is_ident_byte(prev) && precedes_jsx_keyword(bytes, i)
-}
-
-const fn is_jsx_prev_punct(b: u8) -> bool {
-    matches!(
-        b,
-        b'(' | b'{'
-            | b'['
-            | b'='
-            | b':'
-            | b','
-            | b';'
-            | b'!'
-            | b'?'
-            | b'&'
-            | b'|'
-            | b'>'
-            | b'\n'
-            | b'\r'
-    )
-}
-
-fn precedes_jsx_keyword(bytes: &[u8], i: usize) -> bool {
-    let end = prev_non_ws(bytes, i);
-    let start = ident_start_before(bytes, end);
-    JSX_KEYWORDS.contains(&&bytes[start..end])
-}
-
-const JSX_KEYWORDS: &[&[u8]] = &[
-    b"return", b"throw", b"else", b"typeof", b"await", b"yield", b"case", b"default", b"do", b"of",
-    b"in", b"void", b"new", b"delete",
-];
-
-fn prev_non_ws(bytes: &[u8], i: usize) -> usize {
+pub(super) fn prev_non_ws(bytes: &[u8], i: usize) -> usize {
     let mut j = i;
     while j > 0 {
         j -= 1;
@@ -362,72 +184,12 @@ fn prev_non_ws(bytes: &[u8], i: usize) -> usize {
     0
 }
 
-fn ident_start_before(bytes: &[u8], end: usize) -> usize {
+pub(super) fn ident_start_before(bytes: &[u8], end: usize) -> usize {
     let mut j = end;
     while j > 0 && is_ident_byte(bytes[j - 1]) {
         j -= 1;
     }
     j
-}
-
-fn skip_jsx_tag(bytes: &[u8], start: usize) -> Option<usize> {
-    let mut i = start + 1;
-    let mut in_quote: Option<u8> = None;
-    while i < bytes.len() {
-        match step_jsx(bytes, i, &mut in_quote) {
-            JsxOut::Done(end) => return Some(end),
-            JsxOut::Next(next) => i = next,
-            JsxOut::Fail => return None,
-        }
-    }
-    None
-}
-
-enum JsxOut {
-    Done(usize),
-    Next(usize),
-    Fail,
-}
-
-fn step_jsx(bytes: &[u8], i: usize, in_quote: &mut Option<u8>) -> JsxOut {
-    if let Some(q) = *in_quote {
-        return JsxOut::Next(after_jsx_quote_byte(bytes, i, q, in_quote));
-    }
-    unquoted_jsx_byte(bytes, i, in_quote)
-}
-
-fn unquoted_jsx_byte(bytes: &[u8], i: usize, in_quote: &mut Option<u8>) -> JsxOut {
-    let b = bytes[i];
-    if is_jsx_attr_quote(b) {
-        *in_quote = Some(b);
-        return JsxOut::Next(i + 1);
-    }
-    if b == b'{' {
-        return balanced_jsx_or_fail(bytes, i);
-    }
-    if b == b'>' {
-        return JsxOut::Done(i + 1);
-    }
-    JsxOut::Next(i + 1)
-}
-
-const fn is_jsx_attr_quote(b: u8) -> bool {
-    b == b'"' || b == b'\''
-}
-
-fn balanced_jsx_or_fail(bytes: &[u8], i: usize) -> JsxOut {
-    skip_balanced(bytes, i, b'{', b'}').map_or(JsxOut::Fail, JsxOut::Next)
-}
-
-fn after_jsx_quote_byte(bytes: &[u8], i: usize, quote: u8, in_quote: &mut Option<u8>) -> usize {
-    if bytes[i] == quote {
-        *in_quote = None;
-        return i + 1;
-    }
-    if bytes[i] == b'\\' {
-        return i.saturating_add(2);
-    }
-    i + 1
 }
 
 /// Skips a balanced `open_ch`…`close_ch` pair starting at `open`.
@@ -489,5 +251,5 @@ pub(super) const fn is_ident_start(b: u8) -> bool {
 }
 
 #[cfg(test)]
-#[path = "lex_tests.rs"]
+#[path = "../lex_tests.rs"]
 mod tests;

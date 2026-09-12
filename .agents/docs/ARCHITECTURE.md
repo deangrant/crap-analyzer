@@ -148,9 +148,10 @@ Pipeline entry: [`run`](../../crates/crap-core/src/run.rs) /
 
 **Risk bands** (Low / Acceptable / Moderate / High) classify the score. The
 **gate** (`--threshold`, `--fail-above`) is a separate pass/fail line. Do not
-read a Moderate band as “exceeds threshold.” JSON `result.passed` tracks
-threshold exceedances (`schema_version` 3); `gate_failed` / exit 1 still need
-`--fail-above`. Detail: [crap-scoring](../skills/crap-scoring/SKILL.md).
+read a Moderate band as “exceeds threshold.” JSON `result.threshold_cleared`
+tracks threshold exceedances (`schema_version` 4; renamed from `passed`);
+`gate_failed` / exit 1 still need `--fail-above`. Detail:
+[crap-scoring](../skills/crap-scoring/SKILL.md).
 
 ## `crap-rs` module map
 
@@ -162,7 +163,7 @@ Composition: [`main.rs`](../../crates/crap-rs/src/main.rs) parses CLI, calls
 | ---- | ---- | ---- |
 | CLI | [`cli.rs`](../../crates/crap-rs/src/cli.rs) | Flags → `ScanRequest` + `RustLanguage` (`--coverage` default `lcov.info`, alias `--lcov`) |
 | Workspace | [`workspace.rs`](../../crates/crap-rs/src/workspace.rs) | `cargo metadata`, members, feature graphs |
-| Walk | [`walk.rs`](../../crates/crap-rs/src/walk.rs) | `.rs` files; skip `target` / `.git`; package-root `tests` / `benches` / `examples`; nested members |
+| Walk | [`walk.rs`](../../crates/crap-rs/src/walk.rs) | `.rs` files; skip `target` / `.git`; package-root `tests` / `benches` / `examples`; `*_tests.rs` / `tests.rs`; nested members. Visitor also omits inline `mod tests` / `mod test`. |
 | Visitor | [`complexity/visitor.rs`](../../crates/crap-rs/src/complexity/visitor.rs) | Function spans and names |
 | Cyclomatic | [`complexity/cyclomatic.rs`](../../crates/crap-rs/src/complexity/cyclomatic.rs) | Decision-point count |
 | Cognitive | [`complexity/cognitive.rs`](../../crates/crap-rs/src/complexity/cognitive.rs) | Nesting-weighted count |
@@ -318,6 +319,11 @@ execute untrusted code. Walk follows file and directory symlinks only when
 the resolved target stays under the walk root; cycles and out-of-root links
 are skipped. Residual risk is local filesystem access under the chosen
 `--path`, not remote code execution.
+
+`crap-rs` may invoke `$CARGO` when that env var names an existing file
+(Cargo’s usual metadata override). That path is not sandboxed: under local
+trust it can be any executable, so a hostile `$CARGO` runs at
+`cargo metadata` time — the same trust class as the build host itself.
 
 ## Verification and agent layout
 

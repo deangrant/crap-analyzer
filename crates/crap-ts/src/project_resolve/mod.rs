@@ -173,3 +173,7 @@ fn load_package(path: &Path) -> Result<Package> {
 #[cfg(test)]
 #[path = "../project_resolve_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../project_resolve_glob_tests.rs"]
+mod glob_tests;
